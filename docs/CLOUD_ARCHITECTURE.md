@@ -289,3 +289,157 @@ tables keyed directly, `revisions.rev` is the rowid, and the revision counter
 is derived with `MAX(rev)` instead of being stored. This is pinned by tests
 (`worker/test/store.test.ts`, "write budget"). See DEPLOYMENT_PLAN.md §7 for
 the full operating budget.
+
+---
+
+# 13. Multi-tenant model (Stage 5)
+
+Status: **design, then implementation** (this section is updated at the end of the
+stage with what was actually built). Nothing here is deployed.
+
+## 13.1 Audit of Stage 4 against the new requirements
+
+| Finding in Stage 4 | Why it is not enough |
+|---|---|
+| Every request is routed to one Durable Object, `getByName('workspace')` | There is exactly one workspace; no tenant exists |
+| Roles come from global env lists (`ADMIN_EMAILS`, `READ_ONLY_EMAILS`) | Not per-tenant; any authenticated email that is on no list is silently an **editor**: authentication was treated as authorization |
+| `/api/export`, `/api/revisions*`, `/ws` take no tenant | Nothing to isolate; a second tenant would share them |
+| The workspace DO trusts the identity headers from the Worker and has no notion of which tenant it serves | A routing bug could serve the wrong tenant's data with no second line of defence |
+| No way to remove access at runtime | Disabling a user would not close their open WebSocket |
+| Client treats "role" as one flat value | Needs super-admin / admin / user and a storage mode |
+
+What is already right and is kept: Access JWT verification, per-record optimistic concurrency, the
+sync protocol, the Durable Object storage schema (3 rows per save), conflict handling, hibernation,
+history, the link/first-run protections, local mode, EN/JA.
+
+## 13.2 Principles
+
+1. **Authentication is not authorization.** Access proves *who*; the application's own registry decides
+   *what they may do*. An authenticated email that is not in the registry is refused (fail closed).
+2. **The server derives the tenant.** `verified email → registry user → tenant`. A tenant id sent by
+   the browser (path, query, body, header) is never used; if one is present and disagrees, the request
+   is rejected.
+3. **Isolation by construction.** Each tenant's data lives in its **own Durable Object instance**,
+   addressed by a stable random tenant id. State, history, sockets and broadcasts cannot be shared
+   between instances. The instance also records which tenant it belongs to and refuses a mismatch
+   (defence in depth against a routing bug).
+4. **Stable ids, never labels.** Tenants `ten_<uuid>`, users `usr_<uuid>`. Emails are normalised
+   (trim + lowercase) and unique. Names are display text only and never a boundary.
+5. **One authorization system.** The old "read-only / editor / admin" workspace roles are *derived*
+   from the registry (admin gives `admin`; user with access `editor` gives `editor`; user with access
+   `viewer` gives `viewer`) and passed to the workspace only as a computed fact. `ADMIN_EMAILS` and
+   `READ_ONLY_EMAILS` are removed.
+
+## 13.3 Components
+
+```
+Browser --> Worker --> Access JWT verify (email only)
+                |
+                +--> RegistryRoom  (one Durable Object, SQLite)              control plane
+                |       tenants, users, deletion_audit
+                |       email -> user -> tenant -> status/mode  =>  Principal | deny(reason)
+                |
+                +--> WorkspaceRoom (one Durable Object PER TENANT, id = tenant id)   data plane
+                        records, history, revisions, sockets
+```
+
+* **RegistryRoom** holds only metadata (who exists, which tenant, role, status, storage mode, deletion
+  requests, a minimal deletion audit). It never holds QA content.
+* **WorkspaceRoom** (unchanged storage schema) gets a tenant binding and new operations: atomic
+  import, verification by content hash, kick a user, close all connections, destroy.
+* **Super Admin** is the set of emails in `SUPER_ADMIN_EMAILS` (config, not data), so the platform can
+  never lock itself out and cannot be created by a tenant admin. A super admin has **no tenant**, so
+  every tenant-data route (`/ws`, export, revisions, restore, users, migration) refuses them. They see
+  only registry metadata and perform explicit privileged actions.
+
+## 13.4 Roles and permissions
+
+| Action | Super Admin | Admin (own tenant) | User (own tenant) |
+|---|:-:|:-:|:-:|
+| View tenant registry (metadata only) | yes | no | no |
+| Create Admin + tenant, (de)activate a tenant | yes | no | no |
+| Approve permanent deletion | yes (never the requester) | no | no |
+| Read / write QA data, live sync | no | yes (web mode) | yes (web mode; write only if access = editor) |
+| Restore history, replace workspace, reset/delete project for everyone | no | yes | no |
+| Create / disable users, change a user's access level | no | yes (web mode) | no |
+| Switch storage mode, migrate | no | yes | no |
+| Request / cancel deletion of own tenant | no | yes | no |
+
+Implemented as a table-driven `can(principal, action)` with default **deny**, unit-tested for every
+role and action.
+
+## 13.5 Registry data model (stable ids, constraints)
+
+```
+tenants(id PK 'ten_...', name, storage_mode 'local'|'web',
+        status 'active'|'deactivated'|'deletion_requested'|'deleting',
+        created_at, updated_at, deletion_requested_at, deletion_requested_by)
+users  (id PK 'usr_...', email UNIQUE (normalised), tenant_id -> tenants, role 'admin'|'user',
+        access 'editor'|'viewer', status 'invited'|'active'|'disabled',
+        created_at, updated_at, created_by, last_login_at)
+        UNIQUE INDEX: one admin per tenant (WHERE role = 'admin')
+deletion_audit(id, tenant_id, requested_by_email, requested_at, approved_by_email,
+               approved_at, deleted_at, users_deleted)
+        identities and timestamps only; never workspace content
+```
+
+Authorization chain (every request): `Access email -> users row -> tenants row -> checks`.
+Unregistered: deny. `disabled`: deny. Tenant `deactivated` or `deleting`: deny. A **user** (not the
+admin) of a tenant in `local` storage mode: deny (collaboration is not active). `invited` becomes
+`active` on first successful sign-in. `deletion_requested` keeps working (the admin must be able to
+export) and is shown as a warning.
+
+## 13.6 Storage modes and migration
+
+The mode belongs to the **tenant** (set by its Admin), not to individual users.
+
+* **Local**: data stays in the Admin's browser; the Worker serves only the identity/registry; no shared
+  workspace; users cannot be created and existing users are refused.
+* **Web**: data in the tenant's Durable Object; users can be created; live sync and shared history.
+
+**Local to Web** (retry-safe, never silently overwrites): inspect local and server, write a local
+backup file, upload atomically as ONE revision (`importWorkspace`; the expected revision must match,
+otherwise 409), the server returns a SHA-256 of the canonical record set, the client recomputes it and
+re-reads the server copy, and only then `activate-web` flips the tenant mode (the server re-verifies
+the hash itself). Repeating the same upload (same migration id / same content) is a no-op. A non-empty
+server workspace is never replaced without an explicit, typed confirmation; the previous state stays in
+history.
+
+**Web to Local**: download the full snapshot, validate it, save it locally and read it back, warn that
+users lose access, require a typed confirmation, then `deactivate-web` (the server re-verifies that
+nothing changed since the downloaded revision and closes all sockets) and the mode becomes `local`.
+**The cloud copy is kept** (archived, not deleted). If anything fails before the final step the mode
+is unchanged.
+
+## 13.7 Deletion workflow
+
+`Admin requests deletion` -> tenant `deletion_requested` (cancellable) -> Super Admin reviews ->
+explicit confirmation (type the tenant id and the admin's email) -> tenant `deleting` (all access
+refused) -> workspace DO closes sockets and `deleteAll()` -> registry transaction removes users and
+tenant and writes the minimal audit row. Re-approving a half-finished deletion completes it
+(idempotent). The requester can never approve (a different principal by construction, and checked
+explicitly).
+
+## 13.8 WebSocket isolation
+
+The Worker derives the tenant from the registry, then routes the upgrade to that tenant's own Durable
+Object; the socket attachment records tenant id and user id. A broadcast only iterates that object's own
+sockets. Disabling a user, deactivating a tenant, switching to local mode or deleting a tenant calls the
+workspace DO to close the affected sockets (codes 4403 / 4410) immediately; the existing session-expiry
+check bounds anything that slips through.
+
+## 13.9 Free-plan impact
+
+* Every API call and WebSocket upgrade adds **one RegistryRoom RPC** (1 Durable Object request). Commits
+  and broadcasts do not touch the registry. Expected extra load is small (sessions and admin actions,
+  not edits).
+* Per-tenant Durable Objects share the account-wide free limits (100,000 DO requests per day, 100,000
+  rows written per day, 5 GB stored): the budget is divided among active tenants. With about 5 active
+  tenants each has roughly 20%; documented in DEPLOYMENT_PLAN.md.
+* No new paid product: the registry is a second SQLite-backed Durable Object class (migration `v2`).
+
+## 13.10 Backward compatibility
+
+The WorkspaceRoom storage schema is unchanged, so Stage 4 data is preserved. The old single instance
+(`workspace`) is simply no longer routed. A Super Admin-only, audited, tested **adopt-legacy** action
+copies it into a tenant whose workspace is empty. Local-only data is unaffected.
