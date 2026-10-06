@@ -7,16 +7,18 @@
   "scripts": {
     "dev": "wrangler dev",
     "types": "wrangler types",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p test/tsconfig.json",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "typecheck": "wrangler types && tsc --noEmit && tsc --noEmit -p test/tsconfig.json && tsc --noEmit -p test/workers/tsconfig.json",
+    "test": "vitest run && vitest run --config vitest.workers.config.ts",
+    "test:watch": "vitest",
+    "test:core": "vitest run",
+    "test:workers": "vitest run --config vitest.workers.config.ts",
+    "validate": "wrangler types && wrangler deploy --dry-run --env=\"\" --outdir .wrangler/dryrun"
   },
   "dependencies": {
     "jose": "^6.0.0"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.22.0",
-    "@cloudflare/workers-types": "^5.20261006.1",
+    "@cloudflare/vitest-plugin": "^1.3.6",
     "@types/node": "^20.19.43",
     "@types/sql.js": "^1.4.11",
     "sql.js": "^1.14.2",

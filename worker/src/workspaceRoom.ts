@@ -24,7 +24,6 @@ import {
   type ServerMessage,
 } from '../../shared/protocol';
 import { WorkspaceStore, type CommitResult, type RevisionInfo } from './store';
-import type { Env } from './env';
 
 /** Per-connection state that survives hibernation (limit: 16 KB). */
 interface Attachment {
@@ -56,6 +55,9 @@ export class WorkspaceRoom extends DurableObject<Env> {
       sql: ctx.storage.sql,
       transactionSync: (fn) => ctx.storage.transactionSync(fn),
     });
+    // Heartbeats are answered by the runtime without waking a hibernated object.
+    // The frames must match JSON.stringify of the protocol's ping/pong exactly.
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(JSON.stringify({ t: 'ping' }), JSON.stringify({ t: 'pong' })));
     // Schema setup only — never held across I/O besides the alarm lookup.
     ctx.blockConcurrencyWhile(async () => {
       this.store.init();

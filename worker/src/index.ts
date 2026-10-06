@@ -14,7 +14,6 @@
  */
 
 import { AuthError, authenticate } from './auth';
-import type { Env } from './env';
 import { IDENTITY_EMAIL_HEADER, IDENTITY_ROLE_HEADER, WorkspaceRoom } from './workspaceRoom';
 
 export { WorkspaceRoom };

@@ -1,0 +1,18 @@
+{
+  // Used ONLY by `npm run test:workers` (local workerd via the Vitest plugin).
+  // Never deployed. No assets binding: the SPA is not under test here.
+  "name": "ganttchart-test",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-06",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [{ "name": "WORKSPACE", "class_name": "WorkspaceRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["WorkspaceRoom"] }],
+  "vars": {
+    "ENVIRONMENT": "development",
+    "DEV_EMAIL": "dev@localhost",
+    "ALLOWED_ORIGINS": "http://localhost:5173",
+    "HISTORY_RETENTION_DAYS": "90"
+  }
+}
