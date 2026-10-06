@@ -403,6 +403,38 @@ describe('connection loss and reconnect', () => {
   });
 });
 
+describe('connection ended on purpose by the server', () => {
+  const cases: Array<[number, string]> = [
+    [4403, 'access-revoked'],
+    [4410, 'storage-moved'],
+    [4411, 'tenant-deleted'],
+  ];
+  for (const [code, status] of cases) {
+    it(`close code ${code} reports ${status}, never reconnects and never sends again`, () => {
+      const r = rig();
+      const s = connect(r, [], 1);
+      const sent = s.sent.length;
+      s.serverDrop(code);
+      expect(r.host.status).toBe(status);
+      r.timers.advance(300_000);
+      r.client.networkOnline();
+      r.client.notifyLocalChange();
+      r.timers.advance(300_000);
+      expect(r.sockets).toHaveLength(1);
+      expect(s.sent.length).toBe(sent);
+      expect(r.client.getState().status).toBe(status);
+    });
+  }
+
+  it('an ordinary drop still reconnects', () => {
+    const r = rig();
+    const s = connect(r, [], 1);
+    s.serverDrop(1006);
+    r.timers.advance(60_000);
+    expect(r.sockets.length).toBeGreaterThan(1);
+  });
+});
+
 describe('expired Access session', () => {
   it('close code 4401 stops reconnecting and reports session-expired', () => {
     const r = rig();

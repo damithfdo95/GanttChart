@@ -19,7 +19,9 @@ Worker "ganttchart"  (Workers Free)
    ├─ /api/*  and  /ws   → verify the Access JWT again (signature, issuer, audience,
    │                        expiry); fail closed if Access is not configured
    ▼
-Durable Object "WorkspaceRoom" (SQLite, Workers Free)  ← one shared workspace + live sync
+Durable Object "RegistryRoom" (one, SQLite)  ← who exists, which workspace, role, status (no QA data)
+   ▼
+Durable Object "WorkspaceRoom" (SQLite, one PER workspace)  ← that workspace only + live sync
 ```
 
 * **No custom domain, no purchase, no DNS change.** The URL is
@@ -39,14 +41,14 @@ Durable Object "WorkspaceRoom" (SQLite, Workers Free)  ← one shared workspace 
 | # | Resource | Created by | Plan / cost |
 |---|---|---|---|
 | 1 | Worker script `ganttchart` (with the SPA as static assets, ≈63 KiB) | `wrangler deploy` | Workers **Free** — $0 |
-| 2 | Durable Object namespace `WorkspaceRoom` (SQLite), migration tag `v1`; one instance named `workspace`, created on first use | `wrangler deploy` (migration) | Workers **Free** — $0 |
+| 2 | Durable Object namespaces `WorkspaceRoom` (migration `v1`; one instance per workspace, named by its tenant id, created on first use) and `RegistryRoom` (migration `v2`; one instance `registry`), both SQLite | `wrangler deploy` (migrations) | Workers **Free** — $0 |
 | 3 | `workers.dev` route for the Worker → `ganttchart.<subdomain>.workers.dev` | `wrangler deploy` (`workers_dev: true`) | $0 |
 | 4 | **Only if the account has none:** a `workers.dev` account subdomain | `wrangler deploy` prompts / dashboard | $0 — *an account setting; see §5* |
 | 5 | **Only if not yet set up:** the Zero Trust organization (team name → `https://<team>.cloudflareaccess.com`) on the **Free** plan | dashboard | $0 on Free — *verify, see §6* |
 | 6 | Login method: **One-time PIN** identity provider (approved emails receive a code) | dashboard / API | $0 |
 | 7 | Access **self-hosted application** "GanttChart", domain `ganttchart.<subdomain>.workers.dev`, session 24 h | dashboard / API | $0 |
 | 8 | Access **policy** "Approved emails": *Allow → Include → Emails →* the explicit list you give me. No bypass, no "everyone", no email-domain rule | dashboard / API | $0 |
-| 9 | Worker variables: `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`; Worker **secrets**: `ADMIN_EMAILS`, `READ_ONLY_EMAILS` | `wrangler deploy --var`, `wrangler secret put` | $0 |
+| 9 | Worker variables: `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`; Worker variable **`SUPER_ADMIN_EMAILS`** (the platform operators; comma separated; empty = nobody can administer). `ADMIN_EMAILS` / `READ_ONLY_EMAILS` no longer exist: roles come from the registry | `wrangler deploy --var`, `wrangler secret put` | $0 |
 
 **Not created / not used:** D1, KV, R2, Queues, Workflows, Hyperdrive, Workers
 Paid, Logpush, Argo, Load Balancing, Cloudflare Tunnel, a custom domain or zone,
@@ -102,7 +104,7 @@ any DNS record, any WAF/rate-limit rule.
    }
    ```
    Result I would record: the application's **AUD tag** and the **team domain**.
-4. `wrangler secret put ADMIN_EMAILS` / `READ_ONLY_EMAILS` (values from you).
+4. Set `SUPER_ADMIN_EMAILS` (a variable, or `wrangler secret put SUPER_ADMIN_EMAILS`; value from you). Every person who will ever sign in (Super Admin, each Admin, each User) must ALSO be in the Access policy of step 3; the registry does not change Access.
 5. `wrangler deploy --var ACCESS_TEAM_DOMAIN:https://<team>.cloudflareaccess.com --var ACCESS_AUD:<aud>`
    (first deploy creates the Worker, the Durable Object namespace and the
    `workers.dev` route).
@@ -158,7 +160,9 @@ Limits from the Cloudflare docs (Workers Free / Durable Objects Free):
 | SQLite stored data | 5 GB total | history limited to 30 days; size guard prunes to 7 days above 2 GB |
 | CPU per request | 10 ms | commits are a few SQL statements |
 
-Worked example — 10 people actively editing all day, one save every ~20 s each
+**Multi-tenant note:** every API call and WebSocket upgrade adds one `RegistryRoom` request (1 DO request), and all workspaces share these account-wide limits, so the budget is divided between active workspaces. Roughly: with 5 active workspaces each can use about a fifth of 100,000 DO requests and 100,000 rows written per day. Moving a workspace to **local** storage removes it from the shared budget entirely.
+
+Worked example (ONE workspace) — 10 people actively editing all day, one save every ~20 s each
 (a pessimistic upper bound): 14,400 saves/day → **43,200 rows written (43%)**,
 ≈720 DO requests (<1%), ≈0.9 M rows read (17%), storage ≈ 14,400 × 4 KB × 30
 days ≈ 1.7 GB worst case (34%). A realistic day is 10–50× smaller.

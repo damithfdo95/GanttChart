@@ -12,6 +12,8 @@ import { probeSession } from '../lib/sync/serverMode';
 /** What the app needs to know to run against the shared workspace (decided at startup). */
 export interface SharedBoot {
   identity: Identity;
+  /** The workspace this page is connected to; recorded on the device so a copy is never reused for a different workspace. */
+  tenantId: string;
   /** ws(s)://host/ws */
   wsUrl: string;
   /** This page's origin — the device link is per server. */
@@ -183,7 +185,7 @@ export function useSharedSyncEngine(app: AppStateApi, reports: ReportsStateApi, 
     if (shared === null || linkedRef.current || sync === null || sync.revision === null) return;
     if (sync.status === 'synced' || sync.status === 'syncing' || sync.status === 'readonly') {
       linkedRef.current = true;
-      writeLink({ origin: shared.origin, linkedAt: new Date().toISOString(), email: shared.identity.email });
+      writeLink({ origin: shared.origin, linkedAt: new Date().toISOString(), email: shared.identity.email, tenantId: shared.tenantId });
     }
   }, [shared, sync]);
 

@@ -173,8 +173,42 @@ describe('detectServer', () => {
   const html = () => new Response('<!doctype html>', { status: 200, headers: { 'content-type': 'text/html' } });
   const run = (f: FetchLike) => detectServer(f);
 
-  it('recognises the shared backend and reads the identity', async () => {
-    expect(await run(async () => json({ email: 'a@b.c', role: 'admin' }))).toEqual({ mode: 'server', identity: { email: 'a@b.c', role: 'admin' } });
+  const tenant = { id: 'ten_x', name: 'Acme QA', storageMode: 'web', status: 'active', createdAt: 't', deletionRequestedAt: null };
+  const member = { email: 'a@b.c', role: 'user', tenant, access: 'editor', workspaceRole: 'editor', sharedWorkspace: true };
+
+  it('recognises the shared backend and reads who the principal is', async () => {
+    const got = await run(async () => json(member));
+    expect(got).toEqual({ mode: 'server', principal: member, identity: { email: 'a@b.c', role: 'editor' } });
+  });
+
+  it('a local-storage admin has a principal but no shared workspace identity', async () => {
+    const admin = { email: 'ad@b.c', role: 'admin', tenant: { ...tenant, storageMode: 'local' }, access: 'editor', workspaceRole: null, sharedWorkspace: false };
+    expect(await run(async () => json(admin))).toEqual({ mode: 'server', principal: admin, identity: null });
+  });
+
+  it('a super admin has no tenant', async () => {
+    const sa = { email: 's@b.c', role: 'super_admin', tenant: null, access: null, workspaceRole: null, sharedWorkspace: false };
+    expect(await run(async () => json(sa))).toEqual({ mode: 'server', principal: sa, identity: null });
+  });
+
+  it('rejects a principal that is not well formed instead of guessing a role', async () => {
+    expect(await run(async () => json({ email: 'a@b.c', role: 'admin' }))).toEqual({ mode: 'local' }); // the old Stage 4 shape
+    expect(await run(async () => json({ ...member, role: 'root' }))).toEqual({ mode: 'local' });
+    expect(await run(async () => json({ ...member, tenant: null }))).toEqual({ mode: 'local' });
+    expect(await run(async () => json({ ...member, sharedWorkspace: 'yes' }))).toEqual({ mode: 'local' });
+    expect(await run(async () => json({ ...member, role: 'super_admin' }))).toEqual({ mode: 'local' }); // a super admin cannot carry a tenant
+  });
+
+  it('a JSON 403 with a known reason is a refusal by the application, shown as such', async () => {
+    for (const reason of ['unregistered', 'disabled', 'tenant_inactive', 'workspace_not_shared'] as const) {
+      expect(await run(async () => json({ error: 'forbidden', reason, email: 'x@y.z' }, 403))).toEqual({ mode: 'denied', reason, email: 'x@y.z' });
+    }
+  });
+
+  it('a 403 that is not our own JSON refusal (e.g. an Access block page, or an unknown reason) means sign-in, never "denied"', async () => {
+    expect(await run(async () => json({ error: 'forbidden', reason: 'because', email: 'x@y.z' }, 403))).toEqual({ mode: 'login-required' });
+    expect(await run(async () => json({ error: 'forbidden' }, 403))).toEqual({ mode: 'login-required' });
+    expect(await run(async () => new Response('<html>blocked</html>', { status: 403, headers: { 'content-type': 'text/html' } }))).toEqual({ mode: 'login-required' });
   });
 
   it('treats a static host / vite dev (SPA fallback or 404) as local-only mode', async () => {
@@ -205,7 +239,7 @@ describe('detectServer', () => {
   });
 
   it('probeSession maps detection to what the sync client needs', async () => {
-    expect(await probeSession(async () => json({ email: 'a@b.c', role: 'editor' }))).toBe('ok');
+    expect(await probeSession(async () => json(member))).toBe('ok');
     expect(await probeSession(async () => new Response('x', { status: 403 }))).toBe('expired');
     expect(
       await probeSession(async () => {

@@ -3270,3 +3270,23 @@ textarea:focus-visible,
   border-bottom: 1px solid var(--border, #d7dee6);
   font-size: 0.9rem;
 }
+
+/* Tenancy (workspace / platform administration) */
+.link-card.tenancy-wide {
+  width: min(1040px, 100%);
+}
+.tenancy-table-wrap {
+  overflow-x: auto;
+}
+.tenancy-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.tenancy-table th,
+.tenancy-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border, #d7dee6);
+  vertical-align: top;
+}

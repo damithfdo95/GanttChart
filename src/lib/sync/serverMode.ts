@@ -7,9 +7,13 @@
  */
 
 import { RECORD_KINDS, type Identity, type RecordPut, type Role } from '../../../shared/protocol';
+import type { AppRole, DenyReason, PrincipalDto } from '../../../shared/tenancy';
 
 export type ServerDetection =
-  | { mode: 'server'; identity: Identity }
+  /** A signed-in, REGISTERED person. `identity` is the live-workspace identity, or null when there is no shared workspace for them. */
+  | { mode: 'server'; principal: PrincipalDto; identity: Identity | null }
+  /** Signed in with Access, but the application does not (or no longer does) grant access. */
+  | { mode: 'denied'; reason: DenyReason; email: string }
   /** No shared backend here (static hosting, vite dev without a proxy): keep working locally. */
   | { mode: 'local' }
   /** The sign-in session ended (Access answered with a login redirect / 401 / 403). */
@@ -25,6 +29,21 @@ function isRole(v: unknown): v is Role {
   return v === 'admin' || v === 'editor' || v === 'viewer';
 }
 
+const APP_ROLES: ReadonlySet<string> = new Set<AppRole>(['super_admin', 'admin', 'user']);
+const DENY_REASONS: ReadonlySet<string> = new Set<DenyReason>(['unregistered', 'disabled', 'tenant_inactive', 'workspace_not_shared']);
+
+/** Shape check of /api/whoami. A response that does not look like a principal is treated as "no backend". */
+export function isPrincipalDto(v: unknown): v is PrincipalDto {
+  if (typeof v !== 'object' || v === null) return false;
+  const p = v as Record<string, unknown>;
+  if (typeof p.email !== 'string' || p.email === '' || typeof p.role !== 'string' || !APP_ROLES.has(p.role)) return false;
+  if (typeof p.sharedWorkspace !== 'boolean') return false;
+  if (p.workspaceRole !== null && !isRole(p.workspaceRole as string)) return false;
+  if (p.role === 'super_admin') return p.tenant === null;
+  const t = p.tenant as Record<string, unknown> | null;
+  return typeof t === 'object' && t !== null && typeof t.id === 'string' && typeof t.name === 'string' && (t.storageMode === 'local' || t.storageMode === 'web');
+}
+
 export async function detectServer(fetchFn: FetchLike = (i, init) => fetch(i, init)): Promise<ServerDetection> {
   let res: Response;
   try {
@@ -34,16 +53,32 @@ export async function detectServer(fetchFn: FetchLike = (i, init) => fetch(i, in
     return { mode: 'unreachable' };
   }
   if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) return { mode: 'login-required' };
-  if (res.status === 401 || res.status === 403) return { mode: 'login-required' };
+  if (res.status === 403) {
+    // Our own refusal is JSON with a reason ("you are signed in but not registered / disabled / ...").
+    // Access's own block page is HTML: that means the sign-in itself is the problem.
+    if ((res.headers.get('content-type') ?? '').includes('application/json')) {
+      try {
+        const body = (await res.json()) as { reason?: unknown; email?: unknown };
+        if (typeof body.reason === 'string' && DENY_REASONS.has(body.reason)) {
+          return { mode: 'denied', reason: body.reason as DenyReason, email: typeof body.email === 'string' ? body.email : '' };
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+    return { mode: 'login-required' };
+  }
+  if (res.status === 401) return { mode: 'login-required' };
   if (res.status === 404) return { mode: 'local' };
   if (res.status >= 500) return { mode: 'error', status: res.status };
   if (!res.ok) return { mode: 'local' };
   const type = res.headers.get('content-type') ?? '';
   if (!type.includes('application/json')) return { mode: 'local' }; // SPA fallback HTML: no API here
   try {
-    const body = (await res.json()) as { email?: unknown; role?: unknown };
-    if (typeof body.email === 'string' && body.email !== '' && isRole(body.role)) {
-      return { mode: 'server', identity: { email: body.email, role: body.role } };
+    const body: unknown = await res.json();
+    if (isPrincipalDto(body)) {
+      const identity: Identity | null = body.workspaceRole === null ? null : { email: body.email, role: body.workspaceRole };
+      return { mode: 'server', principal: body, identity };
     }
   } catch {
     /* fall through */

@@ -9,6 +9,7 @@ import { clearAllLocalDataAsync, getStorageDiagnostics, type StorageDiagnostics 
 import { MIGRATION_FAILURE_LABEL_KEY, readMigrationFailureRecord } from '../../lib/storage/db/recovery';
 import { RevisionHistory } from './RevisionHistory';
 import { SharedHistory } from './SharedHistory';
+import { WorkspacePanel } from '../tenancy/WorkspacePanel';
 import { useSharedSync } from '../../app/shared-sync';
 import { unlinkDevice } from '../../lib/sync/device';
 import { createBackupPayload } from '../../lib/backup/backup';
@@ -305,6 +306,8 @@ export function Settings() {
           </>
         ) : null}
       </section>
+
+      <WorkspacePanel />
 
       {shared.enabled ? <SharedHistory /> : <RevisionHistory />}
 

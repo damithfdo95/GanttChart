@@ -184,6 +184,8 @@ against the new server mirror and commit what is still different.
 
 ## 7. Authentication and authorization
 
+> **Superseded by section 13 (Stage 5):** roles now come from the registry, and `ADMIN_EMAILS` / `READ_ONLY_EMAILS` no longer exist (see 13.2). The text below describes Stage 3/4.
+
 * **Cloudflare Access** application covering the production hostname, policy
   = allow listed emails (or an email domain). Identity provider: one-time PIN
   (email) is enough; Google/Microsoft SSO is optional.
@@ -294,8 +296,8 @@ the full operating budget.
 
 # 13. Multi-tenant model (Stage 5)
 
-Status: **design, then implementation** (this section is updated at the end of the
-stage with what was actually built). Nothing here is deployed.
+Status: **implemented and tested locally (Stage 5); nothing is deployed.** Sections 13.1-13.10 are the
+design; 13.11-13.14 record what was actually built and where it differs.
 
 ## 13.1 Audit of Stage 4 against the new requirements
 
@@ -443,3 +445,73 @@ check bounds anything that slips through.
 The WorkspaceRoom storage schema is unchanged, so Stage 4 data is preserved. The old single instance
 (`workspace`) is simply no longer routed. A Super Admin-only, audited, tested **adopt-legacy** action
 copies it into a tenant whose workspace is empty. Local-only data is unaffected.
+
+## 13.11 What was built
+
+| Layer | Where |
+|---|---|
+| Shared vocabulary, normalisation, content hash, import validation | `shared/tenancy.ts` |
+| Registry (tenants, users, deletion audit; pure SQL, unit-tested with sql.js) | `worker/src/registry.ts`, DO shell `registryRoom.ts` |
+| Default-deny permission table | `worker/src/permissions.ts` |
+| Principal derivation (`Access email -> user -> tenant -> checks`) | `worker/src/principal.ts`, `auth.ts` (identity only) |
+| Tenant data plane (one DO per tenant, self-verifies its tenant, import / verify / freeze / thaw / disconnect / destroy) | `worker/src/workspaceRoom.ts` |
+| Routes | `worker/src/index.ts` |
+| Browser: principal detection, startup routing | `src/lib/sync/serverMode.ts`, `src/app/startupDecision.ts`, `src/app/Startup.tsx` |
+| Browser: migration logic (pure, dependency-injected) | `src/lib/tenancy/migration.ts`, `api.ts` |
+| Browser: UI | `src/features/tenancy/*` (`AccessDenied`, `SuperAdminConsole`, `WorkspacePanel`, `MigrateToWeb`, `MigrateToLocal`, `UsersManager`), `WorkspaceBadge` in `App.tsx`, panel mounted in Settings |
+
+Routes (all require a verified Access identity, then a registered principal):
+`/ws`, `/api/whoami`, `/api/tenant`, `/api/export`, `/api/stats`, `/api/revisions[/:n[/restore]]`,
+`/api/tenant/users[/:id]`, `/api/tenant/deletion-request[/cancel]`,
+`/api/tenant/storage/{inspect,upload,activate-web,deactivate-web}`,
+`/api/super/{tenants,tenants/:id,tenants/:id/delete,audit,legacy/adopt}`, and `/api/dev/as` (development
+only, loopback only). State-changing calls need the `X-GC-Intent` header.
+
+### Deviations from the design
+
+* **Close codes**: 4401 session expired, 4403 access revoked, 4410 storage moved, 4411 workspace deleted
+  (the client treats all four as final: no reconnect, no further sends).
+* **Typed confirmations**: `REPLACE` to replace existing cloud data, `LOCAL` to leave the cloud. Both are
+  re-checked **on the server**, not only in the UI.
+* **Disabling a user closes their sockets through an RPC to the tenant DO.** If that RPC fails the API
+  answers `disconnected: false` (the UI says so) and the socket ends at session expiry at the latest.
+* **A device copy only counts for the same person in the same workspace.** The device link now records
+  the tenant id. A copy that belongs to someone else, to another workspace, or to an old link without a
+  tenant id is *foreign*: it is forgotten and never offered for merging, so one workspace's data cannot
+  be carried into another through a shared browser. A backup file is still written first.
+* **Legacy adopt** (Super Admin, audited via `console.warn` only) reads the old single workspace and
+  copies it into a tenant whose workspace is empty. It is the one place a Super Admin handles tenant data
+  and is deliberately explicit.
+
+## 13.12 Bootstrap and operations
+
+* The first Super Admin is set by the `SUPER_ADMIN_EMAILS` worker variable (comma separated). There is no
+  way to create one from the application.
+* A Super Admin signs in, opens the platform console, and creates an Admin workspace (name + admin
+  email). The Admin signs in with that email (it must also be allowed by the Access policy) and chooses
+  local or web storage.
+* **Access policy and the registry are two separate gates.** Adding a user to the registry does not let
+  them through Access: their email also has to be in the Access policy (a manual Cloudflare step, listed in
+  the final report). Nothing in the registry changes the Access policy.
+* No email is sent anywhere. "Invited" only means "registered, has not signed in yet".
+
+## 13.13 Test coverage added
+
+Worker unit tests: registry, permissions, auth, shared tenancy helpers. Worker runtime tests (real
+`workerd` and Durable Objects): isolation (Admin A -> B, User A -> B, forged tenant id in path / query /
+body / header, WebSocket cross-tenant, conflict / revision / restore APIs, Admin -> Super actions,
+User -> Admin actions, disabled users, unknown emails), lifecycle (storage modes, local-mode user
+creation refused), migration (cannot silently overwrite, retry-safe, wrong hash refused, workspace
+changed), deletion (requester cannot approve, idempotent, all data gone, only the audit remains).
+Browser tests: migration state machine (25), startup decision (device ownership, denied, super admin),
+`/api/whoami` detection (principal shape, denied vs sign-in), terminal close codes, panel capabilities,
+deletion confirmation, error mapping, EN/JA key parity. Every security suite was mutation-checked
+(guard removed, tests had to fail, guard restored).
+
+## 13.14 Known limits
+
+* The registry Durable Object is on the path of every API call and upgrade (1 DO request each); all
+  tenants share the account-wide free limits (see DEPLOYMENT_PLAN.md section 7).
+* `loadLocal` read-back during Web -> Local needs IndexedDB persistence; in the localStorage fallback the
+  migration aborts safely instead of switching.
+* Workers + Access on `workers.dev` has not been exercised against real Cloudflare.

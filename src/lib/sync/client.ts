@@ -42,6 +42,9 @@ export type SyncStatus =
   | 'offline' // not connected; edits are kept locally and sent on reconnect
   | 'readonly' // connected, but this person may not edit
   | 'session-expired' // the Access sign-in ended; the page must be reloaded
+  | 'access-revoked' // an administrator removed this person's access, or deactivated the workspace
+  | 'storage-moved' // the administrator moved the workspace back to local storage
+  | 'tenant-deleted' // the workspace was permanently deleted
   | 'error' // the server refused something unexpected
   | 'stopped';
 
@@ -165,6 +168,17 @@ export interface SyncClientOptions {
 
 const WS_OPEN = 1;
 const CLOSE_SESSION_EXPIRED = 4401;
+const CLOSE_ACCESS_REVOKED = 4403;
+const CLOSE_STORAGE_MOVED = 4410;
+const CLOSE_TENANT_DELETED = 4411;
+
+/** Close codes after which reconnecting is pointless (and, for revoked access, unwelcome). */
+const TERMINAL_CLOSE: Readonly<Record<number, SyncStatus>> = {
+  [CLOSE_SESSION_EXPIRED]: 'session-expired',
+  [CLOSE_ACCESS_REVOKED]: 'access-revoked',
+  [CLOSE_STORAGE_MOVED]: 'storage-moved',
+  [CLOSE_TENANT_DELETED]: 'tenant-deleted',
+};
 const CLOSE_HEARTBEAT = 4000;
 const CLOSE_COMMIT_TIMEOUT = 4001;
 
@@ -178,7 +192,8 @@ export class SyncClient {
 
   private socket: SyncSocket | null = null;
   private stopped = false;
-  private expired = false;
+  /** Set once the server has ended this connection for good (expired, revoked, moved, deleted). */
+  private terminal: SyncStatus | null = null;
   private readOnly = false;
   private loaded = false; // received the first state on the CURRENT connection
   private firstStatePending: boolean;
@@ -249,7 +264,7 @@ export class SyncClient {
 
   /** Call after every local change to the shared state; edits are coalesced. */
   notifyLocalChange(): void {
-    if (this.stopped || this.expired) return;
+    if (this.stopped || this.terminal !== null) return;
     if (this.flushTimer !== null) this.timers.clearTimeout(this.flushTimer);
     this.flushTimer = this.timers.setTimeout(() => {
       this.flushTimer = null;
@@ -278,7 +293,7 @@ export class SyncClient {
 
   /** The network just came back: do not wait for the backoff timer. */
   networkOnline(): void {
-    if (this.stopped || this.expired || this.socket !== null) return;
+    if (this.stopped || this.terminal !== null || this.socket !== null) return;
     if (this.reconnectTimer !== null) {
       this.timers.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -307,7 +322,7 @@ export class SyncClient {
   // ---- connection ------------------------------------------------------------
 
   private connect(): void {
-    if (this.stopped || this.expired) return;
+    if (this.stopped || this.terminal !== null) return;
     this.loaded = false;
     this.setStatus(this.hadState ? 'offline' : 'connecting');
     let socket: SyncSocket;
@@ -343,8 +358,9 @@ export class SyncClient {
       }
       if (this.stopped) return;
       this.trace('close', { code: event.code });
-      if (event.code === CLOSE_SESSION_EXPIRED) {
-        this.markExpired();
+      const end = TERMINAL_CLOSE[event.code];
+      if (end !== undefined) {
+        this.markTerminal(end);
         return;
       }
       this.scheduleReconnect();
@@ -352,7 +368,7 @@ export class SyncClient {
   }
 
   private scheduleReconnect(): void {
-    if (this.stopped || this.expired) return;
+    if (this.stopped || this.terminal !== null) return;
     this.attempts += 1;
     this.setStatus('offline');
     const base = Math.min(30_000, 1000 * 2 ** Math.min(this.attempts - 1, 5));
@@ -365,7 +381,7 @@ export class SyncClient {
   }
 
   private async reconnect(): Promise<void> {
-    if (this.stopped || this.expired) return;
+    if (this.stopped || this.terminal !== null) return;
     if (this.attempts >= this.o.probeAfterAttempts && this.o.probeSession !== undefined) {
       // Repeated failures can mean the Access session ended (the upgrade is
       // answered with a login redirect). Ask over plain HTTP before hammering.
@@ -375,7 +391,7 @@ export class SyncClient {
       } catch {
         verdict = 'unreachable';
       }
-      if (this.stopped || this.expired) return;
+      if (this.stopped || this.terminal !== null) return;
       if (verdict === 'expired') {
         this.markExpired();
         return;
@@ -384,10 +400,15 @@ export class SyncClient {
     this.connect();
   }
 
-  private markExpired(): void {
-    this.expired = true;
+  private markTerminal(status: SyncStatus): void {
+    this.terminal = status;
     this.clearTimers();
-    this.setStatus('session-expired');
+    this.trace('expired', { status });
+    this.setStatus(status);
+  }
+
+  private markExpired(): void {
+    this.markTerminal('session-expired');
   }
 
   private armHeartbeat(): void {
@@ -654,7 +675,7 @@ export class SyncClient {
   }
 
   private flush(): void {
-    if (this.stopped || this.expired || !this.loaded || this.inflight !== null) {
+    if (this.stopped || this.terminal !== null || !this.loaded || this.inflight !== null) {
       this.publish();
       return;
     }
@@ -726,7 +747,7 @@ export class SyncClient {
 
   private computeStatus(): SyncStatus {
     if (this.stopped) return 'stopped';
-    if (this.expired) return 'session-expired';
+    if (this.terminal !== null) return this.terminal;
     if (this.socket === null || !this.loaded) return this.hadState ? 'offline' : 'connecting';
     if (this.status === 'error') return 'error';
     if (this.readOnly) return 'readonly';

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppProviders, useAppStateCtx, useAutoBackupCtx, usePersistenceCtx } from './state-contexts';
 import type { SharedBoot } from './shared-sync';
+import { TenantProvider, useTenant, type TenantApi } from './tenant-context';
 import { SyncBanners, SyncStatusIndicator } from '../components/SyncStatus';
 import { Dashboard } from '../features/dashboard/Dashboard';
 import { Overall } from '../features/overall/Overall';
@@ -177,6 +178,19 @@ function AutoBackupBanner() {
  * (portfolio management) → Gantt (detailed scheduling) → Daily Report /
  * Reports & Export / Settings.
  */
+/** Which workspace and role this session is working as (nothing without a backend). */
+function WorkspaceBadge() {
+  const { principal } = useTenant();
+  const { state } = useAppStateCtx();
+  if (principal === null || principal.tenant === null || principal.role === 'super_admin') return null;
+  const role = t(state.language, `tenancy.role.${principal.role}` as TranslationKey);
+  return (
+    <span className="save-status save-saved" title={principal.email}>
+      {t(state.language, 'tenancy.badge', { name: principal.tenant.name, role })}
+    </span>
+  );
+}
+
 function Shell() {
   const { state } = useAppStateCtx();
   const [screen, setScreen] = useState<Screen>('dashboard');
@@ -216,6 +230,7 @@ function Shell() {
             {t(state.language, item.key)}
           </button>
         ))}
+        <WorkspaceBadge />
         <SyncStatusIndicator />
         <SaveStatusIndicator />
       </nav>
@@ -248,10 +263,14 @@ function Shell() {
   );
 }
 
-export default function App({ boot, shared = null }: { boot: PersistenceBoot; shared?: SharedBoot | null }) {
+const NO_TENANT: TenantApi = { principal: null, api: null };
+
+export default function App({ boot, shared = null, tenant = NO_TENANT }: { boot: PersistenceBoot; shared?: SharedBoot | null; tenant?: TenantApi }) {
   return (
-    <AppProviders boot={boot} shared={shared}>
-      <Shell />
-    </AppProviders>
+    <TenantProvider value={tenant}>
+      <AppProviders boot={boot} shared={shared}>
+        <Shell />
+      </AppProviders>
+    </TenantProvider>
   );
 }

@@ -12,6 +12,9 @@ const STATUS: Record<Status, { key: TranslationKey; symbol: string; tone: string
   offline: { key: 'shared.status.offline', symbol: '⚠', tone: 'saving' },
   readonly: { key: 'shared.status.readonly', symbol: '👁', tone: 'saved' },
   'session-expired': { key: 'shared.status.expired', symbol: '⚠', tone: 'error' },
+  'access-revoked': { key: 'shared.status.revoked', symbol: '⚠', tone: 'error' },
+  'storage-moved': { key: 'shared.status.moved', symbol: '⚠', tone: 'error' },
+  'tenant-deleted': { key: 'shared.status.deleted', symbol: '⚠', tone: 'error' },
   error: { key: 'shared.status.error', symbol: '⚠', tone: 'error' },
   stopped: { key: 'shared.status.stopped', symbol: '–', tone: 'saving' },
 };
@@ -57,6 +60,19 @@ export function SyncBanners() {
           <div className="app-banner-body">
             <strong>{t(lang, 'shared.banner.expiredTitle')}</strong>
             <span>{t(lang, 'shared.banner.expiredBody')}</span>
+          </div>
+          <div className="app-banner-actions">
+            <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>
+              {t(lang, 'shared.banner.reload')}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {status === 'access-revoked' || status === 'storage-moved' || status === 'tenant-deleted' ? (
+        <div className="app-banner" role="alert">
+          <div className="app-banner-body">
+            <strong>{t(lang, status === 'access-revoked' ? 'shared.banner.revokedTitle' : status === 'storage-moved' ? 'shared.banner.movedTitle' : 'shared.banner.deletedTitle')}</strong>
+            <span>{t(lang, status === 'access-revoked' ? 'shared.banner.revokedBody' : status === 'storage-moved' ? 'shared.banner.movedBody' : 'shared.banner.deletedBody')}</span>
           </div>
           <div className="app-banner-actions">
             <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>

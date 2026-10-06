@@ -2,10 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import App from './App';
 import type { PersistenceBoot } from '../lib/storage/db/bootstrap';
 import type { SharedBoot } from './shared-sync';
+import type { TenantApi } from './tenant-context';
+import { decideStartup } from './startupDecision';
 import type { Identity } from '../../shared/protocol';
+import type { DenyReason, PrincipalDto } from '../../shared/tenancy';
 import type { Language } from '../types';
 import { detectServer, fetchServerWorkspace, websocketUrl, type ServerWorkspace } from '../lib/sync/serverMode';
-import { readLink, readMirror } from '../lib/sync/device';
+import { readLink, readMirror, unlinkDevice } from '../lib/sync/device';
+import { createTenancyApi } from '../lib/tenancy/api';
 import {
   REPLACE_CONFIRMATION,
   firstStateFor,
@@ -19,6 +23,8 @@ import { emptySharedState, starterWorkspace } from '../lib/sync/starter';
 import type { WorkspaceCounts } from '../lib/sync/records';
 import { createBackupPayload } from '../lib/backup/backup';
 import { downloadTextFile } from '../lib/export/download';
+import { AccessDenied } from '../features/tenancy/AccessDenied';
+import { SuperAdminConsole } from '../features/tenancy/SuperAdminConsole';
 import { t } from '../i18n';
 
 /** History retention shown to the user (the server's default, see wrangler.jsonc). */
@@ -26,18 +32,24 @@ const HISTORY_DAYS = 30;
 
 type Phase =
   | { kind: 'detecting' }
-  | { kind: 'ready'; boot: PersistenceBoot; shared: SharedBoot | null }
-  | { kind: 'link'; identity: Identity; plan: LinkPlan; server: ServerWorkspace }
+  | { kind: 'ready'; boot: PersistenceBoot; shared: SharedBoot | null; tenant: TenantApi }
+  | { kind: 'link'; principal: PrincipalDto; identity: Identity; plan: LinkPlan; server: ServerWorkspace }
+  | { kind: 'denied'; reason: DenyReason; email: string }
+  | { kind: 'super'; principal: PrincipalDto }
   | { kind: 'problem'; problem: 'unreachable' | 'login' | 'error' | 'export'; status?: number };
 
+const NO_TENANT: TenantApi = { principal: null, api: null };
+
 /**
- * Decides, before the app renders, whether it runs local-only (no shared
- * backend here — exactly the previous behaviour) or against the shared
- * workspace, and walks a first-time device through linking.
+ * Decides, before the app renders, what this person gets (see startupDecision.ts):
+ * the platform console, the "no access" screen, the plain local app, or the
+ * shared workspace — and walks a first-time device through linking.
  *
- *  - A device that is already linked starts straight from its own saved copy
- *    (offline-first) and syncs in the background.
+ *  - A device that is already linked (same person, same workspace) starts
+ *    straight from its own saved copy (offline-first) and syncs in the background.
  *  - A new device is NEVER silently merged or overwritten: see planLink().
+ *  - A copy that belongs to someone else, or to another workspace, is never
+ *    offered for merging.
  */
 export function Startup({ boot }: { boot: PersistenceBoot }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'detecting' });
@@ -51,48 +63,56 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
     const link = readLink(origin);
     const mirror = readMirror();
     const wsUrl = websocketUrl(window.location);
-    const resume = (identity: Identity): Phase => ({
-      kind: 'ready',
-      boot,
-      shared: { identity, wsUrl, origin, firstState: 'apply', resume: mirror },
-    });
+    const api = createTenancyApi();
+    const decision = decideStartup(detection, { link, hasMirror: mirror !== null });
 
-    switch (detection.mode) {
+    switch (decision.kind) {
       case 'local':
-        setPhase({ kind: 'ready', boot, shared: null });
+        setPhase({ kind: 'ready', boot, shared: null, tenant: NO_TENANT });
         return;
-      case 'server': {
-        if (link !== null && mirror !== null) {
-          setPhase(resume(detection.identity)); // linked device: start from its own copy
-          return;
-        }
+      case 'denied':
+        setPhase(decision);
+        return;
+      case 'problem':
+        setPhase(decision);
+        return;
+      case 'super-admin':
+        setPhase({ kind: 'super', principal: decision.principal });
+        return;
+      case 'local-tenant':
+        // This workspace lives in this browser: the plain local app, with the workspace identity attached.
+        if (decision.clearDevice) unlinkDevice();
+        setPhase({ kind: 'ready', boot, shared: null, tenant: { principal: decision.principal, api } });
+        return;
+      case 'resume': {
+        const tenantId = decision.principal?.tenant?.id ?? link?.tenantId ?? '';
+        setPhase({
+          kind: 'ready',
+          boot,
+          shared: { identity: decision.identity, tenantId, wsUrl, origin, firstState: 'apply', resume: mirror },
+          tenant: { principal: decision.principal, api },
+        });
+        return;
+      }
+      case 'link': {
+        const { principal, identity } = decision;
+        if (decision.foreignDevice) unlinkDevice(); // someone else's / another workspace's copy: forget it
         const server = await fetchServerWorkspace();
         if (server === null) {
           setPhase({ kind: 'problem', problem: 'export' });
           return;
         }
-        const plan = planLink({ local: boot.workspace.reports, serverRecords: server.records, role: detection.identity.role });
-        if (plan.kind === 'adopt') {
-          // Nothing of value on this device: take the shared workspace without asking.
-          setPhase(execute(boot, detection.identity, 'use-shared', origin, wsUrl).phase);
+        // A foreign copy is treated as empty: it must never be merged into this workspace.
+        const local = decision.foreignDevice ? emptySharedState(boot.workspace.reports) : boot.workspace.reports;
+        const plan = planLink({ local, serverRecords: server.records, role: identity.role });
+        if (plan.kind === 'adopt' || decision.foreignDevice) {
+          // Nothing of value on this device (or nothing that may travel): take the shared workspace without asking.
+          setPhase(execute(boot, principal, identity, 'use-shared', origin, wsUrl, api).phase);
           return;
         }
-        setPhase({ kind: 'link', identity: detection.identity, plan, server });
+        setPhase({ kind: 'link', principal, identity, plan, server });
         return;
       }
-      case 'unreachable':
-      case 'login-required':
-        // A linked device keeps working from its own copy; the sync client
-        // reports "offline" or "sign-in expired" and recovers on its own.
-        if (link !== null && mirror !== null) {
-          setPhase(resume({ email: link.email, role: 'editor' }));
-          return;
-        }
-        setPhase({ kind: 'problem', problem: detection.mode === 'unreachable' ? 'unreachable' : 'login' });
-        return;
-      case 'error':
-        setPhase({ kind: 'problem', problem: 'error', status: detection.status });
-        return;
     }
   };
 
@@ -103,7 +123,9 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (phase.kind === 'ready') return <App boot={phase.boot} shared={phase.shared} />;
+  if (phase.kind === 'ready') return <App boot={phase.boot} shared={phase.shared} tenant={phase.tenant} />;
+  if (phase.kind === 'denied') return <AccessDenied lang={lang} reason={phase.reason} email={phase.email} onRetry={() => void detect()} />;
+  if (phase.kind === 'super') return <SuperAdminConsole initialLang={lang} principal={phase.principal} api={createTenancyApi()} />;
 
   return (
     <main className="link-screen">
@@ -111,16 +133,23 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
         {phase.kind === 'detecting' ? (
           <p role="status">{t(lang, 'shared.link.checking')}</p>
         ) : phase.kind === 'problem' ? (
-          <ProblemView lang={lang} problem={phase.problem} status={phase.status} onRetry={() => void detect()} onLocal={() => setPhase({ kind: 'ready', boot, shared: null })} />
+          <ProblemView
+            lang={lang}
+            problem={phase.problem}
+            status={phase.status}
+            onRetry={() => void detect()}
+            onLocal={() => setPhase({ kind: 'ready', boot, shared: null, tenant: NO_TENANT })}
+          />
         ) : (
           <LinkView
             lang={lang}
             boot={boot}
+            principal={phase.principal}
             identity={phase.identity}
             plan={phase.plan}
             server={phase.server}
             onChosen={(next) => setPhase(next)}
-            onLocal={() => setPhase({ kind: 'ready', boot, shared: null })}
+            onLocal={() => setPhase({ kind: 'ready', boot, shared: null, tenant: NO_TENANT })}
           />
         )}
       </div>
@@ -129,7 +158,15 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
 }
 
 /** Execute a validated choice: returns the workspace the app starts with and how the client must treat the first server state. */
-function execute(boot: PersistenceBoot, identity: Identity, choice: LinkChoice, origin: string, wsUrl: string): { phase: Phase; backedUp: boolean } {
+function execute(
+  boot: PersistenceBoot,
+  principal: PrincipalDto,
+  identity: Identity,
+  choice: LinkChoice,
+  origin: string,
+  wsUrl: string,
+  api: ReturnType<typeof createTenancyApi>,
+): { phase: Phase; backedUp: boolean } {
   const { app, reports } = boot.workspace;
   let backedUp = false;
   if (needsLocalBackup(choice, reports)) {
@@ -145,7 +182,8 @@ function execute(boot: PersistenceBoot, identity: Identity, choice: LinkChoice, 
     phase: {
       kind: 'ready',
       boot: { ...boot, workspace },
-      shared: { identity, wsUrl, origin, firstState: firstStateFor(choice), resume: null },
+      shared: { identity, tenantId: principal.tenant?.id ?? '', wsUrl, origin, firstState: firstStateFor(choice), resume: null },
+      tenant: { principal, api },
     },
   };
 }
@@ -189,6 +227,7 @@ function ProblemView(props: { lang: Language; problem: 'unreachable' | 'login' |
 function LinkView(props: {
   lang: Language;
   boot: PersistenceBoot;
+  principal: PrincipalDto;
   identity: Identity;
   plan: LinkPlan;
   server: ServerWorkspace;
@@ -207,7 +246,7 @@ function LinkView(props: {
       setMessage(t(lang, verdict.reason === 'role' ? 'shared.link.replaceAdminOnly' : 'shared.link.notAllowed'));
       return;
     }
-    props.onChosen(execute(props.boot, identity, choice, origin, wsUrl).phase);
+    props.onChosen(execute(props.boot, props.principal, identity, choice, origin, wsUrl, createTenancyApi()).phase);
   };
 
   return (

@@ -16,6 +16,8 @@ export interface DeviceLink {
   origin: string;
   linkedAt: string;
   email: string;
+  /** The workspace this device's copy belongs to. Absent on links made before workspaces existed (treated as foreign). */
+  tenantId?: string;
 }
 
 function read<T>(key: string): T | null {
