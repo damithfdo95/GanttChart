@@ -5,3 +5,9 @@ dist/
 # Local workspace backups contain real project data — never commit them.
 backup/
 *.json.bak
+
+# Cloudflare / Wrangler local state and secrets
+.wrangler/
+.dev.vars
+.dev.vars.*
+worker-configuration.d.ts

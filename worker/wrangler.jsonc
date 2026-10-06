@@ -1,0 +1,61 @@
+{
+  // GanttChart shared workspace: Worker + Durable Object (SQLite) + static SPA.
+  // Nothing here creates or changes anything in your Cloudflare account until
+  // `wrangler deploy` is run — see docs/CLOUD_ARCHITECTURE.md §10.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ganttchart",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-06",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Access must be the only way in: no workers.dev / preview URLs to bypass it.
+  "workers_dev": false,
+  "preview_urls": false,
+
+  // The built SPA (`npm run build` in the repo root → ../dist).
+  "assets": {
+    "directory": "../dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/ws"]
+  },
+
+  "durable_objects": {
+    "bindings": [{ "name": "WORKSPACE", "class_name": "WorkspaceRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["WorkspaceRoom"] }],
+
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+
+  // Production values are set at deploy time (never commit real team/AUD values
+  // if you prefer to keep them private). While empty the Worker FAILS CLOSED
+  // (HTTP 500 on every API/WebSocket request).
+  "vars": {
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": "",
+    "ADMIN_EMAILS": "",
+    "READ_ONLY_EMAILS": "",
+    "HISTORY_RETENTION_DAYS": "90"
+  },
+
+  "env": {
+    // `wrangler dev --env dev`: local identity, no Access. Loopback hosts only.
+    "dev": {
+      "vars": {
+        "ENVIRONMENT": "development",
+        "DEV_EMAIL": "dev@localhost",
+        "ALLOWED_ORIGINS": "http://localhost:5173,http://localhost:8787",
+        "HISTORY_RETENTION_DAYS": "90"
+      },
+      "durable_objects": {
+        "bindings": [{ "name": "WORKSPACE", "class_name": "WorkspaceRoom" }]
+      },
+      "assets": {
+        "directory": "../dist",
+        "binding": "ASSETS",
+        "not_found_handling": "single-page-application",
+        "run_worker_first": ["/api/*", "/ws"]
+      }
+    }
+  }
+}

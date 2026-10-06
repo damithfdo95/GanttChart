@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "types": ["node"], "lib": ["ES2022", "DOM"] },
+  "include": ["./**/*.ts", "../src/store.ts", "../src/auth.ts", "../../shared"],
+  "exclude": ["./workers"]
+}
