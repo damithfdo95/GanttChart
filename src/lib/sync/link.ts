@@ -17,6 +17,7 @@
 import type { ReportsState } from '../../types';
 import type { RecordPut, Role } from '../../../shared/protocol';
 import { countRecords, hasMeaningfulLocalData, reportsToRecords, type WorkspaceCounts } from './records';
+import { REPLACE_CONFIRMATION } from '../../../shared/tenancy';
 
 export type LinkPlan =
   /** Nothing of value on this device: just take the shared workspace. */
@@ -55,8 +56,7 @@ export type LinkChoice =
   /** Create the empty shared workspace with a starter project. */
   | 'create';
 
-/** The exact text a person must type to replace the shared workspace. */
-export const REPLACE_CONFIRMATION = 'REPLACE';
+export { REPLACE_CONFIRMATION };
 
 export type LinkValidation = { ok: true } | { ok: false; reason: 'role' | 'confirmation' | 'plan' };
 

@@ -1,15 +1,22 @@
 /**
- * WorkspaceRoom — the single Durable Object that owns the shared workspace.
+ * WorkspaceRoom — ONE Durable Object PER TENANT. It owns that tenant's shared
+ * workspace and nothing else.
  *
- * It is the coordination atom: every commit is applied here, one at a time,
- * against SQLite storage in the same object, and each committed change is
- * broadcast to the connected sockets in commit order. Sockets use the
- * hibernation API, so an idle workspace costs nothing while clients stay
- * connected.
+ * Isolation by construction: the object is addressed by the tenant id
+ * (`getByName(tenantId)`), so state, history, sockets and broadcasts of one
+ * tenant live in a different object than any other tenant's. As a second line
+ * of defence the object verifies, on every entry point, that the tenant the
+ * caller claims is the tenant this object IS (its own name). A routing bug can
+ * therefore never serve the wrong tenant's data: it fails with an error.
  *
- * Identity is NOT decided here: the Worker verifies the Cloudflare Access JWT
- * and passes the verified email/role in internal headers. This object is only
- * reachable through the Worker's binding.
+ * It is the coordination atom for that tenant: every commit is applied here,
+ * one at a time, against SQLite storage in the same object, and each committed
+ * change is broadcast to this object's own sockets in commit order. Sockets use
+ * the hibernation API, so an idle workspace costs nothing.
+ *
+ * Identity and tenant are NOT decided here: the Worker verifies the Access JWT,
+ * resolves the caller through the registry and passes the result in internal
+ * headers. This object is only reachable through the Worker's binding.
  */
 
 import { DurableObject } from 'cloudflare:workers';
@@ -23,11 +30,14 @@ import {
   type Role,
   type ServerMessage,
 } from '../../shared/protocol';
+import { CLOSE_CODES, canonicalRecordsHash, isTenantId, recordsHaveData, summarizeRecords, validateImportRecords } from '../../shared/tenancy';
 import { WorkspaceStore, type CommitResult, type RevisionInfo } from './store';
 
 /** Per-connection state that survives hibernation (limit: 16 KB). */
 interface Attachment {
   email: string;
+  userId: string;
+  tenantId: string;
   role: Role;
   /** Set by the client's hello; commits before it are refused. */
   clientId: string | null;
@@ -38,6 +48,8 @@ interface Attachment {
 const IDENTITY_EMAIL_HEADER = 'x-gc-verified-email';
 const IDENTITY_ROLE_HEADER = 'x-gc-verified-role';
 const IDENTITY_EXPIRES_HEADER = 'x-gc-verified-exp';
+const IDENTITY_USER_HEADER = 'x-gc-user';
+const TENANT_HEADER = 'x-gc-tenant';
 const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * Default history retention. Kept at 30 days (not longer) so the full-record
@@ -48,11 +60,13 @@ const MAX_RETENTION_DAYS = 365;
 /** Above this database size the alarm prunes harder (Workers Free storage cap is 5 GB). */
 const SIZE_GUARD_BYTES = 2 * 1024 * 1024 * 1024;
 const SIZE_GUARD_RETENTION_DAYS = 7;
-const WS_CLOSE_SESSION_EXPIRED = 4401;
 const WS_CLOSE_UNSUPPORTED_DATA = 1003;
 const WS_CLOSE_MESSAGE_TOO_BIG = 1009;
+/** The instance that served the pre-tenant (Stage 4) single workspace. */
+export const LEGACY_WORKSPACE_NAME = 'workspace';
+const FROZEN_FLAG = 'frozen';
 
-export { IDENTITY_EMAIL_HEADER, IDENTITY_EXPIRES_HEADER, IDENTITY_ROLE_HEADER };
+export { IDENTITY_EMAIL_HEADER, IDENTITY_EXPIRES_HEADER, IDENTITY_ROLE_HEADER, IDENTITY_USER_HEADER, TENANT_HEADER };
 
 function isExpired(attachment: Attachment): boolean {
   return attachment.expiresAt !== null && Date.now() > attachment.expiresAt;
@@ -62,8 +76,32 @@ function isRole(value: string | null): value is Role {
   return value === 'admin' || value === 'editor' || value === 'viewer';
 }
 
+export interface WorkspaceState {
+  revision: number;
+  hash: string;
+  counts: Record<string, number>;
+  hasData: boolean;
+  frozen: boolean;
+}
+
+export type ImportInput = {
+  /** Client-generated; repeating an import with the same id never applies it twice. */
+  migrationId: string;
+  records: unknown;
+  /** The server revision the uploader inspected. A mismatch means someone else changed it. */
+  expectedRevision: number;
+  /** Replace existing server data (the caller has already verified the typed confirmation). */
+  replace: boolean;
+  actor: string;
+};
+
+export type ImportResult =
+  | { ok: true; revision: number; hash: string; counts: Record<string, number>; alreadyApplied: boolean }
+  | { ok: false; error: 'invalid' | 'revision_mismatch' | 'server_not_empty' | 'failed'; message?: string; revision?: number };
+
 export class WorkspaceRoom extends DurableObject<Env> {
   private readonly store: WorkspaceStore;
+  private frozen = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -77,27 +115,46 @@ export class WorkspaceRoom extends DurableObject<Env> {
     // Schema setup only — never held across I/O besides the alarm lookup.
     ctx.blockConcurrencyWhile(async () => {
       this.store.init();
+      this.frozen = this.store.readFlag(FROZEN_FLAG) === '1';
       if ((await ctx.storage.getAlarm()) === null) await ctx.storage.setAlarm(Date.now() + DAY_MS);
     });
+  }
+
+  // ---- tenant binding ----------------------------------------------------------
+
+  /** The tenant this object IS: the id it was addressed by. Anything else fails closed. */
+  private ownTenantId(): string {
+    const name = this.ctx.id.name;
+    if (typeof name !== 'string' || !isTenantId(name)) throw new Error('workspace is not bound to a tenant');
+    return name;
+  }
+
+  /** Every RPC passes the tenant it believes it is talking to; a mismatch is an error, never data. */
+  private assertTenant(claimed: string): void {
+    if (claimed !== this.ownTenantId()) throw new Error('tenant mismatch');
   }
 
   // ---- WebSocket entry (called by the Worker with verified identity headers) ----
 
   override async fetch(request: Request): Promise<Response> {
     if (request.headers.get('Upgrade') !== 'websocket') return new Response('Expected WebSocket', { status: 426 });
+    const tenantId = request.headers.get(TENANT_HEADER);
+    if (tenantId === null || tenantId !== this.ownTenantId()) return new Response('Tenant mismatch', { status: 403 });
     const email = request.headers.get(IDENTITY_EMAIL_HEADER);
+    const userId = request.headers.get(IDENTITY_USER_HEADER);
     const role = request.headers.get(IDENTITY_ROLE_HEADER);
-    if (email === null || email === '' || !isRole(role)) return new Response('Unauthenticated', { status: 401 });
+    if (email === null || email === '' || userId === null || userId === '' || !isRole(role)) return new Response('Unauthenticated', { status: 401 });
     const expRaw = request.headers.get(IDENTITY_EXPIRES_HEADER);
     const expiresAt = expRaw === null ? null : Number(expRaw);
     if (expiresAt !== null && (!Number.isFinite(expiresAt) || expiresAt <= Date.now())) {
       return new Response('Session expired', { status: 401 });
     }
+    if (this.frozen) return new Response('Workspace is archived', { status: 409 });
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server);
-    const attachment: Attachment = { email, role, clientId: null, expiresAt };
+    const attachment: Attachment = { email, userId, tenantId, role, clientId: null, expiresAt };
     server.serializeAttachment(attachment);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -112,9 +169,14 @@ export class WorkspaceRoom extends DurableObject<Env> {
       ws.close(1008, 'no session');
       return;
     }
+    // A socket that is not THIS tenant's can never be served (defence in depth).
+    if (attachment.tenantId !== this.ownTenantId()) {
+      ws.close(CLOSE_CODES.accessRevoked, 'tenant mismatch');
+      return;
+    }
     if (isExpired(attachment)) {
       this.send(ws, { t: 'error', code: 'session_expired', message: 'Your sign-in session has ended; reload to sign in again.' });
-      ws.close(WS_CLOSE_SESSION_EXPIRED, 'session expired');
+      ws.close(CLOSE_CODES.sessionExpired, 'session expired');
       return;
     }
     const parsed = parseClientMessage(message);
@@ -193,6 +255,10 @@ export class WorkspaceRoom extends DurableObject<Env> {
       this.send(ws, { t: 'reject', id: msg.id, reason: 'forbidden', revision: this.store.revision(), conflicts: [], message: 'read-only access' });
       return;
     }
+    if (this.frozen) {
+      this.send(ws, { t: 'reject', id: msg.id, reason: 'forbidden', revision: this.store.revision(), conflicts: [], message: 'workspace is archived' });
+      return;
+    }
     let result: CommitResult;
     try {
       result = this.store.commit({
@@ -229,22 +295,27 @@ export class WorkspaceRoom extends DurableObject<Env> {
     }
   }
 
-  // ---- RPC methods (called by the Worker for the HTTP API) ----
+  // ---- RPC: reads --------------------------------------------------------------
 
-  async exportAll(): Promise<{ revision: number; records: RecordPut[] }> {
+  async exportAll(tenantId: string): Promise<{ revision: number; records: RecordPut[] }> {
+    this.assertTenant(tenantId);
     return this.store.snapshot();
   }
 
-  async listRevisions(limit: number, before?: number): Promise<RevisionInfo[]> {
+  async listRevisions(tenantId: string, limit: number, before?: number): Promise<RevisionInfo[]> {
+    this.assertTenant(tenantId);
     return this.store.listRevisions(limit, before);
   }
 
-  async previewRevision(revision: number): Promise<RecordPut[] | null> {
+  async previewRevision(tenantId: string, revision: number): Promise<RecordPut[] | null> {
+    this.assertTenant(tenantId);
     return this.store.reconstruct(revision);
   }
 
   /** Restore an old revision as a NEW revision and push the difference to every connected client. */
-  async restoreRevision(revision: number, actor: string): Promise<{ ok: true; revision: number } | { ok: false; error: string }> {
+  async restoreRevision(tenantId: string, revision: number, actor: string): Promise<{ ok: true; revision: number } | { ok: false; error: string }> {
+    this.assertTenant(tenantId);
+    if (this.frozen) return { ok: false, error: 'archived' };
     const commitId = `restore-${revision}-${crypto.randomUUID()}`;
     const result = this.store.restoreAsNewRevision(revision, actor, new Date().toISOString(), commitId);
     if (result === null) return { ok: false, error: 'revision-unavailable' };
@@ -255,16 +326,160 @@ export class WorkspaceRoom extends DurableObject<Env> {
     return { ok: true, revision: result.revision };
   }
 
-  async stats(): Promise<{ revision: number; floor: number; connections: number; bytes: number }> {
+  async stats(tenantId: string): Promise<{ revision: number; floor: number; connections: number; bytes: number; frozen: boolean }> {
+    this.assertTenant(tenantId);
     return {
       revision: this.store.revision(),
       floor: this.store.historyFloor(),
       connections: this.ctx.getWebSockets().length,
       bytes: this.ctx.storage.sql.databaseSize,
+      frozen: this.frozen,
     };
   }
 
-  // ---- retention ----
+  /** Revision + content hash + counts of the CURRENT state (used to verify a migration). */
+  async verifyState(tenantId: string): Promise<WorkspaceState> {
+    this.assertTenant(tenantId);
+    return this.describeState();
+  }
+
+  private async describeState(): Promise<WorkspaceState> {
+    const snap = this.store.snapshot();
+    return {
+      revision: snap.revision,
+      hash: await canonicalRecordsHash(snap.records),
+      counts: summarizeRecords(snap.records),
+      hasData: recordsHaveData(snap.records),
+      frozen: this.frozen,
+    };
+  }
+
+  // ---- RPC: migration ----------------------------------------------------------
+
+  /**
+   * Atomic upload of a whole workspace as ONE revision.
+   *  - never overwrites existing data unless `replace` is set (the caller has
+   *    verified the typed confirmation); the previous state stays in history
+   *  - `expectedRevision` must still be the current revision, otherwise someone
+   *    else changed the workspace since it was inspected
+   *  - retry-safe: the same content (or the same migration id) is a no-op
+   */
+  async importWorkspace(tenantId: string, input: ImportInput): Promise<ImportResult> {
+    this.assertTenant(tenantId);
+    const valid = validateImportRecords(input.records);
+    if (!valid.ok) return { ok: false, error: 'invalid', message: valid.error };
+
+    const before = this.store.snapshot();
+    const [importHash, currentHash] = await Promise.all([canonicalRecordsHash(valid.records), canonicalRecordsHash(before.records)]);
+
+    // The same content is already there: nothing to do (an interrupted upload that is retried).
+    if (importHash === currentHash) {
+      return { ok: true, revision: before.revision, hash: currentHash, counts: summarizeRecords(before.records), alreadyApplied: true };
+    }
+    // Everything below is synchronous: nothing can change between these checks and the commit.
+    const head = this.store.revision();
+    if (head !== before.revision || head !== input.expectedRevision) return { ok: false, error: 'revision_mismatch', revision: head };
+    const current = this.store.snapshot().records;
+    if (recordsHaveData(current) && !input.replace) return { ok: false, error: 'server_not_empty', revision: head };
+
+    const wanted = new Map(valid.records.map((r) => [`${r.kind}\u0000${r.id}`, r]));
+    const have = new Map(current.map((r) => [`${r.kind}\u0000${r.id}`, r]));
+    const puts = valid.records.filter((r) => have.get(`${r.kind}\u0000${r.id}`)?.json !== r.json);
+    const deletes = input.replace ? current.filter((r) => !wanted.has(`${r.kind}\u0000${r.id}`)).map((r) => ({ kind: r.kind, id: r.id })) : [];
+
+    let result: CommitResult;
+    try {
+      result = this.store.commit({
+        commitId: input.migrationId,
+        baseRevision: head,
+        puts,
+        deletes,
+        actor: input.actor,
+        reason: input.replace ? 'migration-replace' : 'migration-import',
+        now: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error(JSON.stringify({ event: 'import_failed', error: String(error) }));
+      return { ok: false, error: 'failed' };
+    }
+    if (!result.ok) return { ok: false, error: 'failed', message: result.reason, revision: result.revision };
+    if (result.changed && !result.duplicate) {
+      this.broadcast({ t: 'changes', revision: result.revision, actor: input.actor, at: result.at, puts: result.puts, deletes: result.deletes });
+    }
+    const after = await this.describeState();
+    return { ok: true, revision: after.revision, hash: after.hash, counts: after.counts, alreadyApplied: result.duplicate };
+  }
+
+  /**
+   * Archive the workspace for a switch to local mode: only if it is EXACTLY the
+   * state the caller downloaded (revision and hash), refuse further commits,
+   * and close every live connection. The data is kept.
+   */
+  async freezeIfUnchanged(tenantId: string, expected: { revision: number; hash: string }): Promise<{ ok: true } | { ok: false; error: 'workspace_changed' }> {
+    this.assertTenant(tenantId);
+    const snap = this.store.snapshot();
+    const hash = await canonicalRecordsHash(snap.records);
+    // Synchronous from here on: no commit can slip in between the check and the freeze.
+    if (this.store.revision() !== snap.revision || snap.revision !== expected.revision || hash !== expected.hash) {
+      return { ok: false, error: 'workspace_changed' };
+    }
+    this.store.writeFlag(FROZEN_FLAG, '1');
+    this.frozen = true;
+    this.closeAll(CLOSE_CODES.storageMoved, 'workspace moved to local storage');
+    return { ok: true };
+  }
+
+  async thaw(tenantId: string): Promise<void> {
+    this.assertTenant(tenantId);
+    this.store.writeFlag(FROZEN_FLAG, null);
+    this.frozen = false;
+  }
+
+  // ---- RPC: access control -----------------------------------------------------
+
+  /** Close every live connection of one user (disabled, role changed). */
+  async disconnectUser(tenantId: string, userId: string, code: number, reason: string): Promise<number> {
+    this.assertTenant(tenantId);
+    let closed = 0;
+    for (const socket of this.ctx.getWebSockets()) {
+      const a = socket.deserializeAttachment() as Attachment | null;
+      if (a !== null && a.userId === userId) {
+        this.finishClose(socket, code, reason);
+        closed += 1;
+      }
+    }
+    return closed;
+  }
+
+  /** Close every live connection of this tenant (deactivated, storage moved, deleted). */
+  async disconnectAll(tenantId: string, code: number, reason: string): Promise<number> {
+    this.assertTenant(tenantId);
+    return this.closeAll(code, reason);
+  }
+
+  private closeAll(code: number, reason: string): number {
+    const sockets = this.ctx.getWebSockets();
+    for (const s of sockets) this.finishClose(s, code, reason);
+    return sockets.length;
+  }
+
+  /** Permanently remove everything this tenant has stored (approved deletion). */
+  async destroy(tenantId: string): Promise<void> {
+    this.assertTenant(tenantId);
+    this.closeAll(CLOSE_CODES.tenantDeleted, 'workspace deleted');
+    await this.ctx.storage.deleteAll();
+  }
+
+  /**
+   * Read the pre-tenant (Stage 4) workspace so a Super Admin can adopt it. Only
+   * the legacy instance answers; a tenant's own object never does.
+   */
+  async exportLegacy(): Promise<{ revision: number; records: RecordPut[] }> {
+    if (this.ctx.id.name !== LEGACY_WORKSPACE_NAME) throw new Error('not the legacy workspace');
+    return this.store.snapshot();
+  }
+
+  // ---- retention ----------------------------------------------------------------
 
   override async alarm(): Promise<void> {
     const days = Number(this.env.HISTORY_RETENTION_DAYS ?? DEFAULT_RETENTION_DAYS);
@@ -277,7 +492,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
     await this.ctx.storage.setAlarm(Date.now() + DAY_MS);
   }
 
-  // ---- helpers ----
+  // ---- helpers ----------------------------------------------------------------
 
   private send(ws: WebSocket, message: ServerMessage): void {
     try {
@@ -295,7 +510,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
         // A revoked/expired Access session must stop receiving data immediately.
         const attachment = socket.deserializeAttachment() as Attachment | null;
         if (attachment === null || isExpired(attachment)) {
-          socket.close(WS_CLOSE_SESSION_EXPIRED, 'session expired');
+          socket.close(CLOSE_CODES.sessionExpired, 'session expired');
           continue;
         }
         socket.send(frame);
@@ -305,4 +520,3 @@ export class WorkspaceRoom extends DurableObject<Env> {
     }
   }
 }
-

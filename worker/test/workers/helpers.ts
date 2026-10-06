@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:workers';
+import { newTenantId } from '../../../shared/tenancy';
 import {
   PROTOCOL_VERSION,
   type ChangesMessage,
@@ -8,14 +9,42 @@ import {
   type ServerMessage,
 } from '../../../shared/protocol';
 
-let workspaceCounter = 0;
+/**
+ * A fresh, isolated tenant workspace (its own Durable Object instance, addressed
+ * by a tenant id) per test. The wrapper supplies the tenant id to every call,
+ * exactly as the Worker does after resolving a principal.
+ */
+export function workspaceFor(tenantId: string) {
+  const stub = env.WORKSPACE.getByName(tenantId);
+  return {
+    tenantId,
+    stub,
+    fetch: (request: Request) => stub.fetch(request),
+    exportAll: () => stub.exportAll(tenantId),
+    listRevisions: (limit: number, before?: number) => stub.listRevisions(tenantId, limit, before),
+    previewRevision: (revision: number) => stub.previewRevision(tenantId, revision),
+    restoreRevision: (revision: number, actor: string) => stub.restoreRevision(tenantId, revision, actor),
+    stats: () => stub.stats(tenantId),
+    verifyState: () => stub.verifyState(tenantId),
+  };
+}
 
-/** A fresh, isolated workspace (Durable Object instance) per test. */
 export function newWorkspace() {
-  workspaceCounter += 1;
-  return env.WORKSPACE.getByName(`test-workspace-${workspaceCounter}-${crypto.randomUUID()}`);
+  return workspaceFor(newTenantId());
 }
 export type Workspace = ReturnType<typeof newWorkspace>;
+
+/** The internal headers the Worker sets after verifying identity and resolving the tenant. */
+export function identityHeaders(workspace: Workspace, email: string, role: Role, expiresAt: number | null = null): Record<string, string> {
+  return {
+    Upgrade: 'websocket',
+    'x-gc-tenant': workspace.tenantId,
+    'x-gc-user': `usr_test_${email}`,
+    'x-gc-verified-email': email,
+    'x-gc-verified-role': role,
+    ...(expiresAt === null ? {} : { 'x-gc-verified-exp': String(expiresAt) }),
+  };
+}
 
 type Of<T extends ServerMessage['t']> = Extract<ServerMessage, { t: T }>;
 
@@ -39,16 +68,7 @@ export async function connect(
   role: Role = 'editor',
   expiresAt: number | null = null,
 ): Promise<TestSocket> {
-  const response = await workspace.fetch(
-    new Request('http://localhost/ws', {
-      headers: {
-        Upgrade: 'websocket',
-        'x-gc-verified-email': email,
-        'x-gc-verified-role': role,
-        ...(expiresAt === null ? {} : { 'x-gc-verified-exp': String(expiresAt) }),
-      },
-    }),
-  );
+  const response = await workspace.fetch(new Request('http://localhost/ws', { headers: identityHeaders(workspace, email, role, expiresAt) }));
   if (response.status !== 101 || response.webSocket === null) throw new Error(`upgrade failed: ${response.status}`);
   return wrap(response.webSocket, email);
 }

@@ -24,10 +24,19 @@
     "run_worker_first": ["/api/*", "/ws"]
   },
 
+  // WORKSPACE: one instance PER TENANT (addressed by tenant id) = the data plane.
+  // REGISTRY:  one instance = the control plane (tenants, users, roles, deletion audit).
   "durable_objects": {
-    "bindings": [{ "name": "WORKSPACE", "class_name": "WorkspaceRoom" }]
+    "bindings": [
+      { "name": "WORKSPACE", "class_name": "WorkspaceRoom" },
+      { "name": "REGISTRY", "class_name": "RegistryRoom" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["WorkspaceRoom"] }],
+  // v1 is the Stage 4 class (unchanged storage schema); v2 only ADDS the registry.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["WorkspaceRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["RegistryRoom"] }
+  ],
 
   "observability": { "enabled": true, "head_sampling_rate": 1 },
 
@@ -37,8 +46,7 @@
   "vars": {
     "ACCESS_TEAM_DOMAIN": "",
     "ACCESS_AUD": "",
-    "ADMIN_EMAILS": "",
-    "READ_ONLY_EMAILS": "",
+    "SUPER_ADMIN_EMAILS": "",
     "HISTORY_RETENTION_DAYS": "30"
   },
 
@@ -47,12 +55,16 @@
     "dev": {
       "vars": {
         "ENVIRONMENT": "development",
-        "DEV_EMAIL": "dev@localhost",
+        "DEV_EMAIL": "super@dev.test",
+        "SUPER_ADMIN_EMAILS": "super@dev.test",
         "ALLOWED_ORIGINS": "http://localhost:5173,http://localhost:8787",
         "HISTORY_RETENTION_DAYS": "30"
       },
       "durable_objects": {
-        "bindings": [{ "name": "WORKSPACE", "class_name": "WorkspaceRoom" }]
+        "bindings": [
+          { "name": "WORKSPACE", "class_name": "WorkspaceRoom" },
+          { "name": "REGISTRY", "class_name": "RegistryRoom" }
+        ]
       },
       "assets": {
         "directory": "../dist",

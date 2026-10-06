@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { SyncClient, type StashedEdit, type SyncHost, type SyncNotice, type SyncSocket, type SyncState } from '../../../src/lib/sync/client';
 import { recordKey, type RecordKey } from '../../../src/lib/sync/records';
 import type { RecordDelete, RecordPut, Role } from '../../../shared/protocol';
-import { newWorkspace, rec, type Workspace } from './helpers';
+import { identityHeaders, newWorkspace, rec, type Workspace } from './helpers';
 
 /**
  * The REAL SyncClient talking to the REAL Durable Object (workerd): the
@@ -35,7 +35,7 @@ function socketFactory(workspace: Workspace, email: string, role: Role = 'editor
     };
     opened.push(sock);
     void workspace
-      .fetch(new Request('http://localhost/ws', { headers: { Upgrade: 'websocket', 'x-gc-verified-email': email, 'x-gc-verified-role': role } }))
+      .fetch(new Request('http://localhost/ws', { headers: identityHeaders(workspace, email, role) }))
       .then((res) => {
         ws = res.webSocket!;
         ws.accept();
@@ -240,7 +240,7 @@ describe('reconnecting', () => {
     alice.edit('project', 'a', 1);
     await until(() => bob.json('project', 'a') === '1' && settled(alice)(), 'first edit synced');
 
-    await evictDurableObject(ws);
+    await evictDurableObject(ws.stub);
 
     alice.edit('project', 'a', 2);
     await until(() => bob.json('project', 'a') === '2' && settled(alice)(), 'edit after eviction synced');
@@ -258,7 +258,7 @@ describe('reconnecting', () => {
     alice.edit('project', 'a', 1);
     await until(() => bob.json('project', 'a') === '1' && settled(alice)(), 'synced');
 
-    await evictDurableObject(ws, { webSockets: 'close' });
+    await evictDurableObject(ws.stub, { webSockets: 'close' });
     alice.edit('project', 'a', 'after-close');
     await until(() => bob.json('project', 'a') === '"after-close"' && settled(alice)() && settled(bob)(), 'converged after reconnect', 9000);
     expect(alice.sockets.length).toBeGreaterThan(1);

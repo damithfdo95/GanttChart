@@ -131,6 +131,17 @@ export class WorkspaceStore {
     for (const statement of SCHEMA) this.storage.sql.exec(statement);
   }
 
+  /** Small string flags kept with the workspace (e.g. "frozen" while archived). Written rarely. */
+  readFlag(key: string): string | null {
+    const row = this.storage.sql.exec<{ value: string }>(`SELECT value FROM meta WHERE key = ?`, `flag:${key}`).toArray()[0];
+    return row === undefined ? null : row.value;
+  }
+
+  writeFlag(key: string, value: string | null): void {
+    if (value === null) this.storage.sql.exec(`DELETE FROM meta WHERE key = ?`, `flag:${key}`);
+    else this.storage.sql.exec(`INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, `flag:${key}`, value);
+  }
+
   private metaNumber(key: string): number {
     const row = this.storage.sql.exec<{ value: string }>(`SELECT value FROM meta WHERE key = ?`, key).toArray()[0];
     return row === undefined ? 0 : Number(row.value);

@@ -1,18 +1,27 @@
 import { evictDurableObject, runDurableObjectAlarm } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { PROTOCOL_VERSION, LIMITS } from '../../../shared/protocol';
-import { commitMsg, connect, join, newWorkspace, rec } from './helpers';
+import { newTenantId } from '../../../shared/tenancy';
+import { commitMsg, connect, identityHeaders, join, newWorkspace, rec } from './helpers';
+
+const newTenantIdForTest = (): string => newTenantId();
 
 describe('connect + hello', () => {
   it('refuses plain HTTP and upgrades without a verified identity', async () => {
     const ws = newWorkspace();
     expect((await ws.fetch(new Request('http://localhost/ws'))).status).toBe(426);
-    const noIdentity = await ws.fetch(new Request('http://localhost/ws', { headers: { Upgrade: 'websocket' } }));
-    expect(noIdentity.status).toBe(401);
-    const badRole = await ws.fetch(
-      new Request('http://localhost/ws', { headers: { Upgrade: 'websocket', 'x-gc-verified-email': 'a@b.c', 'x-gc-verified-role': 'root' } }),
+    // No tenant at all, or a tenant that is not THIS workspace's: refused before identity is even looked at.
+    const noTenant = await ws.fetch(new Request('http://localhost/ws', { headers: { Upgrade: 'websocket' } }));
+    expect(noTenant.status).toBe(403);
+    const wrongTenant = await ws.fetch(
+      new Request('http://localhost/ws', { headers: { ...identityHeaders(ws, 'a@b.co', 'editor'), 'x-gc-tenant': newTenantIdForTest() } }),
     );
+    expect(wrongTenant.status).toBe(403);
+    // Right tenant, but identity incomplete / invalid.
+    const badRole = await ws.fetch(new Request('http://localhost/ws', { headers: { ...identityHeaders(ws, 'a@b.co', 'editor'), 'x-gc-verified-role': 'root' } }));
     expect(badRole.status).toBe(401);
+    const { 'x-gc-user': _drop, ...noUser } = identityHeaders(ws, 'a@b.co', 'editor');
+    expect((await ws.fetch(new Request('http://localhost/ws', { headers: noUser }))).status).toBe(401);
   });
 
   it('first connect gets ready (with identity) then an empty snapshot', async () => {
@@ -211,11 +220,7 @@ describe('disconnect and reconnect', () => {
 describe('Access session lifetime', () => {
   it('refuses a connection whose Access session has already ended', async () => {
     const ws = newWorkspace();
-    const res = await ws.fetch(
-      new Request('http://localhost/ws', {
-        headers: { Upgrade: 'websocket', 'x-gc-verified-email': 'a@b.c', 'x-gc-verified-role': 'editor', 'x-gc-verified-exp': String(Date.now() - 1000) },
-      }),
-    );
+    const res = await ws.fetch(new Request('http://localhost/ws', { headers: identityHeaders(ws, 'a@b.co', 'editor', Date.now() - 1000) }));
     expect(res.status).toBe(401);
   });
 
@@ -279,7 +284,7 @@ describe('hibernation / eviction', () => {
     await alice.next('ack');
     await bob.next('changes');
 
-    await evictDurableObject(ws); // object leaves memory; sockets hibernate
+    await evictDurableObject(ws.stub); // object leaves memory; sockets hibernate
 
     alice.send(commitMsg(1, [rec('project', 'a', 2)], [], 'after-evict'));
     expect(await alice.next('ack')).toMatchObject({ id: 'after-evict', revision: 2 });
@@ -295,7 +300,7 @@ describe('hibernation / eviction', () => {
     await alice.next('snapshot');
     alice.send(commitMsg(0, [rec('project', 'a', 1)]));
     await alice.next('ack');
-    await evictDurableObject(ws, { webSockets: 'close' });
+    await evictDurableObject(ws.stub, { webSockets: 'close' });
     await alice.closed;
     const { sock, ready } = await join(ws, 'alice@example.com', 1);
     expect(ready.revision).toBe(1);
@@ -308,7 +313,7 @@ describe('hibernation / eviction', () => {
     await alice.next('snapshot');
     alice.send(commitMsg(0, [rec('project', 'a', 1)]));
     await alice.next('ack');
-    expect(await runDurableObjectAlarm(ws)).toBe(true);
+    expect(await runDurableObjectAlarm(ws.stub)).toBe(true);
     expect((await ws.exportAll()).revision).toBe(1);
     expect(await ws.listRevisions(10)).toHaveLength(1); // recent history is never pruned
   });

@@ -6,12 +6,19 @@
   "compatibility_date": "2026-10-06",
   "compatibility_flags": ["nodejs_compat"],
   "durable_objects": {
-    "bindings": [{ "name": "WORKSPACE", "class_name": "WorkspaceRoom" }]
+    "bindings": [
+      { "name": "WORKSPACE", "class_name": "WorkspaceRoom" },
+      { "name": "REGISTRY", "class_name": "RegistryRoom" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["WorkspaceRoom"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["WorkspaceRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["RegistryRoom"] }
+  ],
   "vars": {
     "ENVIRONMENT": "development",
-    "DEV_EMAIL": "dev@localhost",
+    "DEV_EMAIL": "super@dev.test",
+    "SUPER_ADMIN_EMAILS": "super@dev.test",
     "ALLOWED_ORIGINS": "http://localhost:5173",
     "HISTORY_RETENTION_DAYS": "30"
   }
