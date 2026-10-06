@@ -28,6 +28,7 @@ import { SuperAdminConsole } from '../features/tenancy/SuperAdminConsole';
 import { PublicLanding } from '../features/tenancy/PublicLanding';
 import { SignedOutScreen } from '../features/tenancy/LogoutButton';
 import { SessionProvider } from './session-context';
+import { ConfirmProvider } from '../components/ConfirmDialog';
 import { phaseAfterEnd, type LandingNotice, type SessionEnd } from './sessionEnd';
 import { ACCESS_LOGOUT_PATH } from '../lib/auth/logout';
 import { flushSync } from 'react-dom';
@@ -147,7 +148,9 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
   if (phase.kind === 'ready') {
     return (
       <SessionProvider value={session}>
-        <App boot={phase.boot} shared={phase.shared} tenant={phase.tenant} />
+        <ConfirmProvider>
+          <App boot={phase.boot} shared={phase.shared} tenant={phase.tenant} />
+        </ConfirmProvider>
       </SessionProvider>
     );
   }
@@ -155,7 +158,9 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
   if (phase.kind === 'super') {
     return (
       <SessionProvider value={session}>
-        <SuperAdminConsole initialLang={lang} principal={phase.principal} api={createTenancyApi()} />
+        <ConfirmProvider>
+          <SuperAdminConsole initialLang={lang} principal={phase.principal} api={createTenancyApi()} />
+        </ConfirmProvider>
       </SessionProvider>
     );
   }

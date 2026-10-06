@@ -6,7 +6,7 @@ import { CLOSE_CODES } from '../../../shared/tenancy';
 import { SECRET_A, SECRET_B, SUPER, activateWeb, addUser, createTenant, email, get, hashOf, listTenants, openSocket, post, rec, twoTenants, whoami } from './tenancy-harness';
 import { workspaceFor } from './helpers';
 
-const request = (adminEmail: string) => post<{ tenant: TenantDto }>(adminEmail, '/api/tenant/deletion-request');
+const request = (adminEmail: string) => post<{ tenant: TenantDto }>(adminEmail, '/api/tenant/deletion-request', { confirm: 'DELETE' });
 const cancel = (adminEmail: string) => post<{ tenant: TenantDto }>(adminEmail, '/api/tenant/deletion-request/cancel');
 const approve = (tenantId: string, adminEmail: string, as = SUPER, overrides: Record<string, unknown> = {}) =>
   post<{ deleted?: boolean; usersDeleted?: number }>(as, `/api/super/tenants/${tenantId}/delete`, { confirmTenantId: tenantId, confirmAdminEmail: adminEmail, ...overrides });
@@ -32,7 +32,7 @@ describe('requesting deletion', () => {
     // B's admin requesting deletion can only ever affect B.
     expect((await request(w.b.adminEmail)).status).toBe(200);
     expect((await summaryOf(w.a.id))?.status).toBe('active');
-    expect((await post(w.b.adminEmail, '/api/tenant/deletion-request', { tenantId: w.a.id })).status).toBe(403); // forged tenant
+    expect((await post(w.b.adminEmail, '/api/tenant/deletion-request', { tenantId: w.a.id, confirm: 'DELETE' })).status).toBe(403); // forged tenant
   });
 
   it('can be repeated safely and cancelled; the tenant then works normally', async () => {

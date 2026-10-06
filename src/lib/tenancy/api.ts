@@ -5,7 +5,7 @@
  */
 
 import type { RecordPut } from '../../../shared/protocol';
-import type { PrincipalDto, TenantDto, TenantSummaryDto, UserAccess, UserDto } from '../../../shared/tenancy';
+import { REQUEST_DELETION_CONFIRMATION, type AdminAuditDto, type PrincipalDto, type TenantDto, type TenantListQuery, type TenantListResult, type UserAccess, type UserDto } from '../../../shared/tenancy';
 
 export class ApiError extends Error {
   constructor(
@@ -60,14 +60,18 @@ export interface TenancyApi {
   exportAll(): Promise<ExportAll>;
   whoami(): Promise<PrincipalDto>;
   listUsers(): Promise<UserDto[]>;
-  createUser(email: string, access: UserAccess): Promise<UserDto>;
+  createUser(email: string, access: UserAccess, displayName?: string): Promise<UserDto>;
   updateUser(userId: string, patch: { status?: 'enabled' | 'disabled'; access?: UserAccess }): Promise<{ user: UserDto; disconnected: boolean }>;
   requestDeletion(): Promise<TenantDto>;
   cancelDeletion(): Promise<TenantDto>;
+  /** This workspace's administrative history (Admin only). */
+  tenantAudit(limit?: number): Promise<AdminAuditDto[]>;
   // Super Admin
-  listTenants(): Promise<TenantSummaryDto[]>;
-  createTenant(name: string, adminEmail: string): Promise<{ tenant: TenantDto; admin: UserDto }>;
+  listTenants(query?: TenantListQuery): Promise<TenantListResult>;
+  createTenant(name: string, adminEmail: string, displayName?: string): Promise<{ tenant: TenantDto; admin: UserDto }>;
   setTenantStatus(tenantId: string, status: 'active' | 'deactivated'): Promise<TenantDto>;
+  rejectDeletion(tenantId: string): Promise<TenantDto>;
+  platformAudit(limit?: number): Promise<AdminAuditDto[]>;
   approveDeletion(tenantId: string, confirmTenantId: string, confirmAdminEmail: string): Promise<{ usersDeleted: number }>;
   audit(): Promise<DeletionAudit[]>;
 }
@@ -116,12 +120,20 @@ export function createTenancyApi(fetchFn: FetchLike = (i, init) => fetch(i, init
     exportAll: () => call('GET', '/api/export'),
     whoami: () => call('GET', '/api/whoami'),
     listUsers: async () => (await call<{ users: UserDto[] }>('GET', '/api/tenant/users')).users,
-    createUser: async (email, access) => (await call<{ user: UserDto }>('POST', '/api/tenant/users', { email, access })).user,
+    createUser: async (email, access, displayName) => (await call<{ user: UserDto }>('POST', '/api/tenant/users', { email, access, ...(displayName === undefined || displayName.trim() === '' ? {} : { displayName }) })).user,
     updateUser: (userId, patch) => call('PATCH', `/api/tenant/users/${encodeURIComponent(userId)}`, patch),
-    requestDeletion: async () => (await call<{ tenant: TenantDto }>('POST', '/api/tenant/deletion-request', {})).tenant,
+    requestDeletion: async () => (await call<{ tenant: TenantDto }>('POST', '/api/tenant/deletion-request', { confirm: REQUEST_DELETION_CONFIRMATION })).tenant,
+    tenantAudit: async (limit = 100) => (await call<{ audit: AdminAuditDto[] }>('GET', `/api/tenant/audit?limit=${limit}`)).audit,
     cancelDeletion: async () => (await call<{ tenant: TenantDto }>('POST', '/api/tenant/deletion-request/cancel', {})).tenant,
-    listTenants: async () => (await call<{ tenants: TenantSummaryDto[] }>('GET', '/api/super/tenants')).tenants,
-    createTenant: (name, adminEmail) => call('POST', '/api/super/tenants', { name, adminEmail }),
+    listTenants: (query = {}) => {
+      const params = new URLSearchParams();
+      for (const [k, v] of Object.entries(query)) if (v !== undefined && v !== '') params.set(k, String(v));
+      const qs = params.toString();
+      return call<TenantListResult>('GET', `/api/super/tenants${qs === '' ? '' : `?${qs}`}`);
+    },
+    createTenant: (name, adminEmail, displayName) => call('POST', '/api/super/tenants', { name, adminEmail, ...(displayName === undefined || displayName.trim() === '' ? {} : { displayName }) }),
+    rejectDeletion: async (tenantId) => (await call<{ tenant: TenantDto }>('POST', `/api/super/tenants/${encodeURIComponent(tenantId)}/reject-deletion`, {})).tenant,
+    platformAudit: async (limit = 100) => (await call<{ audit: AdminAuditDto[] }>('GET', `/api/super/admin-audit?limit=${limit}`)).audit,
     setTenantStatus: async (tenantId, status) => (await call<{ tenant: TenantDto }>('PATCH', `/api/super/tenants/${encodeURIComponent(tenantId)}`, { status })).tenant,
     approveDeletion: (tenantId, confirmTenantId, confirmAdminEmail) =>
       call('POST', `/api/super/tenants/${encodeURIComponent(tenantId)}/delete`, { confirmTenantId, confirmAdminEmail }),

@@ -9,6 +9,7 @@
 
 import type { RecordKind, RecordPut, Role } from './protocol';
 import { LIMITS, isRecordKind } from './protocol';
+import type { UserLifecycle } from './lifecycle';
 
 // ---- vocabulary ----
 
@@ -45,6 +46,9 @@ export const REPLACE_CONFIRMATION = 'REPLACE';
 
 /** The exact word an Admin must type to switch a web workspace back to local storage (checked by BOTH the browser and the server). */
 export const SWITCH_TO_LOCAL_CONFIRMATION = 'LOCAL';
+
+/** The exact word an Admin must type to REQUEST deletion of their workspace (checked by BOTH the browser and the server). */
+export const REQUEST_DELETION_CONFIRMATION = 'DELETE';
 
 /** WebSocket close codes with a meaning for the client. */
 export const CLOSE_CODES = {
@@ -114,6 +118,20 @@ export function isManagedEmail(rawEmail: unknown, managedDomains: readonly strin
   return managedDomains.includes(emailDomain(email));
 }
 
+/**
+ * An optional person's display name: absent/empty means "none"; otherwise 1–80 characters, no
+ * control characters. It is display text only; identity is always the email.
+ */
+export function parseDisplayName(raw: unknown): { ok: true; value: string | null } | { ok: false } {
+  if (raw === undefined || raw === null) return { ok: true, value: null };
+  if (typeof raw !== 'string') return { ok: false };
+  const n = raw.normalize('NFKC').replace(/\s+/g, ' ').trim();
+  if (n === '') return { ok: true, value: null };
+  // eslint-disable-next-line no-control-regex
+  if (n.length > 80 || /[\u0000-\u001f\u007f<>]/.test(n)) return { ok: false };
+  return { ok: true, value: n };
+}
+
 /** A tenant's display name: 1–80 characters, no control characters. */
 export function normalizeTenantName(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
@@ -136,8 +154,11 @@ export interface TenantDto {
 
 export interface TenantSummaryDto extends TenantDto {
   adminEmail: string;
-  adminStatus: UserStatus;
+  adminDisplayName: string | null;
+  adminStatus: UserLifecycle;
   userCount: number;
+  /** Newest sign-in of anyone in the workspace (kept up to date at most every 12 h; see registry.ts). null = nobody has signed in. */
+  lastActivityAt: string | null;
   /** The Admin's address is outside the managed organisation domains (an older account): shown as a warning, never acted on. */
   adminOutsideManagedDomains: boolean;
 }
@@ -145,17 +166,80 @@ export interface TenantSummaryDto extends TenantDto {
 export interface UserDto {
   id: string;
   email: string;
+  displayName: string | null;
   role: 'admin' | 'user';
   access: UserAccess;
-  status: UserStatus;
+  status: UserLifecycle;
   createdAt: string;
   updatedAt: string;
+  /** Last sign-in/activity; bucketed (at most one write per person per 12 h), so approximate. */
   lastLoginAt: string | null;
+}
+
+/** Search/filter/sort/paging of the Super Admin's workspace list (all applied on the server). */
+export interface TenantListQuery {
+  q?: string;
+  status?: TenantStatus | 'disabled' | 'all';
+  mode?: StorageMode | 'all';
+  sort?: 'name' | 'created' | 'admin' | 'activity' | 'status' | 'accounts';
+  dir?: 'asc' | 'desc';
+  limit?: number;
+  offset?: number;
+}
+
+export interface TenantListResult {
+  tenants: TenantSummaryDto[];
+  total: number;
+}
+
+// ---- administrative audit trail (not the QA revision history) ----
+
+export const AUDIT_ACTIONS = [
+  'admin.created',
+  'tenant.disabled',
+  'tenant.reactivated',
+  'tenant.deletion_requested',
+  'tenant.deletion_cancelled',
+  'tenant.deletion_rejected',
+  'tenant.deletion_approved',
+  'tenant.deleted',
+  'user.created',
+  'user.disabled',
+  'user.reactivated',
+  'user.access_changed',
+  'storage.migration_uploaded',
+  'storage.web_activated',
+  'storage.local_activated',
+] as const;
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+/** What the Super Admin sees: platform-level events only. Account events inside a workspace stay with that workspace's Admin. */
+export const PLATFORM_AUDIT_ACTIONS: readonly AuditAction[] = AUDIT_ACTIONS.filter((a) => !a.startsWith('user.'));
+
+export interface AuditActor {
+  userId: string | null;
+  email: string;
+  role: AppRole;
+}
+
+export interface AdminAuditDto {
+  id: number;
+  at: string;
+  action: AuditAction;
+  actorEmail: string;
+  actorRole: AppRole;
+  tenantId: string | null;
+  targetType: 'tenant' | 'user' | null;
+  targetId: string | null;
+  targetEmail: string | null;
+  /** Safe, content-free details (names, counts, levels). Never tokens, secrets or workspace content. */
+  meta: Record<string, string | number | boolean | null>;
 }
 
 /** What `/api/whoami` tells the signed-in person about themselves. */
 export interface PrincipalDto {
   email: string;
+  displayName: string | null;
   role: AppRole;
   /** null for a super admin (they have no tenant). */
   tenant: TenantDto | null;

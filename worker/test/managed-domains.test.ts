@@ -3,6 +3,8 @@ import { RegistryStore } from '../src/registry';
 import { emailDomain, isManagedEmail, parseManagedDomains } from '../../shared/tenancy';
 import { createTestStorage } from './helpers/sqlJsStorage';
 
+const ACTOR = { userId: 'usr_x', email: 'admin@example.com', role: 'admin' as const };
+
 type TestStorage = Awaited<ReturnType<typeof createTestStorage>>;
 
 const RAKUTEN = parseManagedDomains('rakuten.com');
@@ -28,13 +30,13 @@ function createAdmin(adminEmail: string, domains: readonly string[] = RAKUTEN) {
 function webTenant(adminEmail = 'admin@rakuten.com', domains: readonly string[] = RAKUTEN) {
   const created = createAdmin(adminEmail, domains);
   if (!created.ok) throw new Error(`setup failed: ${created.error}`);
-  const set = reg.setStorageMode(created.value.tenant.id, 'web', now());
+  const set = reg.setStorageMode(created.value.tenant.id, 'web', ACTOR, now());
   if (!set.ok) throw new Error('setup failed');
   return created.value.tenant.id;
 }
 
 const createUser = (tenantId: string, email: string, domains: readonly string[] = RAKUTEN) =>
-  reg.createUser({ tenantId, email, access: 'editor', managedDomains: domains, reserved: SUPER, actorUserId: 'usr_x', now: now() });
+  reg.createUser({ tenantId, email, access: 'editor', managedDomains: domains, reserved: SUPER, actor: ACTOR, now: now() });
 
 describe('parseManagedDomains (the MANAGED_USER_EMAIL_DOMAINS setting)', () => {
   it('reads one or several domains, normalised and de-duplicated', () => {
@@ -191,13 +193,13 @@ describe('accounts that predate the rule are never touched', () => {
     const old = createAdmin('legacy.admin@gmail.com', broad);
     expect(old.ok).toBe(true);
     const tenantId = old.ok ? old.value.tenant.id : '';
-    reg.setStorageMode(tenantId, 'web', now());
+    reg.setStorageMode(tenantId, 'web', ACTOR, now());
 
     // The rule is tightened: the existing account still authenticates, its tenant is untouched ...
     const auth = reg.authenticate('legacy.admin@gmail.com', now());
     expect(auth.allowed).toBe(true);
     expect(reg.getTenant(tenantId)?.status).toBe('active');
-    expect(reg.listTenantSummaries().map((t) => t.adminEmail)).toContain('legacy.admin@gmail.com');
+    expect(reg.listTenantSummaries().rows.map((t) => t.adminEmail)).toContain('legacy.admin@gmail.com');
 
     // ... but it cannot add a Gmail user any more, and cannot add anyone while it is in a non-managed domain... only managed ones.
     expect(createUser(tenantId, 'friend@gmail.com')).toEqual({ ok: false, error: 'email_domain_not_allowed' });

@@ -59,9 +59,11 @@ import { BlockingPanel } from '../../components/BlockingPanel';
 import { MilestonePanel } from '../../components/MilestonePanel';
 import { RecoveryPanel } from '../../components/RecoveryPanel';
 import { useSharedGuard } from '../../app/useSharedGuard';
+import { useTenant } from '../../app/tenant-context';
+import { WorkspaceEmptyNotice } from './WorkspaceEmptyNotice';
 import { MultiDayTimeline } from '../../components/MultiDayTimeline';
 import { formatDate, formatDateDisplay, parseDate, todayEpochDays } from '../../lib/dates/dates';
-import { buildDayTimeline, getActiveProjects, portfolioSummary, type OverallFocus } from '../../domain/projects';
+import { buildDayTimeline, getActiveProjects, managerSummary, portfolioSummary, type OverallFocus } from '../../domain/projects';
 
 /** Upper bound of what-if rows (one projection per tester count). */
 const MAX_WHAT_IF_TESTERS = 200;
@@ -90,6 +92,7 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
   const app = useAppStateCtx();
   const { state, updateField, replaceState, resetToDemo, changeStartDate, deleteDailyExecutionEntry } = app;
   const guard = useSharedGuard();
+  const { principal } = useTenant();
   const reportsApi = useReportsStateCtx();
   const now = useNow(30_000);
   const [importMessage, setImportMessage] = useState<ImportMessage | null>(null);
@@ -106,6 +109,10 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
   const projectName = resolveBilingualName(lang, { nameEn: state.projectNameEn, nameJa: state.projectNameJa });
   const portfolio = useMemo(
     () => portfolioSummary(reportsApi.state.projects, today),
+    [reportsApi.state.projects, today],
+  );
+  const manager = useMemo(
+    () => managerSummary(reportsApi.state.projects, today, new Date().toISOString()),
     [reportsApi.state.projects, today],
   );
   // Project selector (header): every project, ordered by its stable Project
@@ -442,6 +449,7 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
   // ---- render (§8, §26) ------------------------------------------------------
   return (
     <div className="app">
+      <WorkspaceEmptyNotice lang={lang} principal={principal} projectCount={reportsApi.state.projects.length} />
       <header className="app-header">
         <div className="app-title-group">
           <h1>{t(lang, 'app.title')}</h1>
@@ -538,6 +546,29 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
               <span className="summary-card-value">{formatInteger(card.value, lang)}</span>
               <span className="summary-card-arrow" aria-hidden="true">→</span>
             </button>
+          ))}
+        </div>
+      ) : null}
+
+      {onOpenOverall !== undefined && manager.activeProjects + manager.completedProjects > 0 ? (
+        <div className="overall-summary dashboard-manager-summary" role="group" aria-label={t(lang, 'dashboard.manager.title')}>
+          {(
+            [
+              { key: 'dashboard.manager.needsAttention' as TranslationKey, value: formatInteger(manager.needsAttention, lang), warn: manager.needsAttention > 0 },
+              { key: 'dashboard.manager.overdue' as TranslationKey, value: formatInteger(manager.overdue, lang), warn: manager.overdue > 0 },
+              { key: 'dashboard.manager.executingToday' as TranslationKey, value: formatInteger(manager.executingToday, lang), warn: false },
+              { key: 'dashboard.manager.plannedCases' as TranslationKey, value: formatInteger(manager.plannedCases, lang), warn: false },
+              { key: 'dashboard.manager.remainingCases' as TranslationKey, value: formatInteger(manager.remainingCases, lang), warn: false },
+              { key: 'dashboard.manager.progress' as TranslationKey, value: manager.progress === null ? '—' : `${Math.round(manager.progress * 100)}%`, warn: false },
+            ] as const
+          ).map((card) => (
+            <div key={card.key} className={`summary-card${card.warn ? ' summary-card-warn' : ''}`}>
+              <span className="summary-card-label">{t(lang, card.key)}</span>
+              <span className="summary-card-value">
+                {card.warn ? <span aria-hidden="true">⚠ </span> : null}
+                {card.value}
+              </span>
+            </div>
           ))}
         </div>
       ) : null}

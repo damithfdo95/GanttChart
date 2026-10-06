@@ -21,7 +21,21 @@ import { parseEmailList, resolvePrincipal } from './principal';
 import type { RegistryError } from './registry';
 import { IDENTITY_EMAIL_HEADER, IDENTITY_EXPIRES_HEADER, IDENTITY_ROLE_HEADER, IDENTITY_USER_HEADER, LEGACY_WORKSPACE_NAME, TENANT_HEADER, WorkspaceRoom } from './workspaceRoom';
 import { RegistryRoom } from './registryRoom';
-import { CLOSE_CODES, REPLACE_CONFIRMATION, SWITCH_TO_LOCAL_CONFIRMATION, canonicalRecordsHash, emailDomain, isTenantId, isUserId, normalizeEmail, type DenyReason, type UserAccess } from '../../shared/tenancy';
+import {
+  CLOSE_CODES,
+  REPLACE_CONFIRMATION,
+  REQUEST_DELETION_CONFIRMATION,
+  SWITCH_TO_LOCAL_CONFIRMATION,
+  canonicalRecordsHash,
+  emailDomain,
+  isTenantId,
+  isUserId,
+  normalizeEmail,
+  type AuditActor,
+  type DenyReason,
+  type TenantListQuery,
+  type UserAccess,
+} from '../../shared/tenancy';
 
 export { WorkspaceRoom, RegistryRoom };
 
@@ -91,6 +105,14 @@ function member(ctx: Ctx): MemberPrincipal | null {
   return ctx.principal.kind === 'member' ? ctx.principal : null;
 }
 
+/**
+ * Who is acting, for the administrative audit trail. Taken ONLY from the verified principal: no request
+ * field, header or body can name the actor.
+ */
+function actorOf(principal: Principal): AuditActor {
+  return principal.kind === 'super_admin' ? { userId: null, email: principal.email, role: 'super_admin' } : { userId: principal.userId, email: principal.email, role: principal.role };
+}
+
 const FORGED_KEYS = ['tenantid', 'tenant_id', 'tenant', 'workspaceid', 'workspace_id', 'workspace'];
 
 /**
@@ -144,6 +166,7 @@ const REGISTRY_STATUS: Record<RegistryError, number> = {
   invalid_input: 400,
   email_taken: 409,
   email_reserved: 409,
+  invalid_display_name: 400,
   email_domain_not_allowed: 400,
   managed_domains_not_configured: 503,
   not_found: 404,
@@ -357,9 +380,10 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     const result = await ctx.registry.createUser({
       tenantId: p.tenantId, // from the principal, never from the body
       email: String(body.body.email ?? ''),
+      displayName: body.body.displayName,
       access,
       reserved: ctx.superAdmins,
-      actorUserId: p.userId,
+      actor: actorOf(p), // from the principal, never from the body
     });
     return result.ok ? json({ user: result.value }, 201) : registryProblem(result.error);
   }
@@ -376,6 +400,7 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
       userId: userRoute[1],
       status: body.body.status as 'enabled' | 'disabled' | undefined,
       access: body.body.access as UserAccess | undefined,
+      actor: actorOf(p),
     });
     if (!result.ok) return registryProblem(result.error);
     // A disabled user, or one whose access level changed, must not keep a live connection.
@@ -396,6 +421,8 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     if (denial !== null) return denial;
     const body = await readJson(ctx);
     if (!body.ok) return body.response;
+    // Asking for permanent deletion is deliberate: the typed word is checked HERE, not only in the browser.
+    if (body.body.confirm !== REQUEST_DELETION_CONFIRMATION) return problem(400, 'confirmation_required');
     const result = await ctx.registry.requestDeletion(p.tenantId, p.userId);
     return result.ok ? json({ tenant: result.value }) : registryProblem(result.error);
   }
@@ -406,6 +433,16 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     if (!body.ok) return body.response;
     const result = await ctx.registry.cancelDeletion(p.tenantId, p.userId);
     return result.ok ? json({ tenant: result.value }) : registryProblem(result.error);
+  }
+
+  // ---- this workspace's administrative history (Admin only; never another tenant's) ----
+  if (path === '/api/tenant/audit' && isRead) {
+    const denial = need(ctx, 'audit.tenant');
+    if (denial !== null) return denial;
+    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') ?? 100) || 100));
+    const beforeRaw = url.searchParams.get('before');
+    const before = beforeRaw === null ? undefined : (revisionParam(beforeRaw) ?? undefined);
+    return json({ audit: await ctx.registry.listAdminAudit({ kind: 'tenant', tenantId: p.tenantId }, limit, before) });
   }
 
   // ---- storage mode and migration (Admin) ----
@@ -437,7 +474,13 @@ async function storageRoutes(ctx: Ctx, p: MemberPrincipal): Promise<Response> {
     // Replacing existing cloud data is destructive: it needs the typed confirmation, checked HERE.
     if (replace && b.confirm !== REPLACE_CONFIRMATION) return problem(400, 'confirmation_required');
     const result = await room.importWorkspace(p.tenantId, { migrationId, records: b.records, expectedRevision: b.expectedRevision, replace, actor: p.email });
-    if (result.ok) return json(result);
+    if (result.ok) {
+      if (!result.alreadyApplied) {
+        const records = Object.values(result.counts).reduce((a, n) => a + n, 0);
+        await ctx.registry.appendAudit({ action: 'storage.migration_uploaded', actor: actorOf(p), tenantId: p.tenantId, meta: { revision: result.revision, records, replaced: replace } });
+      }
+      return json(result);
+    }
     const status = result.error === 'invalid' ? 400 : result.error === 'failed' ? 500 : 409;
     return problem(status, result.error, { message: result.message, revision: result.revision });
   }
@@ -451,7 +494,7 @@ async function storageRoutes(ctx: Ctx, p: MemberPrincipal): Promise<Response> {
     const state = await room.verifyState(p.tenantId);
     if (state.revision !== revision || state.hash !== hash) return problem(409, 'verification_failed', { revision: state.revision });
     await room.thaw(p.tenantId);
-    const result = await ctx.registry.setStorageMode(p.tenantId, 'web');
+    const result = await ctx.registry.setStorageMode(p.tenantId, 'web', actorOf(p));
     return result.ok ? json({ tenant: result.value }) : registryProblem(result.error);
   }
 
@@ -466,7 +509,7 @@ async function storageRoutes(ctx: Ctx, p: MemberPrincipal): Promise<Response> {
     if (p.storageMode !== 'web') return problem(409, 'wrong_mode');
     const frozen = await room.freezeIfUnchanged(p.tenantId, { revision, hash });
     if (!frozen.ok) return problem(409, frozen.error);
-    const result = await ctx.registry.setStorageMode(p.tenantId, 'local');
+    const result = await ctx.registry.setStorageMode(p.tenantId, 'local', actorOf(p));
     if (!result.ok) {
       await room.thaw(p.tenantId); // roll back: the workspace stays live
       return registryProblem(result.error);
@@ -488,7 +531,9 @@ async function superRoutes(ctx: Ctx): Promise<Response | null> {
   if (path === '/api/super/tenants' && method === 'GET') {
     const denial = need(ctx, 'registry.view');
     if (denial !== null) return denial;
-    return json({ tenants: await ctx.registry.listTenants() });
+    const query = parseTenantQuery(ctx.url.searchParams);
+    if (query === null) return problem(400, 'invalid_query');
+    return json(await ctx.registry.listTenants(query));
   }
 
   if (path === '/api/super/tenants' && method === 'POST') {
@@ -496,7 +541,13 @@ async function superRoutes(ctx: Ctx): Promise<Response | null> {
     if (denial !== null) return denial;
     const body = await readJson(ctx);
     if (!body.ok) return body.response;
-    const result = await ctx.registry.createTenant({ name: String(body.body.name ?? ''), adminEmail: String(body.body.adminEmail ?? ''), reserved: ctx.superAdmins, actorEmail: actor });
+    const result = await ctx.registry.createTenant({
+      name: String(body.body.name ?? ''),
+      adminEmail: String(body.body.adminEmail ?? ''),
+      displayName: body.body.displayName,
+      reserved: ctx.superAdmins,
+      actorEmail: actor,
+    });
     return result.ok ? json(result.value, 201) : registryProblem(result.error);
   }
 
@@ -504,6 +555,16 @@ async function superRoutes(ctx: Ctx): Promise<Response | null> {
     const denial = need(ctx, 'registry.view');
     if (denial !== null) return denial;
     return json({ audit: await ctx.registry.listAudit() });
+  }
+
+  // Platform-level administrative history: workspace events only, never account events inside a workspace.
+  if (path === '/api/super/admin-audit' && method === 'GET') {
+    const denial = need(ctx, 'audit.platform');
+    if (denial !== null) return denial;
+    const limit = Math.min(200, Math.max(1, Number(ctx.url.searchParams.get('limit') ?? 100) || 100));
+    const beforeRaw = ctx.url.searchParams.get('before');
+    const before = beforeRaw === null ? undefined : (revisionParam(beforeRaw) ?? undefined);
+    return json({ audit: await ctx.registry.listAdminAudit({ kind: 'platform' }, limit, before) });
   }
 
   if (path === '/api/super/legacy/adopt' && method === 'POST') {
@@ -514,7 +575,7 @@ async function superRoutes(ctx: Ctx): Promise<Response | null> {
     return adoptLegacy(ctx, body.body.tenantId);
   }
 
-  const one = /^\/api\/super\/tenants\/([^/]+)(\/delete)?$/.exec(path);
+  const one = /^\/api\/super\/tenants\/([^/]+)(\/delete|\/reject-deletion)?$/.exec(path);
   if (one !== null) {
     const tenantId = one[1];
     if (!isTenantId(tenantId)) return problem(400, 'invalid_tenant_id');
@@ -526,15 +587,61 @@ async function superRoutes(ctx: Ctx): Promise<Response | null> {
       if (!body.ok) return body.response;
       const status = body.body.status;
       if (status !== 'active' && status !== 'deactivated') return problem(400, 'invalid_status');
-      const result = await ctx.registry.setTenantStatus(tenantId, status);
+      const result = await ctx.registry.setTenantStatus(tenantId, status, actor);
       if (!result.ok) return registryProblem(result.error);
       if (status === 'deactivated') await ctx.env.WORKSPACE.getByName(tenantId).disconnectAll(tenantId, CLOSE_CODES.accessRevoked, 'workspace deactivated');
       return json({ tenant: result.value });
     }
 
     if (one[2] === '/delete' && method === 'POST') return approveDeletion(ctx, tenantId, actor);
+
+    if (one[2] === '/reject-deletion' && method === 'POST') {
+      const denial = need(ctx, 'tenant.rejectDeletion');
+      if (denial !== null) return denial;
+      const body = await readJson(ctx);
+      if (!body.ok) return body.response;
+      const result = await ctx.registry.rejectDeletion(tenantId, actor);
+      return result.ok ? json({ tenant: result.value }) : registryProblem(result.error);
+    }
   }
   return null;
+}
+
+const TENANT_SORTS: ReadonlySet<string> = new Set(['name', 'created', 'admin', 'activity', 'status', 'accounts']);
+const TENANT_STATUS_FILTERS: ReadonlySet<string> = new Set(['all', 'active', 'disabled', 'deactivated', 'deletion_requested', 'deleting']);
+
+/** The Super Admin list's search/filter/sort/paging, validated; null = a value that is not allowed. */
+function parseTenantQuery(params: URLSearchParams): TenantListQuery | null {
+  const query: TenantListQuery = {};
+  const q = params.get('q');
+  if (q !== null) query.q = q.slice(0, 100);
+  const status = params.get('status');
+  if (status !== null) {
+    if (!TENANT_STATUS_FILTERS.has(status)) return null;
+    query.status = status as TenantListQuery['status'];
+  }
+  const mode = params.get('mode');
+  if (mode !== null) {
+    if (mode !== 'all' && mode !== 'local' && mode !== 'web') return null;
+    query.mode = mode;
+  }
+  const sort = params.get('sort');
+  if (sort !== null) {
+    if (!TENANT_SORTS.has(sort)) return null;
+    query.sort = sort as TenantListQuery['sort'];
+  }
+  const dir = params.get('dir');
+  if (dir !== null) {
+    if (dir !== 'asc' && dir !== 'desc') return null;
+    query.dir = dir;
+  }
+  for (const key of ['limit', 'offset'] as const) {
+    const raw = params.get(key);
+    if (raw === null) continue;
+    if (!/^\d{1,6}$/.test(raw)) return null;
+    query[key] = Number(raw);
+  }
+  return query;
 }
 
 /**

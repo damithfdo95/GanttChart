@@ -8,7 +8,7 @@
  */
 
 import { DurableObject } from 'cloudflare:workers';
-import { isManagedEmail, parseManagedDomains, type StorageMode, type TenantDto, type TenantSummaryDto, type UserAccess, type UserDto } from '../../shared/tenancy';
+import { isManagedEmail, parseManagedDomains, type AdminAuditDto, type AuditAction, type AuditActor, type StorageMode, type TenantDto, type TenantListQuery, type TenantListResult, type UserAccess, type UserDto } from '../../shared/tenancy';
 import { RegistryStore, toTenantDto, toUserDto, type AuthResult, type DeletionAuditRow, type Reg } from './registry';
 
 const mapReg = <A, B>(r: Reg<A>, f: (a: A) => B): Reg<B> => (r.ok ? { ok: true, value: f(r.value) } : r);
@@ -55,17 +55,32 @@ export class RegistryRoom extends DurableObject<Env> {
 
   // ---- Super Admin ----
 
-  async listTenants(): Promise<TenantSummaryDto[]> {
+  async listTenants(query: TenantListQuery = {}): Promise<TenantListResult> {
     const domains = this.managedDomains();
-    return this.store.listTenantSummaries().map((t) => ({ ...t, adminOutsideManagedDomains: t.adminEmail !== '' && !isManagedEmail(t.adminEmail, domains) }));
+    const { rows, total } = this.store.listTenantSummaries(query);
+    return { total, tenants: rows.map((t) => ({ ...t, adminOutsideManagedDomains: t.adminEmail !== '' && !isManagedEmail(t.adminEmail, domains) })) };
   }
 
-  async createTenant(input: { name: string; adminEmail: string; reserved: string[]; actorEmail: string }): Promise<Reg<{ tenant: TenantDto; admin: UserDto }>> {
+  /** Administrative audit entries for ONE reader scope. The Worker chooses the scope from the verified principal. */
+  async listAdminAudit(scope: { kind: 'platform' } | { kind: 'tenant'; tenantId: string }, limit?: number, beforeId?: number): Promise<AdminAuditDto[]> {
+    return this.store.listAdminAudit(scope, limit, beforeId);
+  }
+
+  /** An event that happens outside the registry (e.g. a workspace upload) but belongs in the trail. The actor comes from the Worker's verified principal. */
+  async appendAudit(entry: { action: AuditAction; actor: AuditActor; tenantId: string; meta?: Record<string, string | number | boolean | null> }): Promise<void> {
+    this.store.appendAudit({ at: this.now(), action: entry.action, actor: entry.actor, tenantId: entry.tenantId, targetType: 'tenant', targetId: entry.tenantId, meta: entry.meta });
+  }
+
+  async createTenant(input: { name: string; adminEmail: string; displayName?: unknown; reserved: string[]; actorEmail: string }): Promise<Reg<{ tenant: TenantDto; admin: UserDto }>> {
     return mapReg(this.store.createTenantWithAdmin({ ...input, managedDomains: this.managedDomains(), now: this.now() }), (v) => ({ tenant: toTenantDto(v.tenant), admin: toUserDto(v.admin) }));
   }
 
-  async setTenantStatus(tenantId: string, status: 'active' | 'deactivated'): Promise<Reg<TenantDto>> {
-    return mapReg(this.store.setTenantStatus(tenantId, status, this.now()), toTenantDto);
+  async setTenantStatus(tenantId: string, status: 'active' | 'deactivated', actorEmail: string): Promise<Reg<TenantDto>> {
+    return mapReg(this.store.setTenantStatus(tenantId, status, actorEmail, this.now()), toTenantDto);
+  }
+
+  async rejectDeletion(tenantId: string, actorEmail: string): Promise<Reg<TenantDto>> {
+    return mapReg(this.store.rejectDeletion({ tenantId, actorEmail, now: this.now() }), toTenantDto);
   }
 
   async beginDeletion(tenantId: string, approverEmail: string): Promise<Reg<{ tenant: TenantDto; requesterEmail: string }>> {
@@ -86,16 +101,16 @@ export class RegistryRoom extends DurableObject<Env> {
     return this.store.listUsers(tenantId).map(toUserDto);
   }
 
-  async createUser(input: { tenantId: string; email: string; access: UserAccess; reserved: string[]; actorUserId: string }): Promise<Reg<UserDto>> {
+  async createUser(input: { tenantId: string; email: string; displayName?: unknown; access: UserAccess; reserved: string[]; actor: AuditActor }): Promise<Reg<UserDto>> {
     return mapReg(this.store.createUser({ ...input, managedDomains: this.managedDomains(), now: this.now() }), toUserDto);
   }
 
-  async updateUser(input: { tenantId: string; userId: string; status?: 'enabled' | 'disabled'; access?: UserAccess }): Promise<Reg<UserDto>> {
+  async updateUser(input: { tenantId: string; userId: string; status?: 'enabled' | 'disabled'; access?: UserAccess; actor: AuditActor }): Promise<Reg<UserDto>> {
     return mapReg(this.store.updateUser({ ...input, now: this.now() }), toUserDto);
   }
 
-  async setStorageMode(tenantId: string, mode: StorageMode): Promise<Reg<TenantDto>> {
-    return mapReg(this.store.setStorageMode(tenantId, mode, this.now()), toTenantDto);
+  async setStorageMode(tenantId: string, mode: StorageMode, actor: AuditActor): Promise<Reg<TenantDto>> {
+    return mapReg(this.store.setStorageMode(tenantId, mode, actor, this.now()), toTenantDto);
   }
 
   async renameTenant(tenantId: string, name: string): Promise<Reg<TenantDto>> {

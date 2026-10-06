@@ -81,12 +81,12 @@ describe('deactivated tenants', () => {
 });
 
 describe('user management (Admin of a WEB workspace)', () => {
-  it('creates invited users bound to the admin’s tenant; the first sign-in activates them', async () => {
+  it('creates active users bound to the admin’s tenant (there is no invited state)', async () => {
     const w = await twoTenants();
     const e = email('fresh');
     const created = await post<{ user: UserDto }>(w.a.adminEmail, '/api/tenant/users', { email: e.toUpperCase(), access: 'viewer' });
     expect(created.status).toBe(201);
-    expect(created.json.user).toMatchObject({ email: e, role: 'user', access: 'viewer', status: 'invited' });
+    expect(created.json.user).toMatchObject({ email: e, role: 'user', access: 'viewer', status: 'active' });
     expect(created.json.user.id).toMatch(/^usr_/);
     expect((await whoami(e)).json).toMatchObject({ role: 'user', access: 'viewer' });
     expect((await listUsers(w.a.adminEmail)).find((u) => u.email === e)).toMatchObject({ status: 'active' });

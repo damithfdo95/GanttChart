@@ -100,7 +100,7 @@ describe('User A cannot reach tenant B', () => {
       ['GET', '/api/tenant/storage/inspect'],
       ['POST', '/api/tenant/storage/upload', { migrationId: 'm', expectedRevision: 1, records: [] }],
       ['POST', '/api/tenant/storage/deactivate-web', { revision: 1, hash: 'x' }],
-      ['POST', '/api/tenant/deletion-request'],
+      ['POST', '/api/tenant/deletion-request', { confirm: 'DELETE' }],
       ['GET', '/api/super/tenants'],
       ['POST', '/api/super/tenants', { name: 'x', adminEmail: email('x') }],
       ['POST', `/api/super/tenants/${w.b.id}/delete`, { confirmTenantId: w.b.id, confirmAdminEmail: w.b.adminEmail }],

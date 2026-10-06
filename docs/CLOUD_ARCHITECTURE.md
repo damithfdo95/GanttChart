@@ -603,3 +603,65 @@ workspaces and the existing Gmail test workspace are untouched. Device links are
   banners because the person may still need to download or keep their unsent changes.
 * Device ownership is unchanged: a different identity never inherits another's device-linked copy (see `startupDecision.ts`).
 
+## 15. Stage 7: account lifecycle, administration, audit trail
+
+Status: implemented and tested locally; **not deployed**. Operator-facing description: [ADMINISTRATION.md](ADMINISTRATION.md).
+
+### 15.1 Audit of Stage 6 against the new requirements
+
+| Finding | Consequence |
+|---|---|
+| Workspace status values (`active`, `deactivated`, `deletion_requested`, `deleting`) were checked by scattered comparisons | One transition table, `shared/lifecycle.ts`; the registry asks it for every change |
+| `users.status = 'invited'` had no behaviour of its own (nothing is invited by email); it only flipped to `active` on first sign-in | Presented as `active`; new accounts are created `active`; stored legacy rows keep working and are never migrated |
+| Only the requesting Admin could end a deletion request | Added the Super Admin's **reject** (`POST /api/super/tenants/:id/reject-deletion`) |
+| Requesting deletion needed a click in the browser only | The server now requires the typed word `DELETE` |
+| No record of who did what | `admin_audit` (append-only, below) |
+| The Super Admin list returned everything, unsorted | Server-side search / filter / sort / paging (`GET /api/super/tenants?q&status&mode&sort&dir&limit&offset`), response `{ tenants, total }` |
+| Admins and Users had no display names | Optional `users.display_name`, text only |
+| Several consequential actions used `window.confirm` | One accessible `ConfirmDialog` (severity, typed words, focus handling) for the new administration actions |
+
+### 15.2 Lifecycle model
+
+See the transition table in `shared/lifecycle.ts` (tested exhaustively). In short: a workspace is Active, Disabled or
+Deletion requested (then Deleting, then gone); an account is Active or Disabled. **Disabled never means
+deletion-requested.** Disabling a workspace closes every open WebSocket of the Admin and all Users (close code 4403)
+and refuses them at sign-in; reactivation restores access without touching data.
+
+### 15.3 Audit trail design
+
+* Table `admin_audit` in the **registry** Durable Object (control plane): `id`, `at`, `action`, `actor_user_id`,
+  `actor_email`, `actor_role`, `tenant_id`, `target_type`, `target_id`, `target_email`, `meta` (JSON of short, content-free
+  values; anything else is dropped at write time).
+* **Written in the same transaction** as the change it records (a failed audit write undoes the change).
+* **Append-only in the database**: `BEFORE UPDATE` and `BEFORE DELETE` triggers abort. There is no route that writes or edits
+  entries; entries outlive deleted workspaces (no foreign key).
+* **The actor is derived on the server** from the verified principal (`actorOf` in the Worker); no request field names an actor.
+* **Scopes decided by the server**: `GET /api/super/admin-audit` (Super Admin: workspace-level actions only, i.e. not
+  `user.*`); `GET /api/tenant/audit` (Admin: rows of their own tenant id, taken from the principal). Users and everyone else: refused.
+* Kept separate from the QA revision history (`record_history` in the workspace Durable Object) and from `deletion_audit`
+  (the minimal deletion record, unchanged).
+
+### 15.4 Last activity
+
+The existing `users.last_login_at` is written by the sign-in path at most once per person per 12 hours; a workspace's last
+activity is the newest of its accounts. No new writes. Per-request or per-message timestamps were rejected for free-plan
+efficiency.
+
+### 15.5 Schema and compatibility
+
+Additive only: `users.display_name`, the `admin_audit` table, its index and two triggers, created or added in place by
+`RegistryStore.init()`. **No new Durable Object class or migration tag.** The Stage 5/6 schema is reproduced and upgraded in a unit
+test (rows preserved, repeatable). Older Workers/clients: `displayName` is optional on the wire (the client tolerates its absence).
+
+### 15.6 Interface changes
+
+Public page unchanged. Authenticated shell: account badge (name, role, workspace, mode) + Logout; navigation adds **History** (moved
+out of Settings) and **Team / Users** (Admin only); Platform Administration has Overview, Admin workspaces, Deletion requests and Audit
+log. The dashboard gains an execution summary (needs attention, overdue, executing today, planned/remaining cases, progress) computed only from
+existing project data.
+
+### 15.7 Free-plan impact
+
+Audit entries are written only on administrative actions (a few per day at most). No per-request writes were added. The list endpoint reads
+the (small) registry with indexed filters. No new Cloudflare product.
+

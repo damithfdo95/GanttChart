@@ -77,6 +77,9 @@ Without the backend it is exactly the local-only app described above.
   steps and the cost ($0 on the Free plans):
   [docs/DEPLOYMENT_PLAN.md](docs/DEPLOYMENT_PLAN.md)
 
+Administration (accounts, workspaces, audit trail, storage modes) is described in
+[docs/ADMINISTRATION.md](docs/ADMINISTRATION.md), including the design notes for the next stage of QA-manager features.
+
 How it is organized in short: the site address shows a **public sign-in page** (static, no
 data); **Sign in** goes through Cloudflare Access; the application then looks the verified email
 up in its own registry. **Cloudflare authentication is not GanttChart authorization:** a verified

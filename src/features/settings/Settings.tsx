@@ -7,8 +7,6 @@ import { DEFAULT_AUTO_BACKUP_SETTINGS, defaultReportsState } from '../../lib/sto
 import { isFolderAccessSupported, pickBackupDirectory, readAutoBackupRecord } from '../../lib/backup/autoBackup';
 import { clearAllLocalDataAsync, getStorageDiagnostics, type StorageDiagnostics } from '../../lib/storage/db/persistenceBackend';
 import { MIGRATION_FAILURE_LABEL_KEY, readMigrationFailureRecord } from '../../lib/storage/db/recovery';
-import { RevisionHistory } from './RevisionHistory';
-import { SharedHistory } from './SharedHistory';
 import { WorkspacePanel } from '../tenancy/WorkspacePanel';
 import { useSharedSync } from '../../app/shared-sync';
 import { unlinkDevice } from '../../lib/sync/device';
@@ -309,7 +307,7 @@ export function Settings() {
 
       <WorkspacePanel />
 
-      {shared.enabled ? <SharedHistory /> : <RevisionHistory />}
+      <p className="dr-summary">{t(lang, 'settings.historyMoved')}</p>
 
       <section className="dr-section danger-zone">
         <h2>{t(lang, 'settings.dangerZone')}</h2>

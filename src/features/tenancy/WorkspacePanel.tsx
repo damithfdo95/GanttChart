@@ -1,21 +1,22 @@
 import { useMemo, useState } from 'react';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
 import { useTenant } from '../../app/tenant-context';
+import { useConfirm } from '../../components/ConfirmDialog';
 import { t, type TranslationKey } from '../../i18n';
-import type { TenantDto } from '../../../shared/tenancy';
+import { REQUEST_DELETION_CONFIRMATION, type TenantDto } from '../../../shared/tenancy';
 import { browserMigrationDeps } from './migrationDeps';
 import { MigrateToLocal } from './MigrateToLocal';
 import { MigrateToWeb } from './MigrateToWeb';
-import { UsersManager } from './UsersManager';
+import { StorageModeExplainer } from './TeamScreen';
 import { errorKey, isSessionEnded, panelCapabilities, whenText } from './format';
 import { useSession } from '../../app/session-context';
 
 type Dialog = 'to-web' | 'to-local' | null;
 
 /**
- * Settings → Workspace: who you are, which workspace, where its data lives.
- * Admins also get storage migration, user management and the deletion request;
- * users only see their own workspace and role. Renders nothing without a backend.
+ * Settings -> Workspace: who you are, which workspace, where its data lives.
+ * Admins also get storage migration (Local to Web, Web to Local) and the deletion request; users only see
+ * their own workspace and role. User management lives on the Team / Users screen. Renders nothing without a backend.
  */
 export function WorkspacePanel() {
   const { principal, api } = useTenant();
@@ -27,6 +28,7 @@ export function WorkspacePanel() {
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const session = useSession();
+  const confirm = useConfirm();
 
   const tenant = tenantOverride ?? principal?.tenant ?? null;
   const deps = useMemo(
@@ -40,15 +42,51 @@ export function WorkspacePanel() {
   const roleText = t(lang, `tenancy.role.${principal.role}` as TranslationKey);
   const current = { app: app.state, reports: reports.state };
 
-  const deletionAction = async (action: 'request' | 'cancel'): Promise<void> => {
-    if (action === 'request' && !window.confirm(t(lang, 'tenancy.delete.requestConfirm'))) return;
+  const handle = (e: unknown): void => {
+    if (isSessionEnded(e)) session.endSession('expired');
+    else setMessage({ kind: 'error', text: t(lang, errorKey(e)) });
+  };
+
+  const requestDeletion = async (): Promise<void> => {
+    const ok = await confirm({
+      title: t(lang, 'tenancy.delete.requestTitle'),
+      body: (
+        <>
+          <p>{t(lang, 'tenancy.delete.requestScope', { name: tenant.name })}</p>
+          <ul>
+            {(['deleteItem1', 'deleteItem2', 'deleteItem3', 'deleteItem4', 'deleteItem5', 'deleteItem6'] as const).map((k) => (
+              <li key={k}>{t(lang, `tenancy.super.${k}`)}</li>
+            ))}
+          </ul>
+          <p>
+            <strong>{t(lang, 'tenancy.delete.requestNothingYet')}</strong>
+          </p>
+        </>
+      ),
+      confirmLabel: t(lang, 'tenancy.delete.requestButton'),
+      cancelLabel: t(lang, 'tenancy.cancel'),
+      severity: 'danger',
+      typed: [{ label: t(lang, 'tenancy.toWeb.typeToConfirm', { word: REQUEST_DELETION_CONFIRMATION }), expected: REQUEST_DELETION_CONFIRMATION }],
+    });
+    if (!ok) return;
     setBusy(true);
     setMessage(null);
     try {
-      setTenantOverride(action === 'request' ? await api.requestDeletion() : await api.cancelDeletion());
+      setTenantOverride(await api.requestDeletion());
     } catch (e) {
-      if (isSessionEnded(e)) session.endSession('expired');
-      else setMessage({ kind: 'error', text: t(lang, errorKey(e)) });
+      handle(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancelDeletion = async (): Promise<void> => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      setTenantOverride(await api.cancelDeletion());
+    } catch (e) {
+      handle(e);
     } finally {
       setBusy(false);
     }
@@ -67,9 +105,12 @@ export function WorkspacePanel() {
             <p>
               <strong>{t(lang, 'tenancy.panel.storage')}:</strong> {t(lang, `tenancy.mode.${tenant.storageMode}` as TranslationKey)}
             </p>
-            <p className="dr-summary">{t(lang, tenant.storageMode === 'web' ? 'tenancy.panel.webHelp' : 'tenancy.panel.localHelp')}</p>
+            <StorageModeExplainer lang={lang} mode={tenant.storageMode} />
             {tenant.status === 'deletion_requested' ? (
-              <p role="status">{t(lang, 'tenancy.panel.deletionBanner', { when: whenText(tenant.deletionRequestedAt, lang) })}</p>
+              <p role="status">
+                <span aria-hidden="true">⚠ </span>
+                {t(lang, 'tenancy.panel.deletionBanner', { when: whenText(tenant.deletionRequestedAt, lang) })}
+              </p>
             ) : null}
             <div className="dr-button-row">
               {tenant.storageMode === 'local' ? (
@@ -94,20 +135,14 @@ export function WorkspacePanel() {
             })}
           </p>
         )}
-        {message === null ? null : (
-          <p className={`data-controls-message ${message.kind}`} role="alert">
-            {message.text}
-          </p>
-        )}
+        <div aria-live="polite">
+          {message === null ? null : (
+            <p className={`data-controls-message ${message.kind}`} role="alert">
+              {message.text}
+            </p>
+          )}
+        </div>
       </section>
-
-      {caps.canManageUsers ? <UsersManager lang={lang} api={api} /> : null}
-      {isAdmin && !caps.canManageUsers ? (
-        <section className="dr-section">
-          <h2>{t(lang, 'tenancy.users.title')}</h2>
-          <p className="dr-summary">{t(lang, 'tenancy.users.localOnly')}</p>
-        </section>
-      ) : null}
 
       {caps.canRequestDeletion ? (
         <section className="dr-section danger-zone" aria-labelledby="tenancy-delete-title">
@@ -115,13 +150,16 @@ export function WorkspacePanel() {
           <p className="dr-summary">{t(lang, 'tenancy.delete.help')}</p>
           {tenant.status === 'deletion_requested' ? (
             <>
-              <p role="status">{t(lang, 'tenancy.delete.requested', { when: whenText(tenant.deletionRequestedAt, lang) })}</p>
-              <button type="button" className="btn" disabled={busy} onClick={() => void deletionAction('cancel')}>
+              <p role="status">
+                <span aria-hidden="true">⚠ </span>
+                <strong>{t(lang, 'tenancy.tenantStatus.deletion_requested')}</strong> — {t(lang, 'tenancy.delete.requested', { when: whenText(tenant.deletionRequestedAt, lang) })}
+              </p>
+              <button type="button" className="btn" disabled={busy} onClick={() => void cancelDeletion()}>
                 {t(lang, 'tenancy.delete.cancel')}
               </button>
             </>
           ) : (
-            <button type="button" className="btn btn-danger" disabled={busy} onClick={() => void deletionAction('request')}>
+            <button type="button" className="btn btn-danger" disabled={busy} onClick={() => void requestDeletion()}>
               {t(lang, 'tenancy.delete.request')}
             </button>
           )}

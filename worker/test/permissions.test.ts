@@ -4,15 +4,15 @@ import { isSuperAdminEmail, parseEmailList, principalFromAuth, resolvePrincipal 
 import type { AuthResult, TenantRow, UserRow } from '../src/registry';
 
 const ACTIONS: Action[] = [
-  'registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'legacy.adopt',
-  'tenant.view', 'tenant.requestDeletion', 'storage.migrate', 'users.manage',
+  'registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'audit.platform', 'legacy.adopt',
+  'tenant.view', 'tenant.requestDeletion', 'storage.migrate', 'users.manage', 'audit.tenant',
   'data.read', 'data.write', 'data.restore', 'data.replace',
 ];
 
 const SUPER: Principal = { kind: 'super_admin', email: 'super@example.com' };
 const member = (over: Partial<MemberPrincipal>): MemberPrincipal => ({
   kind: 'member', email: 'x@example.com', userId: 'usr_x', tenantId: 'ten_x', tenantName: 'T',
-  role: 'user', access: 'editor', storageMode: 'web', tenantStatus: 'active', ...over,
+  role: 'user', displayName: null, access: 'editor', storageMode: 'web', tenantStatus: 'active', ...over,
 });
 const allowedFor = (p: Principal | null) => ACTIONS.filter((a) => can(p, a)).sort();
 
@@ -22,7 +22,7 @@ describe('permission matrix (default deny)', () => {
   });
 
   it('Super Admin: control-plane actions ONLY, never tenant QA data or tenant internals', () => {
-    expect(allowedFor(SUPER)).toEqual(['legacy.adopt', 'registry.view', 'tenant.approveDeletion', 'tenant.create', 'tenant.setStatus']);
+    expect(allowedFor(SUPER)).toEqual(['audit.platform', 'legacy.adopt', 'registry.view', 'tenant.approveDeletion', 'tenant.create', 'tenant.rejectDeletion', 'tenant.setStatus']);
     for (const a of ['data.read', 'data.write', 'data.restore', 'data.replace', 'users.manage', 'storage.migrate', 'tenant.view'] as const) {
       expect(can(SUPER, a)).toBe(false);
     }
@@ -30,12 +30,12 @@ describe('permission matrix (default deny)', () => {
 
   it('Admin of a WEB workspace: everything inside their tenant, nothing in the control plane', () => {
     expect(allowedFor(member({ role: 'admin' }))).toEqual(
-      ['data.read', 'data.replace', 'data.restore', 'data.write', 'storage.migrate', 'tenant.requestDeletion', 'tenant.view', 'users.manage'],
+      ['audit.tenant', 'data.read', 'data.replace', 'data.restore', 'data.write', 'storage.migrate', 'tenant.requestDeletion', 'tenant.view', 'users.manage'],
     );
   });
 
   it('Admin of a LOCAL workspace: no shared data and cannot manage users, but can migrate and request deletion', () => {
-    expect(allowedFor(member({ role: 'admin', storageMode: 'local' }))).toEqual(['storage.migrate', 'tenant.requestDeletion', 'tenant.view']);
+    expect(allowedFor(member({ role: 'admin', storageMode: 'local' }))).toEqual(['audit.tenant', 'storage.migrate', 'tenant.requestDeletion', 'tenant.view']);
   });
 
   it('User (editor) in a web workspace: read + write only', () => {
@@ -50,7 +50,7 @@ describe('permission matrix (default deny)', () => {
     for (const storageMode of ['web', 'local'] as const) {
       for (const access of ['editor', 'viewer'] as const) {
         const u = member({ role: 'user', access, storageMode });
-        for (const a of ['users.manage', 'storage.migrate', 'tenant.requestDeletion', 'data.restore', 'data.replace', 'registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'legacy.adopt'] as const) {
+        for (const a of ['users.manage', 'audit.tenant', 'audit.platform', 'storage.migrate', 'tenant.requestDeletion', 'data.restore', 'data.replace', 'registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'legacy.adopt'] as const) {
           expect(can(u, a), `${storageMode}/${access}/${a}`).toBe(false);
         }
       }
@@ -59,7 +59,7 @@ describe('permission matrix (default deny)', () => {
 
   it('an Admin can never perform a Super Admin action', () => {
     for (const storageMode of ['web', 'local'] as const) {
-      for (const a of ['registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'legacy.adopt'] as const) {
+      for (const a of ['registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'audit.platform', 'legacy.adopt'] as const) {
         expect(can(member({ role: 'admin', storageMode }), a)).toBe(false);
       }
     }
@@ -106,7 +106,7 @@ describe('derived roles', () => {
   it('the DTO for the browser carries no internal ids beyond the tenant', () => {
     const dto = toPrincipalDto(member({ role: 'user', access: 'viewer' }), { id: 'ten_x', name: 'T', storageMode: 'web', status: 'active', createdAt: 'c', deletionRequestedAt: null });
     expect(dto).toEqual({
-      email: 'x@example.com', role: 'user', access: 'viewer', workspaceRole: 'viewer', sharedWorkspace: true,
+      email: 'x@example.com', displayName: null, role: 'user', access: 'viewer', workspaceRole: 'viewer', sharedWorkspace: true,
       tenant: { id: 'ten_x', name: 'T', storageMode: 'web', status: 'active', createdAt: 'c', deletionRequestedAt: null },
     });
     expect(JSON.stringify(dto)).not.toContain('usr_');
@@ -116,7 +116,7 @@ describe('derived roles', () => {
 
 describe('resolving a verified email', () => {
   const tenant: TenantRow = { id: 'ten_a', name: 'A', storage_mode: 'web', status: 'active', created_at: '', updated_at: '', deletion_requested_at: null, deletion_requested_by: null };
-  const user = (over: Partial<UserRow>): UserRow => ({ id: 'usr_a', email: 'a@example.com', tenant_id: 'ten_a', role: 'user', access: 'editor', status: 'active', created_at: '', updated_at: '', created_by: null, last_login_at: null, ...over });
+  const user = (over: Partial<UserRow>): UserRow => ({ id: 'usr_a', email: 'a@example.com', tenant_id: 'ten_a', role: 'user', access: 'editor', status: 'active', created_at: '', updated_at: '', created_by: null, last_login_at: null, display_name: null, ...over });
   const supers = ['super@example.com'];
   const registryThatKnows = (u: UserRow | null, t: TenantRow = tenant) => async (): Promise<AuthResult> => (u === null ? { allowed: false, reason: 'unregistered' } : { allowed: true, user: u, tenant: t });
 

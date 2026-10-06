@@ -11,6 +11,7 @@ const tenant = (id: string, mode: 'local' | 'web' = 'web'): TenantDto => ({ id, 
 function member(over: Partial<PrincipalDto> & { tenantId?: string } = {}): Extract<ServerDetection, { mode: 'server' }> {
   const principal: PrincipalDto = {
     email: 'u@x.co',
+    displayName: null,
     role: 'user',
     tenant: tenant(over.tenantId ?? 'ten_a'),
     access: 'editor',
@@ -35,7 +36,7 @@ describe('decideStartup', () => {
   });
 
   it('a super admin gets the console, never a workspace', () => {
-    const principal: PrincipalDto = { email: 's@x.co', role: 'super_admin', tenant: null, access: null, workspaceRole: null, sharedWorkspace: false };
+    const principal: PrincipalDto = { email: 's@x.co', displayName: null, role: 'super_admin', tenant: null, access: null, workspaceRole: null, sharedWorkspace: false };
     expect(decideStartup({ mode: 'server', principal, identity: null }, linked('s@x.co', 'ten_a')).kind).toBe('super-admin');
   });
 

@@ -78,7 +78,8 @@ export async function detectServer(fetchFn: FetchLike = (i, init) => fetch(i, in
     const body: unknown = await res.json();
     if (isPrincipalDto(body)) {
       const identity: Identity | null = body.workspaceRole === null ? null : { email: body.email, role: body.workspaceRole };
-      return { mode: 'server', principal: body, identity };
+      // A Worker from before display names existed does not send one.
+      return { mode: 'server', principal: { ...body, displayName: body.displayName ?? null }, identity };
     }
   } catch {
     /* fall through */

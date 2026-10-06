@@ -22,20 +22,11 @@ import type { OverallFocus } from '../domain/projects';
 import type { PersistenceBoot } from '../lib/storage/db/bootstrap';
 import { pad2 } from '../lib/formatting/format';
 
-type Screen = 'dashboard' | 'overall' | 'gantt' | 'dailyReport' | 'tickets' | 'performance' | 'review' | 'members' | 'reports' | 'settings';
-
-const NAV_ITEMS: { id: Screen; key: TranslationKey }[] = [
-  { id: 'dashboard', key: 'nav.dashboard' },
-  { id: 'overall', key: 'nav.overall' },
-  { id: 'gantt', key: 'nav.gantt' },
-  { id: 'dailyReport', key: 'nav.dailyReport' },
-  { id: 'tickets', key: 'nav.tickets' },
-  { id: 'performance', key: 'nav.performance' },
-  { id: 'review', key: 'nav.review' },
-  { id: 'members', key: 'nav.members' },
-  { id: 'reports', key: 'nav.reports' },
-  { id: 'settings', key: 'nav.settings' },
-];
+import { NAV_ITEMS, navItems, type Screen } from './navigation';
+import { AccountBadge } from '../features/tenancy/AccountBadge';
+import { TeamScreen } from '../features/tenancy/TeamScreen';
+import { RevisionHistory } from '../features/settings/RevisionHistory';
+import { SharedHistory } from '../features/settings/SharedHistory';
 
 function formatSaveTime(timestamp: number): string {
   const d = new Date(timestamp);
@@ -181,17 +172,18 @@ function AutoBackupBanner() {
  * (portfolio management) → Gantt (detailed scheduling) → Daily Report /
  * Reports & Export / Settings.
  */
-/** Which workspace and role this session is working as (nothing without a backend). */
+/** Who is signed in, as what, in which workspace (nothing without a backend). */
 function WorkspaceBadge() {
   const { principal } = useTenant();
   const { state } = useAppStateCtx();
   if (principal === null || principal.tenant === null || principal.role === 'super_admin') return null;
-  const role = t(state.language, `tenancy.role.${principal.role}` as TranslationKey);
-  return (
-    <span className="save-status save-saved" title={principal.email}>
-      {t(state.language, 'tenancy.badge', { name: principal.tenant.name, role })}
-    </span>
-  );
+  return <AccountBadge lang={state.language} principal={principal} />;
+}
+
+/** The History screen: the shared workspace's revisions on the server, or this device's own revisions. */
+function HistoryScreen() {
+  const shared = useSharedSync();
+  return shared.enabled ? <SharedHistory /> : <RevisionHistory />;
 }
 
 /** The sign-out control of the Admin and User shell (the Super Admin console has its own, same component). */
@@ -219,6 +211,7 @@ function ShellLogout() {
 
 function Shell() {
   const { state } = useAppStateCtx();
+  const { principal } = useTenant();
   const [screen, setScreen] = useState<Screen>('dashboard');
   const [overallFocus, setOverallFocus] = useState<OverallFocus>({});
   const [ganttFocusProjectId, setGanttFocusProjectId] = useState<string | null>(null);
@@ -245,7 +238,7 @@ function Shell() {
   return (
     <>
       <nav className="app-nav" aria-label={t(state.language, 'nav.mainNavigation')}>
-        {NAV_ITEMS.map((item) => (
+        {navItems(principal?.role ?? null).map((item) => (
           <button
             key={item.id}
             type="button"
@@ -256,10 +249,12 @@ function Shell() {
             {t(state.language, item.key)}
           </button>
         ))}
-        <WorkspaceBadge />
-        <SyncStatusIndicator />
-        <SaveStatusIndicator />
-        <ShellLogout />
+        <div className="account-area">
+          <WorkspaceBadge />
+          <SyncStatusIndicator />
+          <SaveStatusIndicator />
+          <ShellLogout />
+        </div>
       </nav>
       <SyncBanners />
       <CorruptionBanner />
@@ -283,6 +278,10 @@ function Shell() {
         <RcsMembersTab />
       ) : screen === 'reports' ? (
         <ReportsExport />
+      ) : screen === 'history' ? (
+        <HistoryScreen />
+      ) : screen === 'team' && principal?.role === 'admin' ? (
+        <TeamScreen onOpenSettings={() => setScreen('settings')} />
       ) : (
         <Settings />
       )}

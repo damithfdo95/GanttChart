@@ -178,17 +178,22 @@ describe('detectServer', () => {
 
   it('recognises the shared backend and reads who the principal is', async () => {
     const got = await run(async () => json(member));
-    expect(got).toEqual({ mode: 'server', principal: member, identity: { email: 'a@b.c', role: 'editor' } });
+    expect(got).toEqual({ mode: 'server', principal: { ...member, displayName: null }, identity: { email: 'a@b.c', role: 'editor' } });
+  });
+
+  it('carries the display name when the server sends one (and tolerates a server that does not)', async () => {
+    const got = await run(async () => json({ ...member, displayName: 'Taro Yamada' }));
+    expect(got).toMatchObject({ mode: 'server', principal: { displayName: 'Taro Yamada' } });
   });
 
   it('a local-storage admin has a principal but no shared workspace identity', async () => {
     const admin = { email: 'ad@b.c', role: 'admin', tenant: { ...tenant, storageMode: 'local' }, access: 'editor', workspaceRole: null, sharedWorkspace: false };
-    expect(await run(async () => json(admin))).toEqual({ mode: 'server', principal: admin, identity: null });
+    expect(await run(async () => json(admin))).toEqual({ mode: 'server', principal: { ...admin, displayName: null }, identity: null });
   });
 
   it('a super admin has no tenant', async () => {
     const sa = { email: 's@b.c', role: 'super_admin', tenant: null, access: null, workspaceRole: null, sharedWorkspace: false };
-    expect(await run(async () => json(sa))).toEqual({ mode: 'server', principal: sa, identity: null });
+    expect(await run(async () => json(sa))).toEqual({ mode: 'server', principal: { ...sa, displayName: null }, identity: null });
   });
 
   it('rejects a principal that is not well formed instead of guessing a role', async () => {

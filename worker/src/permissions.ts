@@ -27,6 +27,8 @@ export interface MemberPrincipal {
   tenantId: string;
   tenantName: string;
   role: 'admin' | 'user';
+  /** Display name (text only). */
+  displayName: string | null;
   access: UserAccess;
   storageMode: StorageMode;
   tenantStatus: TenantStatus;
@@ -40,23 +42,31 @@ export type Action =
   | 'tenant.create'
   | 'tenant.setStatus'
   | 'tenant.approveDeletion'
+  | 'tenant.rejectDeletion'
+  | 'audit.platform'
   | 'legacy.adopt'
   // the caller's own tenant
   | 'tenant.view'
   | 'tenant.requestDeletion'
   | 'storage.migrate'
   | 'users.manage'
+  | 'audit.tenant'
   // shared workspace data (web mode only)
   | 'data.read'
   | 'data.write'
   | 'data.restore'
   | 'data.replace';
 
-const SUPER_ONLY: ReadonlySet<Action> = new Set<Action>(['registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'legacy.adopt']);
+const SUPER_ONLY: ReadonlySet<Action> = new Set<Action>(['registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'audit.platform', 'legacy.adopt']);
 
 /** A shared workspace exists for this person right now. */
 function workspaceIsShared(p: MemberPrincipal): boolean {
   return p.storageMode === 'web' && (p.tenantStatus === 'active' || p.tenantStatus === 'deletion_requested');
+}
+
+/** A workspace in a state where its people may use it (a disabled or deleting one is refused earlier, at sign-in). */
+function tenantReadable(p: MemberPrincipal): boolean {
+  return p.tenantStatus === 'active' || p.tenantStatus === 'deletion_requested';
 }
 
 export function can(principal: Principal | null, action: Action): boolean {
@@ -79,6 +89,9 @@ export function can(principal: Principal | null, action: Action): boolean {
       return workspaceIsShared(p) && p.role === 'admin';
     case 'users.manage':
       return p.role === 'admin' && p.storageMode === 'web' && p.tenantStatus === 'active';
+    case 'audit.tenant':
+      // The Admin reads their OWN workspace's administrative history; a User never does.
+      return p.role === 'admin' && tenantReadable(p);
     case 'storage.migrate':
       return p.role === 'admin' && p.tenantStatus === 'active';
     case 'tenant.requestDeletion':
@@ -101,11 +114,12 @@ export function workspaceRoleOf(p: Principal): Role | null {
 
 export function toPrincipalDto(p: Principal, tenant: TenantDto | null): PrincipalDto {
   if (p.kind === 'super_admin') {
-    return { email: p.email, role: 'super_admin', tenant: null, access: null, workspaceRole: null, sharedWorkspace: false };
+    return { email: p.email, displayName: null, role: 'super_admin', tenant: null, access: null, workspaceRole: null, sharedWorkspace: false };
   }
   const workspaceRole = workspaceRoleOf(p);
   return {
     email: p.email,
+    displayName: p.displayName,
     role: p.role,
     tenant,
     access: p.role === 'admin' ? 'editor' : p.access,

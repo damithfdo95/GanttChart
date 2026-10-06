@@ -10,7 +10,7 @@ import type { Language } from '../../types';
  * Unsent shared changes are never dropped silently: the first click only asks; "Sign out
  * anyway" is the single way to continue, "Cancel" leaves the session and the sync untouched.
  */
-export function LogoutButton({ lang, deps, who }: { lang: Language; deps: LogoutDeps; who?: string }) {
+export function LogoutButton({ lang, deps }: { lang: Language; deps: LogoutDeps; /** Kept for callers; the signed-in person is shown next to the button, not in a tooltip that would replace its name. */ who?: string }) {
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -33,7 +33,7 @@ export function LogoutButton({ lang, deps, who }: { lang: Language; deps: Logout
 
   return (
     <span className="logout-control">
-      <button type="button" className="btn btn-ghost logout-button" onClick={() => void click()} disabled={busy} title={who}>
+      <button type="button" className="btn btn-ghost logout-button" onClick={() => void click()} disabled={busy}>
         {t(lang, 'logout.button')}
       </button>
       {asking ? (

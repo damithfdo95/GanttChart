@@ -5,6 +5,7 @@ import type { Language } from '../../types';
 const KNOWN_ERRORS: ReadonlySet<string> = new Set([
   'invalid_email',
   'invalid_name',
+  'invalid_display_name',
   'invalid_input',
   'email_taken',
   'email_reserved',

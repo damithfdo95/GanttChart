@@ -6,6 +6,8 @@ import { createTestStorage } from './helpers/sqlJsStorage';
 /** The organisation domains the fixtures use; the real rule is tested in managed-domains.test.ts. */
 const MANAGED = ['example.com', 'b.co', 'c.co', 'e.co', 'x.yz', 'y.zz', 'tenant.test', 'old.test', 'dev.test'];
 
+const ACTOR = { userId: 'usr_x', email: 'admin@example.com', role: 'admin' as const };
+
 type TestStorage = Awaited<ReturnType<typeof createTestStorage>>;
 
 let storage: TestStorage;
@@ -33,21 +35,21 @@ function newTenant(name: string, adminEmail: string) {
 /** A tenant switched to web mode, ready to have users. */
 function webTenant(name: string, adminEmail: string) {
   const { tenant, admin } = newTenant(name, adminEmail);
-  mustOk(reg.setStorageMode(tenant.id, 'web', now()));
+  mustOk(reg.setStorageMode(tenant.id, 'web', ACTOR, now()));
   return { tenant: reg.getTenant(tenant.id)!, admin };
 }
 
 function addUser(tenantId: string, email: string, access: 'editor' | 'viewer' = 'editor', actor = 'usr_x') {
-  return reg.createUser({ tenantId, email, access, managedDomains: MANAGED, reserved: SUPER, actorUserId: actor, now: now() });
+  return reg.createUser({ tenantId, email, access, managedDomains: MANAGED, reserved: SUPER, actor: { userId: actor, email: 'admin@example.com', role: 'admin' }, now: now() });
 }
 
 describe('tenant + admin creation', () => {
-  it('creates a tenant in LOCAL mode with one invited admin, using stable server-generated ids', () => {
+  it('creates a tenant in LOCAL mode with one active admin, using stable server-generated ids', () => {
     const { tenant, admin } = newTenant('Alpha QA', 'Alice@Example.com');
     expect(isTenantId(tenant.id)).toBe(true);
     expect(isUserId(admin.id)).toBe(true);
     expect(tenant).toMatchObject({ name: 'Alpha QA', storage_mode: 'local', status: 'active' });
-    expect(admin).toMatchObject({ email: 'alice@example.com', role: 'admin', access: 'editor', status: 'invited', tenant_id: tenant.id });
+    expect(admin).toMatchObject({ email: 'alice@example.com', role: 'admin', access: 'editor', status: 'active', tenant_id: tenant.id });
   });
 
   it('rejects bad names and emails', () => {
@@ -92,17 +94,17 @@ describe('users are bound to ONE tenant and cannot be reached across tenants', (
   it('only web-mode, active tenants can have users', () => {
     const { tenant } = newTenant('Local', 'l@example.com');
     expect(addUser(tenant.id, 'u@example.com')).toEqual({ ok: false, error: 'wrong_mode' });
-    mustOk(reg.setStorageMode(tenant.id, 'web', now()));
+    mustOk(reg.setStorageMode(tenant.id, 'web', ACTOR, now()));
     expect(addUser(tenant.id, 'u@example.com').ok).toBe(true);
-    mustOk(reg.setTenantStatus(tenant.id, 'deactivated', now()));
+    mustOk(reg.setTenantStatus(tenant.id, 'deactivated', 'super@example.com', now()));
     expect(addUser(tenant.id, 'u2@example.com')).toEqual({ ok: false, error: 'tenant_inactive' });
   });
 
-  it('creates invited users with the right tenant, role and access, and unique emails across ALL tenants', () => {
+  it('creates active users with the right tenant, role and access, and unique emails across ALL tenants', () => {
     const a = webTenant('A', 'a@example.com');
     const b = webTenant('B', 'b@example.com');
     const u = mustOk(addUser(a.tenant.id, 'User@Example.com', 'viewer'));
-    expect(u).toMatchObject({ email: 'user@example.com', tenant_id: a.tenant.id, role: 'user', access: 'viewer', status: 'invited' });
+    expect(u).toMatchObject({ email: 'user@example.com', tenant_id: a.tenant.id, role: 'user', access: 'viewer', status: 'active' });
     expect(addUser(b.tenant.id, 'user@example.com')).toEqual({ ok: false, error: 'email_taken' }); // same person cannot be in two tenants
     expect(addUser(a.tenant.id, 'a@example.com')).toEqual({ ok: false, error: 'email_taken' }); // an admin's email is taken too
     expect(addUser(a.tenant.id, 'super@example.com')).toEqual({ ok: false, error: 'email_reserved' });
@@ -115,29 +117,29 @@ describe('users are bound to ONE tenant and cannot be reached across tenants', (
     const b = webTenant('B', 'b@example.com');
     const ub = mustOk(addUser(b.tenant.id, 'ub@example.com'));
     expect(reg.getUserInTenant(a.tenant.id, ub.id)).toBeNull();
-    expect(reg.updateUser({ tenantId: a.tenant.id, userId: ub.id, status: 'disabled', now: now() })).toEqual({ ok: false, error: 'not_found' });
-    expect(reg.updateUser({ tenantId: a.tenant.id, userId: ub.id, access: 'viewer', now: now() })).toEqual({ ok: false, error: 'not_found' });
-    expect(reg.getUserInTenant(b.tenant.id, ub.id)?.status).toBe('invited'); // untouched
+    expect(reg.updateUser({ actor: ACTOR, tenantId: a.tenant.id, userId: ub.id, status: 'disabled', now: now() })).toEqual({ ok: false, error: 'not_found' });
+    expect(reg.updateUser({ actor: ACTOR, tenantId: a.tenant.id, userId: ub.id, access: 'viewer', now: now() })).toEqual({ ok: false, error: 'not_found' });
+    expect(reg.getUserInTenant(b.tenant.id, ub.id)?.status).toBe('active'); // untouched
     expect(reg.listUsers(a.tenant.id).map((u) => u.email)).toEqual(['a@example.com']);
   });
 
   it('the admin row can never be modified through user management', () => {
     const a = webTenant('A', 'a@example.com');
-    expect(reg.updateUser({ tenantId: a.tenant.id, userId: a.admin.id, status: 'disabled', now: now() })).toEqual({ ok: false, error: 'forbidden_target' });
-    expect(reg.updateUser({ tenantId: a.tenant.id, userId: a.admin.id, access: 'viewer', now: now() })).toEqual({ ok: false, error: 'forbidden_target' });
+    expect(reg.updateUser({ actor: ACTOR, tenantId: a.tenant.id, userId: a.admin.id, status: 'disabled', now: now() })).toEqual({ ok: false, error: 'forbidden_target' });
+    expect(reg.updateUser({ actor: ACTOR, tenantId: a.tenant.id, userId: a.admin.id, access: 'viewer', now: now() })).toEqual({ ok: false, error: 'forbidden_target' });
     expect(reg.getUserInTenant(a.tenant.id, a.admin.id)).toMatchObject({ role: 'admin', access: 'editor' });
   });
 
-  it('disable / re-enable / change access; re-enabling a never-signed-in user restores "invited"', () => {
+  it('disable / re-enable / change access; re-enabling restores active (there is no invited state)', () => {
     const a = webTenant('A', 'a@example.com');
     const u = mustOk(addUser(a.tenant.id, 'u@example.com'));
-    expect(mustOk(reg.updateUser({ tenantId: a.tenant.id, userId: u.id, status: 'disabled', now: now() })).status).toBe('disabled');
-    expect(mustOk(reg.updateUser({ tenantId: a.tenant.id, userId: u.id, status: 'enabled', now: now() })).status).toBe('invited');
-    expect(reg.authenticate('u@example.com', now()).allowed).toBe(true); // first sign-in → active
-    reg.updateUser({ tenantId: a.tenant.id, userId: u.id, status: 'disabled', now: now() });
-    expect(mustOk(reg.updateUser({ tenantId: a.tenant.id, userId: u.id, status: 'enabled', now: now() })).status).toBe('active');
-    expect(mustOk(reg.updateUser({ tenantId: a.tenant.id, userId: u.id, access: 'viewer', now: now() })).access).toBe('viewer');
-    expect(reg.updateUser({ tenantId: a.tenant.id, userId: u.id, status: 'banned' as never, now: now() })).toEqual({ ok: false, error: 'invalid_input' });
+    expect(mustOk(reg.updateUser({ actor: ACTOR, tenantId: a.tenant.id, userId: u.id, status: 'disabled', now: now() })).status).toBe('disabled');
+    expect(mustOk(reg.updateUser({ actor: ACTOR, tenantId: a.tenant.id, userId: u.id, status: 'enabled', now: now() })).status).toBe('active');
+    expect(reg.authenticate('u@example.com', now()).allowed).toBe(true);
+    reg.updateUser({ actor: ACTOR, tenantId: a.tenant.id, userId: u.id, status: 'disabled', now: now() });
+    expect(mustOk(reg.updateUser({ actor: ACTOR, tenantId: a.tenant.id, userId: u.id, status: 'enabled', now: now() })).status).toBe('active');
+    expect(mustOk(reg.updateUser({ actor: ACTOR, tenantId: a.tenant.id, userId: u.id, access: 'viewer', now: now() })).access).toBe('viewer');
+    expect(reg.updateUser({ actor: ACTOR, tenantId: a.tenant.id, userId: u.id, status: 'banned' as never, now: now() })).toEqual({ ok: false, error: 'invalid_input' });
   });
 });
 
@@ -158,29 +160,29 @@ describe('authenticate (authenticated is not authorized)', () => {
   it('a disabled user is refused', () => {
     const a = webTenant('A', 'a@example.com');
     const u = mustOk(addUser(a.tenant.id, 'u@example.com'));
-    reg.updateUser({ tenantId: a.tenant.id, userId: u.id, status: 'disabled', now: now() });
+    reg.updateUser({ actor: ACTOR, tenantId: a.tenant.id, userId: u.id, status: 'disabled', now: now() });
     expect(reg.authenticate('u@example.com', now())).toEqual({ allowed: false, reason: 'disabled' });
   });
 
   it('a deactivated or deleting tenant refuses EVERYONE in it, including its admin', () => {
     const a = webTenant('A', 'a@example.com');
     mustOk(addUser(a.tenant.id, 'u@example.com'));
-    mustOk(reg.setTenantStatus(a.tenant.id, 'deactivated', now()));
+    mustOk(reg.setTenantStatus(a.tenant.id, 'deactivated', 'super@example.com', now()));
     expect(reg.authenticate('a@example.com', now())).toEqual({ allowed: false, reason: 'tenant_inactive' });
     expect(reg.authenticate('u@example.com', now())).toEqual({ allowed: false, reason: 'tenant_inactive' });
-    mustOk(reg.setTenantStatus(a.tenant.id, 'active', now()));
+    mustOk(reg.setTenantStatus(a.tenant.id, 'active', 'super@example.com', now()));
     expect(reg.authenticate('u@example.com', now()).allowed).toBe(true);
   });
 
   it('users of a LOCAL-mode tenant are refused; its admin is not', () => {
     const { tenant } = webTenant('A', 'a@example.com');
     mustOk(addUser(tenant.id, 'u@example.com'));
-    mustOk(reg.setStorageMode(tenant.id, 'local', now()));
+    mustOk(reg.setStorageMode(tenant.id, 'local', ACTOR, now()));
     expect(reg.authenticate('u@example.com', now())).toEqual({ allowed: false, reason: 'workspace_not_shared' });
     expect(reg.authenticate('a@example.com', now()).allowed).toBe(true);
   });
 
-  it('records the first sign-in (invited → active) and throttles last_login writes', () => {
+  it('records sign-ins and throttles last_login writes to one per 12 hours', () => {
     const { tenant } = webTenant('A', 'a@example.com');
     const t0 = '2026-10-06T12:00:00.000Z';
     const first = reg.authenticate('a@example.com', t0);
@@ -194,7 +196,7 @@ describe('authenticate (authenticated is not authorized)', () => {
   });
 
   it('decideAccess is exhaustive and pure', () => {
-    const user = (over: Partial<UserRow>): UserRow => ({ id: 'u', email: 'e@e.co', tenant_id: 't', role: 'user', access: 'editor', status: 'active', created_at: '', updated_at: '', created_by: null, last_login_at: null, ...over });
+    const user = (over: Partial<UserRow>): UserRow => ({ id: 'u', email: 'e@e.co', tenant_id: 't', role: 'user', access: 'editor', status: 'active', created_at: '', updated_at: '', created_by: null, last_login_at: null, display_name: null, ...over });
     const tenant = (over: Partial<TenantRow>): TenantRow => ({ id: 't', name: 'n', storage_mode: 'web', status: 'active', created_at: '', updated_at: '', deletion_requested_at: null, deletion_requested_by: null, ...over });
     expect(decideAccess(user({}), tenant({}))).toEqual({ allowed: true });
     expect(decideAccess(user({ status: 'invited' }), tenant({}))).toEqual({ allowed: true });
@@ -210,17 +212,17 @@ describe('authenticate (authenticated is not authorized)', () => {
 describe('tenant administration', () => {
   it('status can only toggle between active and deactivated, never during deletion', () => {
     const { tenant } = newTenant('A', 'a@example.com');
-    expect(mustOk(reg.setTenantStatus(tenant.id, 'deactivated', now())).status).toBe('deactivated');
-    mustOk(reg.setTenantStatus(tenant.id, 'active', now()));
+    expect(mustOk(reg.setTenantStatus(tenant.id, 'deactivated', 'super@example.com', now())).status).toBe('deactivated');
+    mustOk(reg.setTenantStatus(tenant.id, 'active', 'super@example.com', now()));
     mustOk(reg.requestDeletion({ tenantId: tenant.id, requestedByUserId: reg.adminOf(tenant.id)!.id, now: now() }));
-    expect(reg.setTenantStatus(tenant.id, 'active', now())).toEqual({ ok: false, error: 'bad_state' });
-    expect(reg.setTenantStatus('ten_nope', 'active', now())).toEqual({ ok: false, error: 'not_found' });
+    expect(reg.setTenantStatus(tenant.id, 'active', 'super@example.com', now())).toEqual({ ok: false, error: 'bad_state' });
+    expect(reg.setTenantStatus('ten_nope', 'active', 'super@example.com', now())).toEqual({ ok: false, error: 'not_found' });
   });
 
   it('storage mode can only change on an active tenant', () => {
     const { tenant } = newTenant('A', 'a@example.com');
-    mustOk(reg.setTenantStatus(tenant.id, 'deactivated', now()));
-    expect(reg.setStorageMode(tenant.id, 'web', now())).toEqual({ ok: false, error: 'tenant_inactive' });
+    mustOk(reg.setTenantStatus(tenant.id, 'deactivated', 'super@example.com', now()));
+    expect(reg.setStorageMode(tenant.id, 'web', ACTOR, now())).toEqual({ ok: false, error: 'tenant_inactive' });
   });
 
   it('the Super Admin summary is metadata only', () => {
@@ -228,12 +230,12 @@ describe('tenant administration', () => {
     mustOk(addUser(a.tenant.id, 'u1@example.com'));
     mustOk(addUser(a.tenant.id, 'u2@example.com'));
     newTenant('B', 'b@example.com');
-    const rows = reg.listTenantSummaries();
+    const rows = reg.listTenantSummaries().rows;
     expect(rows.map((r) => [r.name, r.adminEmail, r.userCount, r.storageMode])).toEqual([
       ['A', 'a@example.com', 3, 'web'],
       ['B', 'b@example.com', 1, 'local'],
     ]);
-    expect(Object.keys(rows[0]).sort()).toEqual(['adminEmail', 'adminOutsideManagedDomains', 'adminStatus', 'createdAt', 'deletionRequestedAt', 'id', 'name', 'status', 'storageMode', 'userCount']);
+    expect(Object.keys(rows[0]).sort()).toEqual(['adminDisplayName', 'adminEmail', 'adminOutsideManagedDomains', 'adminStatus', 'createdAt', 'deletionRequestedAt', 'id', 'lastActivityAt', 'name', 'status', 'storageMode', 'userCount']);
   });
 });
 

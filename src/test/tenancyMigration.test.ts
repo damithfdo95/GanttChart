@@ -97,6 +97,9 @@ class FakeCloud implements TenancyApi {
   createTenant = async () => { throw new Error('unused'); };
   setTenantStatus = async () => { throw new Error('unused'); };
   approveDeletion = async () => { throw new Error('unused'); };
+  rejectDeletion = async () => { throw new Error('unused'); };
+  tenantAudit = async () => { throw new Error('unused'); };
+  platformAudit = async () => { throw new Error('unused'); };
   audit = async () => { throw new Error('unused'); };
 }
 

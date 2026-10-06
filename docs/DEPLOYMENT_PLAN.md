@@ -146,6 +146,18 @@ config where either name reappears under `vars`.
 If the Worker is ever started without them it **fails closed** (HTTP 500 on every API call);
 it never allows access.
 
+### Stage 7 deployment notes (accounts, audit trail, navigation)
+
+* **No Cloudflare change.** No Access destination, secret, variable or Wrangler migration tag changes. The registry Durable Object
+  upgrades its own SQLite schema the first time the new code starts (adds one nullable column and one append-only table).
+* **No data migration.** Existing workspaces, accounts (including any stored as "invited" and the existing non-managed test
+  workspace) and deletion records are untouched. Older browsers keep working (they ignore the new fields).
+* Roll out like any code deploy: `npm run build`, then `cd worker && npm run validate`, then `npx wrangler deploy --env=""` (the guard runs
+  automatically). Rollback is `npx wrangler rollback`; the extra column and table are ignored by the previous code.
+* After deploying, check: (1) sign in as the Super Admin: the console shows four tabs; (2) create/disable/reactivate a test workspace
+  and see the entries in *Audit log*; (3) as an Admin in Web storage open *Team / Users*, add and disable a user; (4) the user's
+  open session ends within seconds.
+
 ## 4. Free-plan resources (unchanged by Stage 6)
 
 Worker `ganttchart` (Workers Free) with Durable Object classes `WorkspaceRoom` (one per workspace)
