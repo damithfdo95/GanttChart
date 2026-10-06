@@ -58,6 +58,7 @@ import { DailyExecutionForm } from '../../components/DailyExecutionForm';
 import { BlockingPanel } from '../../components/BlockingPanel';
 import { MilestonePanel } from '../../components/MilestonePanel';
 import { RecoveryPanel } from '../../components/RecoveryPanel';
+import { useSharedGuard } from '../../app/useSharedGuard';
 import { MultiDayTimeline } from '../../components/MultiDayTimeline';
 import { formatDate, formatDateDisplay, parseDate, todayEpochDays } from '../../lib/dates/dates';
 import { buildDayTimeline, getActiveProjects, portfolioSummary, type OverallFocus } from '../../domain/projects';
@@ -88,6 +89,7 @@ const STATUS_KEY: Record<ScheduleStatus, TranslationKey> = {
 export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFocus) => void }) {
   const app = useAppStateCtx();
   const { state, updateField, replaceState, resetToDemo, changeStartDate, deleteDailyExecutionEntry } = app;
+  const guard = useSharedGuard();
   const reportsApi = useReportsStateCtx();
   const now = useNow(30_000);
   const [importMessage, setImportMessage] = useState<ImportMessage | null>(null);
@@ -328,6 +330,7 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
   };
 
   const handleImportFile = (file: File): void => {
+    if (!guard.guardWrite()) return; // read-only people cannot replace the shared project's data
     const reader = new FileReader();
     reader.onload = () => {
       const result = parseImportPayload(String(reader.result ?? ''));
@@ -353,6 +356,8 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
       resolveBilingualName(lang, { nameEn: state.projectNameEn, nameJa: state.projectNameJa }) ||
       t(lang, 'app.title');
     if (!window.confirm(t(lang, 'dashboard.confirmReset', { name }))) return;
+    // In shared mode the project is everyone's: say so, and never for read-only people.
+    if (!guard.confirmEveryone('shared.confirm.resetProject')) return;
     resetToDemo();
     setImportMessage(null);
   };

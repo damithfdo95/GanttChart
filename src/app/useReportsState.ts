@@ -17,6 +17,8 @@ import { loadReportsState } from '../lib/storage/reports';
 import { removeProjectFromRegistry } from '../domain/projects/lifecycle';
 import { setProjectLifecycleStatus as setProjectLifecycleStatusImpl } from '../domain/projects/lifecycle';
 import { seedInitialProjectRecord } from '../domain/projects/migrations';
+import { applyRecordChanges } from '../lib/sync/records';
+import type { RecordDelete, RecordPut } from '../../shared/protocol';
 import { upsertTesterAssignment as upsertTesterAssignmentImpl } from '../domain/assignments';
 import { upsertTesterReview as upsertTesterReviewImpl } from '../domain/reviews';
 import { upsertRcsMember as upsertRcsMemberImpl } from '../domain/members';
@@ -42,6 +44,12 @@ export interface ReportsStateApi {
   removeProject: (id: string) => void;
   /** Full state replacement (backup restore / clear-all, V6.3 §10/§13). */
   replaceReportsState: (next: ReportsState) => void;
+  /**
+   * Shared workspace: apply records changed by someone else. A functional
+   * update, so it merges with any local edit React is still processing
+   * instead of overwriting it.
+   */
+  applyRemoteChanges: (puts: readonly RecordPut[], deletes: readonly RecordDelete[]) => void;
   setActiveProjectId: (id: string | null) => void;
   /** One-time migration: seed the portfolio from the existing single-project data. */
   seedInitialProject: (appState: AppState) => void;
@@ -164,6 +172,10 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
     setState(next);
   }, []);
 
+  const applyRemoteChanges = useCallback((puts: readonly RecordPut[], deletes: readonly RecordDelete[]): void => {
+    setState((prev) => applyRecordChanges(prev, puts, deletes));
+  }, []);
+
   const setActiveProjectId = useCallback((id: string | null): void => {
     setState((prev) => ({ ...prev, activeProjectId: id }));
   }, []);
@@ -225,6 +237,7 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
     addProject,
     removeProject,
     replaceReportsState,
+    applyRemoteChanges,
     setActiveProjectId,
     seedInitialProject,
     upsertTesterAssignment: upsertTesterAssignmentAction,

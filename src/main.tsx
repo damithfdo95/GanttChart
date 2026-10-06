@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './app/App';
+import { Startup } from './app/Startup';
 import { initPersistence } from './lib/storage/db/bootstrap';
 import './index.css';
 
@@ -18,7 +18,7 @@ rootEl.textContent = 'Loading… / 読み込み中…';
 void initPersistence().then((boot) => {
   createRoot(rootEl).render(
     <StrictMode>
-      <App boot={boot} />
+      <Startup boot={boot} />
     </StrictMode>,
   );
 });

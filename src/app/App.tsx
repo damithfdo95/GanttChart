@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppProviders, useAppStateCtx, useAutoBackupCtx, usePersistenceCtx } from './state-contexts';
+import type { SharedBoot } from './shared-sync';
+import { SyncBanners, SyncStatusIndicator } from '../components/SyncStatus';
 import { Dashboard } from '../features/dashboard/Dashboard';
 import { Overall } from '../features/overall/Overall';
 import { Gantt } from '../features/gantt/Gantt';
@@ -214,8 +216,10 @@ function Shell() {
             {t(state.language, item.key)}
           </button>
         ))}
+        <SyncStatusIndicator />
         <SaveStatusIndicator />
       </nav>
+      <SyncBanners />
       <CorruptionBanner />
       <StorageFallbackBanner />
       <AutoBackupBanner />
@@ -244,9 +248,9 @@ function Shell() {
   );
 }
 
-export default function App({ boot }: { boot: PersistenceBoot }) {
+export default function App({ boot, shared = null }: { boot: PersistenceBoot; shared?: SharedBoot | null }) {
   return (
-    <AppProviders boot={boot}>
+    <AppProviders boot={boot} shared={shared}>
       <Shell />
     </AppProviders>
   );

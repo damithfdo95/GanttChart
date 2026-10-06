@@ -24,6 +24,7 @@ import {
   type AutoBackupRunResult,
 } from '../lib/backup/autoBackup';
 import { formatDate, todayEpochDays } from '../lib/dates/dates';
+import { SharedSyncProvider, useSharedSyncEngine, type SharedBoot } from './shared-sync';
 import type { AppState, ProjectRecord, ReportsState } from '../types';
 
 /**
@@ -272,25 +273,33 @@ function useProjectWriteBack(app: AppStateApi, reports: ReportsStateApi): void {
   }, [app.state, reports]);
 }
 
-/** One-time migration: seed the portfolio from the existing single-project data. */
-function usePortfolioSeed(app: AppStateApi, reports: ReportsStateApi): void {
+/**
+ * One-time migration: seed the portfolio from the existing single-project data.
+ * NOT in shared mode: every fresh browser would seed its own project and the
+ * shared portfolio would fill with duplicates. In shared mode the first project
+ * is created exactly once, deliberately, by the link screen (fixed record id).
+ */
+function usePortfolioSeed(app: AppStateApi, reports: ReportsStateApi, enabled: boolean): void {
   useEffect(() => {
-    reports.seedInitialProject(app.state);
-  }, [reports]);
+    if (enabled) reports.seedInitialProject(app.state);
+  }, [reports, enabled]);
 }
 
-export function AppProviders({ boot, children }: { boot: PersistenceBoot; children: ReactNode }) {
+export function AppProviders({ boot, shared = null, children }: { boot: PersistenceBoot; shared?: SharedBoot | null; children: ReactNode }) {
   const app = useAppState(boot.workspace.app);
   const reports = useReportsState(boot.workspace.reports);
   const autoBackup = useAutoDailyBackup(app, reports);
-  usePortfolioSeed(app, reports);
+  usePortfolioSeed(app, reports, shared === null);
   useProjectWriteBack(app, reports);
   const persistence = useWorkspacePersistence(app, reports, boot);
+  const sharedSync = useSharedSyncEngine(app, reports, shared);
   return (
     <AppStateContext.Provider value={app}>
       <ReportsStateContext.Provider value={reports}>
         <AutoBackupContext.Provider value={autoBackup}>
-          <PersistenceStatusContext.Provider value={persistence}>{children}</PersistenceStatusContext.Provider>
+          <PersistenceStatusContext.Provider value={persistence}>
+            <SharedSyncProvider value={sharedSync}>{children}</SharedSyncProvider>
+          </PersistenceStatusContext.Provider>
         </AutoBackupContext.Provider>
       </ReportsStateContext.Provider>
     </AppStateContext.Provider>

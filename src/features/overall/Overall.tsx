@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSharedGuard } from '../../app/useSharedGuard';
 import type { ProjectLifecycleStatus, ProjectRecord } from '../../types';
 import { useAppStateCtx, useReportsStateCtx, activateProject, activateProjectRecord } from '../../app/state-contexts';
 import { t, resolveBilingualName, type TranslationKey } from '../../i18n';
@@ -86,6 +87,7 @@ interface SortableColumn {
 export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) {
   const app = useAppStateCtx();
   const reportsApi = useReportsStateCtx();
+  const guard = useSharedGuard();
   const lang = app.state.language;
   const settings = reportsApi.state.settings;
 
@@ -299,6 +301,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
   };
 
   const handleImportFile = (file: File): void => {
+    if (!guard.guardWrite()) return;
     const reader = new FileReader();
     reader.onload = () => {
       const result = detectImportFile(String(reader.result ?? ''));
@@ -308,6 +311,8 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
       }
       if (result.kind === 'backup') {
         if (!window.confirm(t(lang, 'import.confirmBackup'))) return;
+        // A full backup replaces the WHOLE shared workspace for everyone: administrators only, typed confirmation.
+        if (!guard.confirmReplace()) return;
         app.replaceState(result.data.appState);
         reportsApi.replaceReportsState(result.data.reportsState);
         setImportMessage({ kind: 'ok', text: t(lang, 'import.backupOk') });
@@ -348,6 +353,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
   const handleDeleteProject = (project: ProjectRecord): void => {
     const name = resolveBilingualName(lang, { nameEn: project.nameEn, nameJa: project.nameJa }) || '—';
     if (!window.confirm(t(lang, 'overall.confirmDeleteProject', { name }))) return;
+    if (!guard.confirmEveryone('shared.confirm.deleteProject')) return;
     const wasActive = reportsApi.state.activeProjectId === project.id;
     const fallback = reportsApi.state.projects.find((p) => p.id !== project.id) ?? null;
     reportsApi.removeProject(project.id);

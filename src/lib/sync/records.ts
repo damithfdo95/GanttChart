@@ -196,8 +196,12 @@ export function applyRecordChanges(state: ReportsState, puts: readonly RecordPut
     if (changed) next = field.write(next, sortKind(kind, merged));
   }
 
-  // A remotely deleted active project must not leave a dangling pointer.
-  if (next.activeProjectId !== null && !next.projects.some((p) => p.id === next.activeProjectId)) {
+  // A remotely deleted active project must not leave a dangling pointer, and a
+  // device that had no project selected (fresh link) must land on a real one:
+  // the Dashboard edits the ACTIVE project, so "none" with projects present
+  // would send edits nowhere.
+  const activeMissing = next.activeProjectId !== null && !next.projects.some((p) => p.id === next.activeProjectId);
+  if (activeMissing || (next.activeProjectId === null && next.projects.length > 0)) {
     next = { ...next, activeProjectId: next.projects[0]?.id ?? null };
   }
   return next;

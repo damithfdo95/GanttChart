@@ -136,6 +136,14 @@ describe('applyRecordChanges (incremental remote changes)', () => {
     expect(none.activeProjectId).toBeNull();
   });
 
+  it('a device with no project selected lands on the first shared project as soon as one exists', () => {
+    const empty: ReportsState = { ...defaultReportsState(), activeProjectId: null };
+    const fresh = project('Z', '2026-10-05T00:00:00Z');
+    const next = applyRecordChanges(empty, [{ kind: 'project', id: fresh.id, json: JSON.stringify(fresh) }], []);
+    expect(next.activeProjectId).toBe(fresh.id);
+    expect(applyRecordChanges(empty, [], [])).toBe(empty); // still nothing to select: unchanged
+  });
+
   it('uses the record key as the id even if the JSON body disagrees', () => {
     const s = base();
     const next = applyRecordChanges(s, [{ kind: 'topic', id: 't9', json: JSON.stringify({ ...topic('other', '2026-10-09T00:00:00Z') }) }], []);

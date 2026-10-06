@@ -3198,3 +3198,75 @@ textarea:focus-visible,
 .row-selected > td {
   background: rgba(127, 127, 127, 0.12);
 }
+
+/* ---- Shared workspace: link screen and history ---- */
+.link-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg, #f4f6f8);
+}
+.link-card {
+  width: min(720px, 100%);
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #d7dee6);
+  border-radius: 10px;
+  padding: 28px 32px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+.link-card h1 {
+  font-size: 1.35rem;
+  margin: 0 0 8px;
+}
+.link-card h2 {
+  font-size: 1.1rem;
+  margin: 20px 0 6px;
+}
+.link-counts {
+  margin: 6px 0;
+}
+.link-option {
+  margin: 16px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border, #d7dee6);
+  border-radius: 8px;
+}
+.link-option.link-danger {
+  border-color: #c0392b;
+  background: rgba(192, 57, 43, 0.05);
+}
+.link-help {
+  margin: 8px 0 0;
+  color: var(--text-muted, #52606d);
+  font-size: 0.9rem;
+}
+.link-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0;
+  max-width: 280px;
+}
+.link-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+.link-error {
+  color: #b42318;
+  margin-top: 12px;
+}
+.shared-history table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.shared-history th,
+.shared-history td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border, #d7dee6);
+  font-size: 0.9rem;
+}

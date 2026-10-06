@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { useSharedGuard } from '../../app/useSharedGuard';
 import type { AttendanceStatus } from '../../types';
 import { ATTENDANCE_STATUSES } from '../../types';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
@@ -47,6 +48,7 @@ interface DatasetConfig {
 /** Reports & Export screen: filtered CSV/XLSX/JSON exports, management report, backup. */
 export function ReportsExport() {
   const app = useAppStateCtx();
+  const guard = useSharedGuard();
   const reportsApi = useReportsStateCtx();
   const lang = app.state.language;
   const settings = reportsApi.state.settings;
@@ -378,6 +380,8 @@ export function ReportsExport() {
       ) {
         return;
       }
+      // Restoring a backup replaces the WHOLE shared workspace for everyone: administrators only, typed confirmation.
+      if (!guard.confirmReplace()) return;
       // Safety first: download a backup of the current data before replacing it.
       exportBackup();
       void (async () => {

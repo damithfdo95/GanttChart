@@ -8,6 +8,9 @@ import { isFolderAccessSupported, pickBackupDirectory, readAutoBackupRecord } fr
 import { clearAllLocalDataAsync, getStorageDiagnostics, type StorageDiagnostics } from '../../lib/storage/db/persistenceBackend';
 import { MIGRATION_FAILURE_LABEL_KEY, readMigrationFailureRecord } from '../../lib/storage/db/recovery';
 import { RevisionHistory } from './RevisionHistory';
+import { SharedHistory } from './SharedHistory';
+import { useSharedSync } from '../../app/shared-sync';
+import { unlinkDevice } from '../../lib/sync/device';
 import { createBackupPayload } from '../../lib/backup/backup';
 import { downloadTextFile } from '../../lib/export/download';
 import { pad2 } from '../../lib/formatting/format';
@@ -18,6 +21,7 @@ export function Settings() {
   const app = useAppStateCtx();
   const reportsApi = useReportsStateCtx();
   const autoBackupApi = useAutoBackupCtx();
+  const shared = useSharedSync();
   const lang = app.state.language;
   const settings = reportsApi.state.settings;
   const migrationFailure = readMigrationFailureRecord();
@@ -79,13 +83,22 @@ export function Settings() {
    * returns to the normal initial state (language kept).
    */
   const handleClearAll = (): void => {
-    if (!window.confirm(t(lang, 'settings.confirmClearAll'))) return;
+    // In shared mode this clears only THIS browser and disconnects it; the
+    // shared workspace (and everyone else's data) is never touched.
+    if (!window.confirm(t(lang, shared.enabled ? 'shared.settings.clearDeviceConfirm' : 'settings.confirmClearAll'))) return;
     downloadFullBackup();
     void clearAllLocalDataAsync().then((result) => {
       if (result === 'aborted') {
         // The pre-clear recovery snapshot could not be written: nothing was
         // deleted, so the in-memory workspace must stay as it is.
         setClearOutcome('aborted');
+        return;
+      }
+      if (shared.enabled) {
+        // Forget the link and reload: the device starts over and is offered the
+        // link screen again. Nothing is pushed to the shared workspace.
+        unlinkDevice();
+        window.location.reload();
         return;
       }
       const fresh: typeof DEMO_STATE = {
@@ -293,7 +306,7 @@ export function Settings() {
         ) : null}
       </section>
 
-      <RevisionHistory />
+      {shared.enabled ? <SharedHistory /> : <RevisionHistory />}
 
       <section className="dr-section danger-zone">
         <h2>{t(lang, 'settings.dangerZone')}</h2>
@@ -348,12 +361,13 @@ export function Settings() {
             {t(lang, 'persistence.recoveryBody')}
           </p>
         ) : null}
+        {shared.enabled ? <p className="dr-summary">{t(lang, 'shared.settings.clearDeviceHelp')}</p> : null}
         <div className="danger-zone-actions">
           <button type="button" className="btn" onClick={downloadFullBackup}>
             {t(lang, 'settings.downloadBackupFirst')}
           </button>
           <button type="button" className="btn btn-danger" onClick={handleClearAll}>
-            {t(lang, 'settings.clearAllData')}
+            {t(lang, shared.enabled ? 'shared.settings.clearDevice' : 'settings.clearAllData')}
           </button>
           {clearOutcome === 'done' ? (
             <span className="data-controls-message ok" role="status">
