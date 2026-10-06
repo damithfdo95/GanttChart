@@ -1,5 +1,5 @@
 import { exports } from 'cloudflare:workers';
-import { REPLACE_CONFIRMATION, canonicalRecordsHash, type PrincipalDto, type TenantDto, type TenantSummaryDto, type UserDto } from '../../../shared/tenancy';
+import { REPLACE_CONFIRMATION, SWITCH_TO_LOCAL_CONFIRMATION, canonicalRecordsHash, type PrincipalDto, type TenantDto, type TenantSummaryDto, type UserDto } from '../../../shared/tenancy';
 import { PROTOCOL_VERSION, type RecordPut } from '../../../shared/protocol';
 import { wrap, type TestSocket } from './helpers';
 
@@ -142,4 +142,8 @@ export async function openSocket(as: string, extra: { query?: string; headers?: 
   return { ok: true, sock, ready };
 }
 
-export { REPLACE_CONFIRMATION };
+/** Switch a web workspace back to local (the server requires the typed confirmation). */
+export const deactivate = (adminEmail: string, revision: unknown, hash: unknown, confirm: unknown = SWITCH_TO_LOCAL_CONFIRMATION) =>
+  post<Record<string, unknown>>(adminEmail, '/api/tenant/storage/deactivate-web', { revision, hash, confirm });
+
+export { REPLACE_CONFIRMATION, SWITCH_TO_LOCAL_CONFIRMATION };

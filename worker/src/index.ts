@@ -18,7 +18,7 @@ import { parseEmailList, resolvePrincipal } from './principal';
 import type { RegistryError } from './registry';
 import { IDENTITY_EMAIL_HEADER, IDENTITY_EXPIRES_HEADER, IDENTITY_ROLE_HEADER, IDENTITY_USER_HEADER, LEGACY_WORKSPACE_NAME, TENANT_HEADER, WorkspaceRoom } from './workspaceRoom';
 import { RegistryRoom } from './registryRoom';
-import { CLOSE_CODES, REPLACE_CONFIRMATION, canonicalRecordsHash, isTenantId, isUserId, normalizeEmail, type DenyReason, type UserAccess } from '../../shared/tenancy';
+import { CLOSE_CODES, REPLACE_CONFIRMATION, SWITCH_TO_LOCAL_CONFIRMATION, canonicalRecordsHash, isTenantId, isUserId, normalizeEmail, type DenyReason, type UserAccess } from '../../shared/tenancy';
 
 export { WorkspaceRoom, RegistryRoom };
 
@@ -429,6 +429,8 @@ async function storageRoutes(ctx: Ctx, p: MemberPrincipal): Promise<Response> {
     if (!body.ok) return body.response;
     const { revision, hash } = body.body;
     if (typeof revision !== 'number' || typeof hash !== 'string') return problem(400, 'invalid_verification');
+    // Leaving the cloud locks every collaborator out: it needs the typed confirmation, checked HERE too.
+    if (body.body.confirm !== SWITCH_TO_LOCAL_CONFIRMATION) return problem(400, 'confirmation_required');
     if (p.storageMode !== 'web') return problem(409, 'wrong_mode');
     const frozen = await room.freezeIfUnchanged(p.tenantId, { revision, hash });
     if (!frozen.ok) return problem(409, frozen.error);

@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import type { PrincipalDto, UserDto } from '../../../shared/tenancy';
 import { CLOSE_CODES } from '../../../shared/tenancy';
-import { SECRET_A, SUPER, activateWeb, addUser, createTenant, email, get, openSocket, patch, post, rec, twoTenants, whoami } from './tenancy-harness';
+import { SECRET_A, SUPER, activateWeb, addUser, createTenant, deactivate, email, get, openSocket, patch, post, rec, twoTenants, whoami } from './tenancy-harness';
 import { workspaceFor } from './helpers';
 
 const listUsers = async (adminEmail: string) => (await get<{ users: UserDto[] }>(adminEmail, '/api/tenant/users')).json.users;
@@ -138,7 +138,7 @@ describe('a LOCAL-mode workspace has no shared users and no shared data', () => 
     const w = await twoTenants();
     // Move A back to local the proper way, then its users must be locked out.
     const exp = await get<{ revision: number; hash: string }>(w.a.adminEmail, '/api/export');
-    expect((await post(w.a.adminEmail, '/api/tenant/storage/deactivate-web', { revision: exp.json.revision, hash: exp.json.hash })).status).toBe(200);
+    expect((await deactivate(w.a.adminEmail, exp.json.revision, exp.json.hash)).status).toBe(200);
     const res = await whoami(w.userA);
     expect(res.status).toBe(403);
     expect(res.json).toMatchObject({ reason: 'workspace_not_shared' });

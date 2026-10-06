@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RecordPut } from '../../../shared/protocol';
-import { REPLACE_CONFIRMATION, SECRET_A, SECRET_B, SUPER, addUser, createTenant, email, get, hashOf, openSocket, post, rec, whoami, type Tenant } from './tenancy-harness';
+import { REPLACE_CONFIRMATION, SECRET_A, SECRET_B, SUPER, addUser, createTenant, deactivate, email, get, hashOf, openSocket, post, rec, whoami, type Tenant } from './tenancy-harness';
 import { commitMsg } from './helpers';
 import { CLOSE_CODES } from '../../../shared/tenancy';
 
@@ -177,8 +177,8 @@ describe('Web → Local', () => {
   it('refuses unless the cloud copy is EXACTLY what was downloaded (hash and revision)', async () => {
     const { t } = await webTenantWithUser();
     const snap = await download(t);
-    expect((await post(t.adminEmail, '/api/tenant/storage/deactivate-web', { revision: snap.revision, hash: 'f'.repeat(64) })).json).toMatchObject({ error: 'workspace_changed' });
-    expect((await post(t.adminEmail, '/api/tenant/storage/deactivate-web', { revision: snap.revision + 1, hash: snap.hash })).status).toBe(409);
+    expect((await deactivate(t.adminEmail, snap.revision, 'f'.repeat(64))).json).toMatchObject({ error: 'workspace_changed' });
+    expect((await deactivate(t.adminEmail, snap.revision + 1, snap.hash)).status).toBe(409);
     expect((await whoami(t.adminEmail)).json.tenant?.storageMode).toBe('web'); // unchanged
   });
 
@@ -190,7 +190,7 @@ describe('Web → Local', () => {
     await live.sock.next('snapshot');
     live.sock.send(commitMsg(snap.revision, [rec('project', 'p2', { name: 'late edit by a user' })]));
     await live.sock.next('ack');
-    const r = await post(t.adminEmail, '/api/tenant/storage/deactivate-web', { revision: snap.revision, hash: snap.hash });
+    const r = await deactivate(t.adminEmail, snap.revision, snap.hash);
     expect(r.status).toBe(409);
     expect((await whoami(t.adminEmail)).json.tenant?.storageMode).toBe('web');
     expect((await get(t.adminEmail, '/api/export')).text).toContain('late edit by a user');
@@ -201,7 +201,7 @@ describe('Web → Local', () => {
     const live = await openSocket(userEmail);
     if (!live.ok) throw new Error('connect');
     const snap = await download(t);
-    const r = await post<{ cloudCopy: string }>(t.adminEmail, '/api/tenant/storage/deactivate-web', { revision: snap.revision, hash: snap.hash });
+    const r = await deactivate(t.adminEmail, snap.revision, snap.hash) as { status: number; json: { cloudCopy: string } };
     expect(r.status).toBe(200);
     expect(r.json.cloudCopy).toBe('archived');
 
@@ -214,15 +214,31 @@ describe('Web → Local', () => {
     expect(insp.json.server).toMatchObject({ hasData: true, frozen: true, hash: snap.hash });
   });
 
+  it('the SERVER requires the typed confirmation: a script cannot skip the browser prompt', async () => {
+    const { t, userEmail } = await webTenantWithUser();
+    const snap = await download(t);
+    for (const wrong of ['', 'local', ' LOCAL', 'yes', 5, null]) {
+      const r = await deactivate(t.adminEmail, snap.revision, snap.hash, wrong);
+      expect(r.status, String(wrong)).toBe(400);
+      expect(r.json).toMatchObject({ error: 'confirmation_required' });
+    }
+    // …and omitting the field entirely is refused too.
+    const omitted = await post(t.adminEmail, '/api/tenant/storage/deactivate-web', { revision: snap.revision, hash: snap.hash });
+    expect(omitted.status).toBe(400);
+    expect((await whoami(t.adminEmail)).json.tenant?.storageMode).toBe('web'); // nothing moved
+    expect((await whoami(userEmail)).status).toBe(200); // collaborators are not locked out
+    expect((await deactivate(t.adminEmail, snap.revision, snap.hash)).status).toBe(200);
+  });
+
   it('is only possible from web mode', async () => {
     const t = await freshLocalTenant();
-    expect((await post(t.adminEmail, '/api/tenant/storage/deactivate-web', { revision: 0, hash: await hashOf([]) })).status).toBe(409);
+    expect((await deactivate(t.adminEmail, 0, await hashOf([]))).status).toBe(409);
   });
 
   it('going back to Web never silently overwrites the archived copy, and reactivation makes it writable again', async () => {
     const { t, userEmail } = await webTenantWithUser();
     const snap = await download(t);
-    await post(t.adminEmail, '/api/tenant/storage/deactivate-web', { revision: snap.revision, hash: snap.hash });
+    await deactivate(t.adminEmail, snap.revision, snap.hash);
 
     // A different local workspace cannot just replace the archived cloud copy.
     const clash = await upload(t, { migrationId: 'back', expectedRevision: snap.revision, records: [rec('project', 'other', { name: SECRET_B })] });

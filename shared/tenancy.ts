@@ -43,6 +43,9 @@ export function newUserId(): string {
 /** The exact word a person must type to confirm replacing a whole workspace (checked by BOTH the browser and the server). */
 export const REPLACE_CONFIRMATION = 'REPLACE';
 
+/** The exact word an Admin must type to switch a web workspace back to local storage (checked by BOTH the browser and the server). */
+export const SWITCH_TO_LOCAL_CONFIRMATION = 'LOCAL';
+
 /** WebSocket close codes with a meaning for the client. */
 export const CLOSE_CODES = {
   sessionExpired: 4401,
