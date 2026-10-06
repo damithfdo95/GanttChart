@@ -98,6 +98,33 @@ export interface StashedEdit {
 
 export type SessionProbe = 'ok' | 'expired' | 'unreachable';
 
+/** Diagnostic breadcrumbs (kept in a small ring buffer by the app; never shown unless asked for). */
+export interface SyncLogEvent {
+  at: number;
+  event:
+    | 'connect'
+    | 'state'
+    | 'changes'
+    | 'commit'
+    | 'ack'
+    | 'reject'
+    | 'conflict'
+    | 'stale-revert-blocked'
+    | 'close'
+    | 'expired';
+  detail?: Record<string, unknown>;
+}
+
+/**
+ * Kinds whose JSON carries an `updatedAt` that changes on every real edit. Only
+ * these can be told apart "an older copy of the record" from "a new edit"; for
+ * the others (settings, members, …) changing a value back to an earlier one is
+ * a legitimate edit that must be sent.
+ */
+const TIMESTAMPED_KINDS: ReadonlySet<string> = new Set(['project', 'report', 'topic', 'review']);
+/** How many superseded server versions per record are remembered for the stale-revert guard. */
+const SUPERSEDED_KEPT = 4;
+
 export interface SyncTimers {
   setTimeout(fn: () => void, ms: number): unknown;
   clearTimeout(handle: unknown): void;
@@ -132,6 +159,8 @@ export interface SyncClientOptions {
   commitTimeoutMs?: number;
   /** Failed attempts after which the session is probed. */
   probeAfterAttempts?: number;
+  /** Receives diagnostic breadcrumbs. */
+  log?(event: SyncLogEvent): void;
 }
 
 const WS_OPEN = 1;
@@ -163,6 +192,8 @@ export class SyncClient {
   private status: SyncStatus = 'connecting';
   private sentKeys = new Set<RecordKey>();
   private noticedKeys = new Set<RecordKey>();
+  /** Server versions this device has already seen replaced (timestamped kinds only). */
+  private superseded = new Map<RecordKey, string[]>();
 
   private flushTimer: unknown = null;
   private reconnectTimer: unknown = null;
@@ -255,6 +286,24 @@ export class SyncClient {
     this.connect();
   }
 
+  // ---- mirror ----------------------------------------------------------------
+
+  private trace(event: SyncLogEvent['event'], detail?: Record<string, unknown>): void {
+    this.o.log?.({ at: this.now(), event, ...(detail !== undefined ? { detail } : {}) });
+  }
+
+  /** The ONLY place the mirror changes, so replaced server versions are always remembered. */
+  private setMirror(key: RecordKey, json: string | null): void {
+    const old = this.mirror.get(key);
+    if (old !== undefined && old !== json && TIMESTAMPED_KINDS.has(splitRecordKey(key).kind)) {
+      const list = this.superseded.get(key) ?? [];
+      if (!list.includes(old)) list.push(old);
+      this.superseded.set(key, list.slice(-SUPERSEDED_KEPT));
+    }
+    if (json === null) this.mirror.delete(key);
+    else this.mirror.set(key, json);
+  }
+
   // ---- connection ------------------------------------------------------------
 
   private connect(): void {
@@ -269,6 +318,7 @@ export class SyncClient {
       return;
     }
     this.socket = socket;
+    this.trace('connect', { lastRevision: this.revision });
     socket.onopen = () => {
       if (this.socket !== socket) return;
       this.sendMessage({ t: 'hello', v: PROTOCOL_VERSION, clientId: this.o.clientId, lastRevision: this.revision });
@@ -292,6 +342,7 @@ export class SyncClient {
         this.commitTimer = null;
       }
       if (this.stopped) return;
+      this.trace('close', { code: event.code });
       if (event.code === CLOSE_SESSION_EXPIRED) {
         this.markExpired();
         return;
@@ -421,6 +472,7 @@ export class SyncClient {
       this.firstStatePending = false;
       this.mirror = next;
       this.revision = revision;
+      this.trace('state', { kind: 'snapshot-overwrite', revision, records: next.size });
     } else {
       const puts: RecordPut[] = [];
       const deletes: RecordDelete[] = [];
@@ -429,17 +481,20 @@ export class SyncClient {
       }
       for (const key of this.mirror.keys()) if (!next.has(key)) deletes.push(splitRecordKey(key));
       this.integrateRemote(puts, deletes);
-      this.mirror = next;
+      for (const [key, json] of next) this.setMirror(key, json);
+      for (const key of [...this.mirror.keys()]) if (!next.has(key)) this.setMirror(key, null);
       this.revision = revision;
+      this.trace('state', { kind: 'snapshot', revision, records: next.size, changed: puts.length + deletes.length });
     }
     this.afterServerState();
   }
 
   private onChanges(puts: RecordPut[], deletes: RecordDelete[], revision: number): void {
     this.integrateRemote(puts, deletes);
-    for (const p of puts) this.mirror.set(recordKey(p.kind, p.id), p.json);
-    for (const d of deletes) this.mirror.delete(recordKey(d.kind, d.id));
+    for (const p of puts) this.setMirror(recordKey(p.kind, p.id), p.json);
+    for (const d of deletes) this.setMirror(recordKey(d.kind, d.id), null);
     this.revision = Math.max(this.revision ?? 0, revision);
+    this.trace('changes', { revision, puts: puts.map((p) => `${p.kind}:${p.id}`), deletes: deletes.length });
     this.afterServerState();
   }
 
@@ -490,9 +545,10 @@ export class SyncClient {
 
   private onAck(id: string, revision: number): void {
     if (this.inflight === null || this.inflight.id !== id) return;
-    for (const p of this.inflight.puts) this.mirror.set(recordKey(p.kind, p.id), p.json);
-    for (const d of this.inflight.deletes) this.mirror.delete(recordKey(d.kind, d.id));
+    for (const p of this.inflight.puts) this.setMirror(recordKey(p.kind, p.id), p.json);
+    for (const d of this.inflight.deletes) this.setMirror(recordKey(d.kind, d.id), null);
     this.revision = Math.max(this.revision ?? 0, revision);
+    this.trace('ack', { id, revision });
     this.endCommit();
     this.lastSyncedAt = this.now();
     this.schedulePersist();
@@ -501,6 +557,7 @@ export class SyncClient {
 
   private onReject(msg: Extract<ServerMessage, { t: 'reject' }>): void {
     if (this.inflight === null || this.inflight.id !== msg.id) return;
+    this.trace('reject', { id: msg.id, reason: msg.reason, revision: msg.revision, conflicts: msg.conflicts.map((c) => `${c.kind}:${c.id}`) });
     this.endCommit();
     switch (msg.reason) {
       case 'conflict': {
@@ -517,10 +574,10 @@ export class SyncClient {
           }
           if (c.json === null) {
             deletes.push({ kind: c.kind, id: c.id });
-            this.mirror.delete(key);
+            this.setMirror(key, null);
           } else {
             puts.push({ kind: c.kind, id: c.id, json: c.json });
-            this.mirror.set(key, c.json);
+            this.setMirror(key, c.json);
           }
         }
         this.o.host.applyRemote(puts, deletes);
@@ -558,13 +615,42 @@ export class SyncClient {
     const desired = this.o.host.readRecords();
     const puts: RecordPut[] = [];
     const deletes: RecordDelete[] = [];
+    const stale: RecordPut[] = [];
     for (const [key, rec] of desired) {
-      if (this.mirror.get(key) !== rec.json) puts.push(rec);
+      const current = this.mirror.get(key);
+      if (current === rec.json) continue;
+      if (current !== undefined && this.isStaleRevert(key, rec.json, current)) {
+        stale.push({ kind: rec.kind, id: rec.id, json: current });
+        continue;
+      }
+      puts.push(rec);
     }
     for (const key of this.mirror.keys()) {
       if (!desired.has(key)) deletes.push(splitRecordKey(key));
     }
+    if (stale.length > 0) {
+      // Local state holds an OLD copy of a record the server has since moved
+      // past. That is never a deliberate edit (a real edit carries a fresh
+      // updatedAt), so it must not be pushed: put the current copy back instead.
+      this.trace('stale-revert-blocked', { records: stale.map((p) => `${p.kind}:${p.id}`) });
+      this.o.host.applyRemote(stale, []);
+    }
     return { puts, deletes };
+  }
+
+  /**
+   * Is `candidate` an exact copy of a version of this record that the server has
+   * already replaced with a NEWER one (by the record's own updatedAt)? Both
+   * conditions are required: an exact old copy alone could be a legitimate
+   * "set it back" edit for records without timestamps, and an older timestamp
+   * alone could be clock skew between devices.
+   */
+  private isStaleRevert(key: RecordKey, candidate: string, current: string): boolean {
+    if (!TIMESTAMPED_KINDS.has(splitRecordKey(key).kind)) return false;
+    if (!this.superseded.get(key)?.includes(candidate)) return false;
+    const a = updatedAtOf(candidate);
+    const b = updatedAtOf(current);
+    return a !== null && b !== null && a < b;
   }
 
   private flush(): void {
@@ -596,6 +682,7 @@ export class SyncClient {
       reason: 'edit',
     };
     this.sentKeys = new Set([...sendPuts.map((p) => recordKey(p.kind, p.id)), ...sendDeletes.map((d) => recordKey(d.kind, d.id))]);
+    this.trace('commit', { id: this.inflight.id, base: this.inflight.baseRevision, puts: sendPuts.map((p) => `${p.kind}:${p.id}`), deletes: sendDeletes.length });
     this.sendInflight();
     this.publish();
   }
@@ -673,4 +760,14 @@ function detach(socket: SyncSocket): void {
   socket.onmessage = null;
   socket.onclose = null;
   socket.onerror = null;
+}
+
+/** The record's own `updatedAt` (ISO string), or null when absent/unreadable. */
+function updatedAtOf(json: string): string | null {
+  try {
+    const v = (JSON.parse(json) as { updatedAt?: unknown }).updatedAt;
+    return typeof v === 'string' ? v : null;
+  } catch {
+    return null;
+  }
 }

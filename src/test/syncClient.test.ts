@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { PROTOCOL_VERSION, LIMITS, type CommitMessage } from '../../shared/protocol';
-import { SyncClient, type PersistedMirror, type SessionProbe, type StashedEdit } from '../lib/sync/client';
+import { SyncClient, type PersistedMirror, type SessionProbe, type StashedEdit, type SyncLogEvent } from '../lib/sync/client';
 import { recordKey } from '../lib/sync/records';
 import { FakeHost, FakeSocket, ManualTimers, rec } from './helpers/syncHarness';
 
@@ -12,6 +12,7 @@ interface Rig {
   sockets: FakeSocket[];
   stash: StashedEdit[];
   mirrors: PersistedMirror[];
+  logs: SyncLogEvent[];
   client: SyncClient;
   socket(): FakeSocket;
 }
@@ -22,6 +23,7 @@ function rig(opts: { initial?: PersistedMirror | null; firstState?: 'apply' | 'o
   const sockets: FakeSocket[] = [];
   const stash: StashedEdit[] = [];
   const mirrors: PersistedMirror[] = [];
+  const logs: SyncLogEvent[] = [];
   let ids = 0;
   const client = new SyncClient({
     url: 'wss://app.example/ws',
@@ -37,12 +39,13 @@ function rig(opts: { initial?: PersistedMirror | null; firstState?: 'apply' | 'o
     persistMirror: (m) => mirrors.push(m),
     stashEdit: (e) => stash.push(e),
     probeSession: opts.probe,
+    log: (e) => logs.push(e),
     timers,
     random: () => 1, // no jitter: delay = base
     now: () => 1_000_000 + timers.time,
     newId: () => `commit-${++ids}`,
   });
-  return { host, timers, sockets, stash, mirrors, client, socket: () => sockets[sockets.length - 1] };
+  return { host, timers, sockets, stash, mirrors, logs, client, socket: () => sockets[sockets.length - 1] };
 }
 
 /** Connect, handshake and deliver the first state. */
@@ -498,5 +501,90 @@ describe('stop()', () => {
     r.timers.advance(120_000);
     expect(s.messages('commit')).toHaveLength(0);
     expect(r.sockets).toHaveLength(1);
+  });
+});
+
+describe('stale-revert guard (never push an old copy over a newer one)', () => {
+  const V2 = { n: 'v2', updatedAt: '2026-10-06T13:31:55.269Z' };
+  const V3 = { n: 'v3', updatedAt: '2026-10-06T13:32:49.000Z' };
+
+  function connected() {
+    const r = rig();
+    const s = connect(r, [rec('project', 'p', V2)], 2);
+    s.serverSend({ t: 'changes', revision: 3, actor: 'bob@example.com', at: 'x', puts: [rec('project', 'p', V3)], deletes: [] });
+    return { r, s };
+  }
+
+  it('blocks an exact copy of a superseded version, repairs the local copy, and sends nothing', () => {
+    const { r, s } = connected();
+    expect(r.host.json('project', 'p')).toBe(JSON.stringify(V3));
+    // Something (a stale cache, a stale closure…) puts the OLD record back into local state.
+    r.host.edit('project', 'p', V2);
+    r.client.notifyLocalChange();
+    debounce(r);
+    expect(s.messages('commit')).toHaveLength(0);
+    expect(r.host.json('project', 'p')).toBe(JSON.stringify(V3)); // repaired to the current shared version
+    expect(r.logs.some((l) => l.event === 'stale-revert-blocked')).toBe(true);
+    expect(r.host.notices).toEqual([]); // silent: nothing the user did was lost
+  });
+
+  it('still sends a genuine edit (a new version with a fresh timestamp)', () => {
+    const { r, s } = connected();
+    r.host.edit('project', 'p', { n: 'mine', updatedAt: '2026-10-06T13:40:00.000Z' });
+    r.client.notifyLocalChange();
+    debounce(r);
+    expect(lastCommit(s).puts[0].json).toContain('mine');
+  });
+
+  it('still sends an edit whose timestamp is OLDER only because this device’s clock is behind', () => {
+    const { r, s } = connected();
+    r.host.edit('project', 'p', { n: 'skewed-clock edit', updatedAt: '2026-10-06T13:00:00.000Z' }); // < V3, but not an old copy
+    r.client.notifyLocalChange();
+    debounce(r);
+    expect(lastCommit(s).puts[0].json).toContain('skewed-clock edit');
+    expect(r.logs.some((l) => l.event === 'stale-revert-blocked')).toBe(false);
+  });
+
+  it('does NOT apply to records without timestamps: changing a setting back to an earlier value is a real edit', () => {
+    const r = rig();
+    const s = connect(r, [rec('settings', 'settings', { supervisorName: 'X' })], 1);
+    s.serverSend({ t: 'changes', revision: 2, actor: 'bob@example.com', at: 'x', puts: [rec('settings', 'settings', { supervisorName: 'Y' })], deletes: [] });
+    r.host.edit('settings', 'settings', { supervisorName: 'X' }); // back to the earlier value
+    r.client.notifyLocalChange();
+    debounce(r);
+    expect(lastCommit(s).puts).toEqual([rec('settings', 'settings', { supervisorName: 'X' })]);
+  });
+
+  it('does NOT apply to members either (same reasoning)', () => {
+    const r = rig();
+    const s = connect(r, [rec('member', 'm', { name: 'Old' })], 1);
+    s.serverSend({ t: 'changes', revision: 2, actor: 'bob@example.com', at: 'x', puts: [rec('member', 'm', { name: 'New' })], deletes: [] });
+    r.host.edit('member', 'm', { name: 'Old' });
+    r.client.notifyLocalChange();
+    debounce(r);
+    expect(lastCommit(s).puts).toEqual([rec('member', 'm', { name: 'Old' })]);
+  });
+
+  it('after a successful ack the replaced version is also remembered (own edits count as superseded too)', () => {
+    const r = rig();
+    const s = connect(r, [rec('project', 'p', V2)], 2);
+    const mine = { n: 'mine', updatedAt: '2026-10-06T13:50:00.000Z' };
+    r.host.edit('project', 'p', mine);
+    r.client.notifyLocalChange();
+    debounce(r);
+    s.serverSend({ t: 'ack', id: lastCommit(s).id, revision: 3, changed: true });
+    r.host.edit('project', 'p', V2); // reverting to the pre-edit copy WITHOUT a new timestamp
+    r.client.notifyLocalChange();
+    debounce(r);
+    expect(s.messages('commit')).toHaveLength(1); // only my real edit was ever sent
+    expect(r.host.json('project', 'p')).toBe(JSON.stringify(mine));
+  });
+
+  it('records a breadcrumb trail for diagnosis', () => {
+    const { r } = connected();
+    const events = r.logs.map((l) => l.event);
+    expect(events).toContain('connect');
+    expect(events).toContain('state');
+    expect(events).toContain('changes');
   });
 });

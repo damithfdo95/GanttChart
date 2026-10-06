@@ -67,6 +67,32 @@ PROJECT CREATION (New Project form)           DAILY (Dashboard → Today's Execu
   migration, and legacy snapshots survive verbatim until the first entry
   save. All existing data/backups import unchanged.
 
+## Shared web version (optional)
+
+The same app can run as a **shared web app** so a team sees the same data live.
+Without the backend it is exactly the local-only app described above.
+
+* Design and decisions: [docs/CLOUD_ARCHITECTURE.md](docs/CLOUD_ARCHITECTURE.md)
+* What would be created in Cloudflare, what it costs ($0 on the Free plans), the
+  Access policy and the deployment steps — **a proposal, nothing deployed**:
+  [docs/DEPLOYMENT_PLAN.md](docs/DEPLOYMENT_PLAN.md)
+
+Try it locally (needs Node 22; uses the real Workers runtime, no Cloudflare account):
+
+```powershell
+npm run build
+cd worker
+npm install
+npm run dev -- --env dev          # http://127.0.0.1:8787  (local identity, loopback only)
+```
+
+Open `http://127.0.0.1:8787` and `http://localhost:8787` — two different browser
+origins behave like two people's computers.
+
+Tests: `npm run test` (app, Node 20/22) · `cd worker && npm run test` (Worker unit
+tests plus the real-runtime Durable Object and WebSocket tests) ·
+`cd worker && npm run typecheck`.
+
 ## Requirements
 
 - Node.js 18+ (needed only to build/develop; the built app runs in any modern browser)

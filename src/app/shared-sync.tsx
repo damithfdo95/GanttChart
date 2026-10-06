@@ -4,7 +4,7 @@ import type { ReportsStateApi } from './useReportsState';
 import type { ReportsState } from '../types';
 import type { Identity, RecordDelete, RecordPut } from '../../shared/protocol';
 import { normalizeQaInputsForLoad } from '../lib/storage/storage';
-import { SyncClient, type PersistedMirror, type SyncHost, type SyncNotice, type SyncSocket, type SyncState } from '../lib/sync/client';
+import { SyncClient, type PersistedMirror, type SyncHost, type SyncLogEvent, type SyncNotice, type SyncSocket, type SyncState } from '../lib/sync/client';
 import { applyRecordChanges, reportsToRecords, type RecordKey } from '../lib/sync/records';
 import { appendStash, readStash, writeLink, writeMirror } from '../lib/sync/device';
 import { probeSession } from '../lib/sync/serverMode';
@@ -133,6 +133,13 @@ export function useSharedSyncEngine(app: AppStateApi, reports: ReportsStateApi, 
       persistMirror: (m) => void writeMirror(m),
       stashEdit: (edit) => appendStash(edit),
       probeSession: () => probeSession(),
+      // A small in-memory trail (never sent anywhere) so odd behaviour can be diagnosed
+      // from the browser console: `window.__gcSyncLog`.
+      log: (event: SyncLogEvent) => {
+        const ring = ((window as unknown as { __gcSyncLog?: SyncLogEvent[] }).__gcSyncLog ??= []);
+        ring.push(event);
+        if (ring.length > 200) ring.splice(0, ring.length - 200);
+      },
     });
     clientRef.current = client;
     client.start();

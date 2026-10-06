@@ -9,7 +9,8 @@
     "./**/*.ts",
     "../../src",
     "../../../shared",
-    "../../../src/lib/sync",
+    "../../../src/lib/sync/client.ts",
+    "../../../src/lib/sync/records.ts",
     "../../worker-configuration.d.ts"
   ]
 }
