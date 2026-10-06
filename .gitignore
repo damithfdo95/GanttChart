@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.local
+
+# Local workspace backups contain real project data — never commit them.
+backup/
+*.json.bak

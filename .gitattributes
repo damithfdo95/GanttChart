@@ -1,0 +1,2 @@
+# Keep the repository LF-only regardless of the global core.autocrlf setting.
+* text=auto eol=lf
