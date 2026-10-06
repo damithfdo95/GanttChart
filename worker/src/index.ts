@@ -302,6 +302,8 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     if (rev[2] === '/restore' && method === 'POST') {
       const denial = need(ctx, 'data.restore');
       if (denial !== null) return denial;
+      const body = await readJson(ctx); // not used, but a forged tenant in it is rejected like everywhere else
+      if (!body.ok) return body.response;
       const result = await roomFor(ctx, p).restoreRevision(p.tenantId, revision, p.email);
       return result.ok ? json(result) : problem(409, result.error);
     }
@@ -360,12 +362,16 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
   if (path === '/api/tenant/deletion-request' && method === 'POST') {
     const denial = need(ctx, 'tenant.requestDeletion');
     if (denial !== null) return denial;
+    const body = await readJson(ctx);
+    if (!body.ok) return body.response;
     const result = await ctx.registry.requestDeletion(p.tenantId, p.userId);
     return result.ok ? json({ tenant: result.value }) : registryProblem(result.error);
   }
   if (path === '/api/tenant/deletion-request/cancel' && method === 'POST') {
     const denial = need(ctx, 'tenant.requestDeletion');
     if (denial !== null) return denial;
+    const body = await readJson(ctx);
+    if (!body.ok) return body.response;
     const result = await ctx.registry.cancelDeletion(p.tenantId, p.userId);
     return result.ok ? json({ tenant: result.value }) : registryProblem(result.error);
   }
