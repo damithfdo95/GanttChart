@@ -162,13 +162,26 @@ export class WorkspaceRoom extends DurableObject<Env> {
     }
   }
 
-  override async webSocketClose(): Promise<void> {
-    // Nothing to clean up: all session state lives in the socket attachment.
-    // (The runtime auto-replies to the Close frame for compatibility dates >= 2026-04-07.)
+  override async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    // All session state lives in the socket attachment, so there is nothing to
+    // clean up — but the closing handshake must be completed explicitly: without
+    // it the socket lingers half-closed (it stayed in getWebSockets() for ~10 s
+    // in the runtime tests). Reserved codes (1005/1006/1015) cannot be sent.
+    this.finishClose(ws, code, reason);
   }
 
-  override async webSocketError(_ws: WebSocket, error: unknown): Promise<void> {
+  override async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
     console.error(JSON.stringify({ event: 'ws_error', error: String(error) }));
+    this.finishClose(ws, 1011, 'error');
+  }
+
+  private finishClose(ws: WebSocket, code: number, reason: string): void {
+    const sendable = code === 1005 || code === 1006 || code === 1015 || code < 1000 ? 1000 : code;
+    try {
+      ws.close(sendable, reason);
+    } catch {
+      // already closed
+    }
   }
 
   private handleCommit(ws: WebSocket, attachment: Attachment, msg: CommitMessage): void {

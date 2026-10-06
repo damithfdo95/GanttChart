@@ -245,6 +245,30 @@ describe('Access session lifetime', () => {
   });
 });
 
+describe('closing', () => {
+  it('completes the close handshake promptly and frees the connection (no half-closed lingering)', async () => {
+    const ws = newWorkspace();
+    const { sock } = await join(ws, 'alice@example.com');
+    await sock.next('snapshot');
+    expect((await ws.stats()).connections).toBe(1);
+    const started = Date.now();
+    sock.close(1000);
+    await sock.closed;
+    expect(Date.now() - started).toBeLessThan(2000); // used to take ~10 s
+    await waitFor(async () => expect((await ws.stats()).connections).toBe(0), 2000);
+  });
+
+  it('answers a close with an application code (e.g. 4002) the same way', async () => {
+    const ws = newWorkspace();
+    const { sock } = await join(ws);
+    await sock.next('snapshot');
+    const started = Date.now();
+    sock.close(4002);
+    expect((await sock.closed).code).toBe(4002);
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+});
+
 describe('hibernation / eviction', () => {
   it('a hibernated connection keeps its session: commits and broadcasts work without a new hello', async () => {
     const ws = newWorkspace();
