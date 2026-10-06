@@ -196,8 +196,14 @@ class FakeTransaction {
   }
 
   private settle(): void {
-    if (this.mode === 'readwrite' && this.db.factory.abortNextTransaction) {
-      this.db.factory.abortNextTransaction = false;
+    const factory = this.db.factory;
+    const scoped = factory.abortNextTransactionIncluding;
+    if (
+      this.mode === 'readwrite' &&
+      (factory.abortNextTransaction || (scoped !== null && this.storeNames.includes(scoped)))
+    ) {
+      factory.abortNextTransaction = false;
+      factory.abortNextTransactionIncluding = null;
       this.state = 'finished';
       if (this.onabort !== null) this.onabort();
       return;
@@ -269,6 +275,8 @@ export class FakeIDBFactory {
   upgradeActive = false;
   /** When true, the next transaction that would commit is aborted instead (transaction-safety test). */
   abortNextTransaction = false;
+  /** When set, the next readwrite transaction whose scope includes this store is aborted (targets one specific commit). */
+  abortNextTransactionIncluding: string | null = null;
   /** When true, the next open() fails (unavailable-database test). */
   failNextOpen = false;
 

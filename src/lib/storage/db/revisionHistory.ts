@@ -228,24 +228,3 @@ export async function writeJournalAnchor(
     return false; // history becomes degraded — reported, never fatal
   }
 }
-
-/**
- * Replace the whole journal with validated imported entries (history backup
- * import, V6.8 §30). Entries are written verbatim in one transaction; the
- * caller afterwards persists the imported current state as a NEW revision so
- * the manifest/journal pair converges.
- */
-export async function replaceJournalEntries(entries: WorkspaceRevision[]): Promise<boolean> {
-  try {
-    await withReadWriteTx([STORE_REVISION_HISTORY], (get) => {
-      const store = get(STORE_REVISION_HISTORY);
-      store.clear();
-      for (const entry of entries) {
-        store.put({ ...entry, schemaVersion: JOURNAL_SCHEMA_VERSION });
-      }
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}

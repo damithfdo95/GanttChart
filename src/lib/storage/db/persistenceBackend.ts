@@ -40,6 +40,7 @@ import {
 import { readStorageMigrationRecord, type StorageMigrationRecord } from './migration';
 import {
   appendJournalPut,
+  appendJournalReplace,
   appendMetadataPut,
   applyWorkspaceWritePlan,
   mirrorFromRead,
@@ -59,7 +60,6 @@ import {
   readJournalIntegrity,
   reconstructRevision,
   pruneRevisionHistory,
-  replaceJournalEntries,
   REVISION_HISTORY_RETENTION,
 } from './revisionHistory';
 import {
@@ -88,6 +88,13 @@ export interface PersistOptions {
   restoredFrom?: number;
   /** Force a new revision even when the record plan is unchanged (restore/import of identical state). */
   forceRevision?: boolean;
+  /**
+   * History import only: replace the retained journal with these entries in
+   * the SAME transaction as the commit, numbering the new revision after the
+   * larger of the current and imported heads. All-or-nothing: a failed or
+   * rejected commit leaves both the journal and the revision untouched.
+   */
+  replaceJournal?: WorkspaceRevision[];
 }
 
 export interface WorkspacePersistResult {
@@ -209,10 +216,16 @@ async function persistToIndexedDb(
       // Defensive: prime from the database when no mirror exists yet.
       mirror = mirrorFromRead(await readWorkspaceFromDb());
     }
+    // History import continues numbering after the imported head so the
+    // manifest/journal pair stays monotonic.
+    const importedHead =
+      options?.replaceJournal !== undefined && options.replaceJournal.length > 0
+        ? options.replaceJournal[options.replaceJournal.length - 1].revision
+        : 0;
     // Integrity gate (§11): a workspace that is known to be structurally
     // invalid is not committed, and its revision is not advanced (§2).
     const candidate = buildManifest({
-      revision: currentRevision + 1,
+      revision: Math.max(currentRevision, importedHead) + 1,
       backend: 'indexeddb',
       integrityStatus: 'verified',
       committedAt: new Date().toISOString(),
@@ -246,6 +259,12 @@ async function persistToIndexedDb(
       lastRecoveryAt: manifest?.lastRecoveryAt,
     });
     appendMetadataPut(plan, META_KEY_PERSISTENCE_META, nextManifest);
+    if (options?.replaceJournal !== undefined) {
+      appendJournalReplace(
+        plan,
+        options.replaceJournal.map((revision) => ({ ...revision, schemaVersion: JOURNAL_SCHEMA_VERSION })),
+      );
+    }
     const entry: WorkspaceRevision & { schemaVersion: number } = buildRevisionEntry({
       revision: nextManifest.revision,
       committedAt: nextManifest.committedAt,
@@ -395,11 +414,11 @@ export type HistoryImportResult =
   | { ok: false; error: 'invalid' | 'write-failed' | 'unavailable' };
 
 /**
- * Import a validated history-backup payload (V6.8 §30): install the retained
- * journal entries, then persist the imported current state as a NEW revision
- * (reason 'import'). Revision numbering continues from the larger of the
- * current and imported heads so the manifest/journal pair converges on the
- * next commit and stays monotonic.
+ * Import a validated history-backup payload (V6.8 §30): replace the retained
+ * journal entries AND persist the imported current state as a NEW revision
+ * (reason 'import') in ONE transaction — all-or-nothing. Revision numbering
+ * continues from the larger of the current and imported heads so the
+ * manifest/journal pair stays monotonic.
  */
 export async function importHistoryWorkspace(data: {
   appState: AppState;
@@ -407,13 +426,12 @@ export async function importHistoryWorkspace(data: {
   revisions: WorkspaceRevision[];
 }): Promise<HistoryImportResult> {
   if (activeMode !== 'indexeddb') return { ok: false, error: 'unavailable' };
-  const importedHead = data.revisions.length > 0 ? data.revisions[data.revisions.length - 1].revision : 0;
-  const replaced = await replaceJournalEntries(data.revisions);
-  if (!replaced) return { ok: false, error: 'write-failed' };
-  if (importedHead > currentRevision) currentRevision = importedHead;
+  // One transaction: journal replacement + imported state + manifest. A
+  // failure leaves the existing history, state and revision untouched.
   const result = await persistWorkspaceAsync(data.appState, data.reportsState, {
     reason: 'import',
     forceRevision: true,
+    replaceJournal: data.revisions,
   });
   if (!result.ok) return { ok: false, error: 'write-failed' };
   return { ok: true, revision: result.revision };

@@ -119,6 +119,8 @@ export interface WorkspaceWritePlan {
   deletes: Map<string, Array<{ id: IDBValidKey }>>;
   /** True when at least one record differs from the mirror. */
   changed: boolean;
+  /** Stores cleared at the START of the transaction, before any put/delete (history import). */
+  clears?: string[];
 }
 
 function recordPut(plan: WorkspaceWritePlan, store: string, value: unknown, key?: string): void {
@@ -242,10 +244,22 @@ export function appendJournalPut(plan: WorkspaceWritePlan, entry: WorkspaceRevis
   recordPut(plan, STORE_REVISION_HISTORY, entry);
 }
 
+/**
+ * Replace the whole journal inside the plan's transaction: clear the store
+ * first, then put `entries`. Any journal entry appended afterwards (the
+ * import head) commits atomically with them.
+ */
+export function appendJournalReplace(plan: WorkspaceWritePlan, entries: Array<WorkspaceRevision & { schemaVersion?: number }>): void {
+  plan.clears = [...(plan.clears ?? []), STORE_REVISION_HISTORY];
+  for (const entry of entries) recordPut(plan, STORE_REVISION_HISTORY, entry);
+}
+
 /** Apply a write plan inside ONE readwrite transaction over all stores (atomic save). */
 export async function applyWorkspaceWritePlan(plan: WorkspaceWritePlan): Promise<void> {
   const stores = [STORE_PROJECTS, STORE_REPORTS, STORE_DAILY_ACTUALS, STORE_ATTENDANCE, STORE_TOPICS, STORE_METADATA, STORE_REVISION_HISTORY];
   await withReadWriteTx(stores, (get) => {
+    // Requests run in order within the transaction: clears precede the puts.
+    for (const store of plan.clears ?? []) get(store).clear();
     for (const [store, puts] of plan.puts) {
       const objectStore = get(store);
       for (const put of puts) {

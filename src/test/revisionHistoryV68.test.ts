@@ -11,6 +11,7 @@ import {
   importHistoryWorkspace,
   persistWorkspaceAsync,
   readPersistenceManifestFromDb,
+  getWorkspaceRevision,
   resetPersistenceBackendForTests,
 } from '../lib/storage/db/persistenceBackend';
 import {
@@ -623,6 +624,33 @@ describe('history backup (V6.8 §30–§31)', () => {
     expect((await getRevisionHistory()).map((m) => m.revision)).toEqual([5, 2, 1]);
     const reconstructed = await getRevision(2);
     expect(reconstructed?.snapshot.appState.casesCompleted).toBe(80);
+  });
+
+  it('a failed history import is all-or-nothing: journal, state and revision stay untouched', async () => {
+    await bootFresh();
+    const w = baseWorkspace();
+    await persistWorkspaceAsync(w.app, w.reports);
+    await persistWorkspaceAsync({ ...w.app, casesCompleted: 80 }, w.reports); // head 2
+    const payload = createHistoryBackupPayload({ ...w.app, casesCompleted: 10 }, w.reports, [
+      (await getRevisionsAfter(0))[0], // a shorter, different history (revision 1 only)
+    ]);
+    const parsed = parseHistoryBackupPayload(JSON.stringify(payload));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const historyBefore = (await getRevisionHistory()).map((m) => m.revision);
+    // Fail the state commit specifically (the transaction that writes the
+    // manifest): history must not be replaced on its own beforehand.
+    idb.abortNextTransactionIncluding = STORE_METADATA;
+    const result = await importHistoryWorkspace(parsed.data);
+    expect(result).toEqual({ ok: false, error: 'write-failed' });
+    expect((await getRevisionHistory()).map((m) => m.revision)).toEqual(historyBefore);
+    expect(getWorkspaceRevision()).toBe(2);
+    expect((await readPersistenceManifestFromDb())?.revision).toBe(2);
+    expect((await getRevision(2))?.snapshot.appState.casesCompleted).toBe(80);
+    // A retry after the failure succeeds and continues the numbering normally.
+    const retry = await importHistoryWorkspace(parsed.data);
+    expect(retry).toEqual({ ok: true, revision: 3 });
+    expect((await getRevisionHistory()).map((m) => m.revision)).toEqual([3, 1]);
   });
 
   it('importing into a database behind the imported head continues from the imported head', async () => {
