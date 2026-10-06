@@ -26,6 +26,11 @@ import { downloadTextFile } from '../lib/export/download';
 import { AccessDenied } from '../features/tenancy/AccessDenied';
 import { SuperAdminConsole } from '../features/tenancy/SuperAdminConsole';
 import { PublicLanding } from '../features/tenancy/PublicLanding';
+import { SignedOutScreen } from '../features/tenancy/LogoutButton';
+import { SessionProvider } from './session-context';
+import { phaseAfterEnd, type LandingNotice, type SessionEnd } from './sessionEnd';
+import { ACCESS_LOGOUT_PATH } from '../lib/auth/logout';
+import { flushSync } from 'react-dom';
 import { t } from '../i18n';
 
 /** History retention shown to the user (the server's default, see wrangler.jsonc). */
@@ -35,7 +40,8 @@ type Phase =
   | { kind: 'detecting' }
   | { kind: 'ready'; boot: PersistenceBoot; shared: SharedBoot | null; tenant: TenantApi }
   | { kind: 'link'; principal: PrincipalDto; identity: Identity; plan: LinkPlan; server: ServerWorkspace }
-  | { kind: 'landing'; signInFailed: boolean }
+  | { kind: 'landing'; notice: LandingNotice }
+  | { kind: 'signed-out' }
   | { kind: 'denied'; reason: DenyReason; email: string }
   | { kind: 'super'; principal: PrincipalDto }
   | { kind: 'problem'; problem: 'unreachable' | 'login' | 'error' | 'export'; status?: number };
@@ -73,7 +79,7 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
         setPhase({ kind: 'ready', boot, shared: null, tenant: NO_TENANT });
         return;
       case 'landing':
-        setPhase({ kind: 'landing', signInFailed: new URLSearchParams(window.location.search).get('signin') === 'unavailable' });
+        setPhase({ kind: 'landing', notice: landingNotice() });
         return;
       case 'denied':
         setPhase(decision);
@@ -128,10 +134,31 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (phase.kind === 'ready') return <App boot={phase.boot} shared={phase.shared} tenant={phase.tenant} />;
-  if (phase.kind === 'landing') return <PublicLanding initialLang={lang} signInFailed={phase.signInFailed} />;
+  // One place ends a signed-in session (sign out, or the sign-in ended on its own). Rendering the signed-out
+  // screen replaces the app SYNCHRONOUSLY, so no authenticated data is on screen when the browser leaves.
+  const session = {
+    endSession: (end: SessionEnd): void => {
+      flushSync(() => setPhase(phaseAfterEnd(end)));
+    },
+  };
+
+  if (phase.kind === 'signed-out') return <SignedOutScreen lang={lang} />;
+  if (phase.kind === 'landing') return <PublicLanding initialLang={lang} notice={phase.notice} />;
+  if (phase.kind === 'ready') {
+    return (
+      <SessionProvider value={session}>
+        <App boot={phase.boot} shared={phase.shared} tenant={phase.tenant} />
+      </SessionProvider>
+    );
+  }
   if (phase.kind === 'denied') return <AccessDenied lang={lang} reason={phase.reason} email={phase.email} onRetry={() => void detect()} />;
-  if (phase.kind === 'super') return <SuperAdminConsole initialLang={lang} principal={phase.principal} api={createTenancyApi()} />;
+  if (phase.kind === 'super') {
+    return (
+      <SessionProvider value={session}>
+        <SuperAdminConsole initialLang={lang} principal={phase.principal} api={createTenancyApi()} />
+      </SessionProvider>
+    );
+  }
 
   return (
     <main className="link-screen">
@@ -161,6 +188,15 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
       </div>
     </main>
   );
+}
+
+/**
+ * What the public page should say. If this very page was served at Cloudflare's logout path, Access did not handle
+ * the request (it should have), so the person is NOT signed out and must be told, not shown a normal sign-in page.
+ */
+function landingNotice(): LandingNotice {
+  if (window.location.pathname.startsWith('/cdn-cgi/')) return window.location.pathname === ACCESS_LOGOUT_PATH ? 'logoutIncomplete' : null;
+  return new URLSearchParams(window.location.search).get('signin') === 'unavailable' ? 'signInFailed' : null;
 }
 
 /** Execute a validated choice: returns the workspace the app starts with and how the client must treat the first server state. */

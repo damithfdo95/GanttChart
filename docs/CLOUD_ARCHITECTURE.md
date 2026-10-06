@@ -587,3 +587,19 @@ refuses incomplete or drifting production settings (list in DEPLOYMENT_PLAN.md s
 No Durable Object migration and no schema change. `TenantSummaryDto` gains one computed field. Existing registry data,
 workspaces and the existing Gmail test workspace are untouched. Device links are unchanged.
 
+### 14.8 Stage 6.1: self-service sign-out
+
+* One component (`LogoutButton`) and one pure flow (`src/lib/auth/logout.ts`) serve every role. The Super Admin console and
+  the Admin/User shell mount the same control; an anonymous visitor never sees it.
+* Flow: unsent shared edits (`sync.pending > 0`) -> a warning that offers Cancel and "Sign out anyway"; otherwise (or after
+  confirming) `stopSync` (client `stop()`: socket closed with 1000, reconnect/heartbeat/flush timers cleared, listeners and the
+  diagnostic trail dropped), save the device copy, replace the app with a neutral signed-out screen **synchronously**, then
+  `navigate('/cdn-cgi/access/logout')`.
+* It uses Cloudflare's own endpoint on the application's origin, with no parameters; it has no server side of its own and
+  never changes a server record, account, tenant or storage mode. Force-signing-out other people is intentionally not offered.
+* Session ends are unified in `src/app/sessionEnd.ts`: choosing to sign out, or an API call refused because the sign-in is gone
+  (`401`, an Access redirect, or an invalid/missing token), both stop the app showing authenticated data at once; the second shows
+  the public page with a notice. WebSocket close codes (4401 expiry, 4403 revoked, 4410 moved, 4411 deleted) keep their own
+  banners because the person may still need to download or keep their unsent changes.
+* Device ownership is unchanged: a different identity never inherits another's device-linked copy (see `startupDecision.ts`).
+

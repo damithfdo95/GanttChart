@@ -97,6 +97,30 @@ A person outside every Access policy cannot even sign in, so an older Admin on a
 address (the existing Gmail test workspace) cannot reach the app unless the "Platform
 administrators" policy lists them.
 
+### Signing out
+
+Every signed-in person (Super Admin, Admin, User) has a **Logout** control (Platform Administration header; the
+application header for Admin and User, including an Admin in local mode). It signs out **this browser only**.
+
+* **Endpoint:** `<application-domain>/cdn-cgi/access/logout`, i.e. for production
+  `https://ganttchart.damithfdo.workers.dev/cdn-cgi/access/logout`. The page uses the relative path
+  `/cdn-cgi/access/logout`, with no parameters. It is a Cloudflare-managed path, **not** a Worker route: the Worker has no
+  logout API, accepts no user id or email for logging out, and cannot sign anyone else out.
+* **What the page does first:** warns if edits are still unsent (Cancel keeps everything running), stops live sync
+  (closes the WebSocket, cancels reconnect/heartbeat timers), saves the device's own copy, clears the signed-in state
+  from memory, then navigates to the endpoint. The device's own data is kept (see below).
+* **Cloudflare limitations** (from Cloudflare's documentation): Access logout is **not per application**; it ends the
+  user's Access session **across every application in the same Zero Trust organization**. The cookie is cleared at once,
+  but already-issued tokens can still be accepted for about **20–30 seconds**, so the page treats the browser as signed out
+  immediately and does not rely on server-side revocation. The endpoint takes **no documented return URL**, so none is
+  used: after logout Cloudflare shows its own page, and the person returns to `/` (the public page) themselves.
+* **Not verified from here:** that `/cdn-cgi/access/logout` is answered by Cloudflare when Access protects only the three
+  paths in §5 (not the whole hostname). Rollout step 7b checks it. If Access does *not* answer, the SPA is served at that URL
+  and says that the sign-out was not completed, instead of looking signed out.
+* **Kept on the device (never deleted by logout):** the local database and backups, the device's copy of a shared workspace
+  and its link (reused only for the same person in the same workspace; anyone else is treated as foreign), language and
+  other per-device preferences. "Clear this device" in Settings is a different, deliberate action.
+
 ## 3. Configuration (where each setting lives)
 
 | Setting | Kind | Where | Why |
@@ -228,6 +252,12 @@ no Register). Sign in as the Super Admin → Platform Administration opens.
 was verified, but you do not have a GanttChart account." (b) Create an Admin with a `@rakuten.com` address as
 Super Admin; creating one with a Gmail address must fail with a clear message. (c) Sign in as that Admin; as
 Admin, create a User (managed domain only); sign in as the User.
+
+**7b. Sign-out check.** Sign in, click **Logout**: the browser goes to Cloudflare's sign-out page; open the site address again:
+the public page shows, and `/api/whoami` (in the same browser) is refused. If the browser stays signed in, or the public page
+shows "Cloudflare Access did not complete the sign-out", Access is not handling `/cdn-cgi/access/logout` for this hostname:
+tell the developer; nothing is exposed (the Worker still checks every token), but Logout is not effective until fixed.
+Remember that this ends the person's Access session for **all** applications in the organization.
 
 **8. WebSocket check.** As a web-mode Admin/User, edit in two browsers: the header shows "synced" and the edit
 appears in the other browser. (Verifies the Access cookie is sent on the `/ws` upgrade.) If you are sent

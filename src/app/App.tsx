@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { AppProviders, useAppStateCtx, useAutoBackupCtx, usePersistenceCtx } from './state-contexts';
 import type { SharedBoot } from './shared-sync';
 import { TenantProvider, useTenant, type TenantApi } from './tenant-context';
+import { useSession } from './session-context';
+import { LogoutButton } from '../features/tenancy/LogoutButton';
+import { useSharedSync } from './shared-sync';
 import { SyncBanners, SyncStatusIndicator } from '../components/SyncStatus';
 import { Dashboard } from '../features/dashboard/Dashboard';
 import { Overall } from '../features/overall/Overall';
@@ -191,6 +194,29 @@ function WorkspaceBadge() {
   );
 }
 
+/** The sign-out control of the Admin and User shell (the Super Admin console has its own, same component). */
+function ShellLogout() {
+  const { principal } = useTenant();
+  const { state } = useAppStateCtx();
+  const sharedSync = useSharedSync();
+  const persistence = usePersistenceCtx();
+  const session = useSession();
+  if (principal === null || principal.role === 'super_admin') return null;
+  return (
+    <LogoutButton
+      lang={state.language}
+      who={principal.email}
+      deps={{
+        unsentChanges: sharedSync.unsentChanges,
+        saveLocal: persistence.saveNow,
+        stopSync: sharedSync.stopForSignOut,
+        endSession: () => session.endSession('logout'),
+        navigate: (path) => window.location.assign(path),
+      }}
+    />
+  );
+}
+
 function Shell() {
   const { state } = useAppStateCtx();
   const [screen, setScreen] = useState<Screen>('dashboard');
@@ -233,6 +259,7 @@ function Shell() {
         <WorkspaceBadge />
         <SyncStatusIndicator />
         <SaveStatusIndicator />
+        <ShellLogout />
       </nav>
       <SyncBanners />
       <CorruptionBanner />

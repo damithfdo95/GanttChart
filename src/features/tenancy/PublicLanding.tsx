@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { t, LANGUAGES } from '../../i18n';
+import type { LandingNotice } from '../../app/sessionEnd';
 import type { Language } from '../../types';
 
 /**
@@ -10,7 +11,7 @@ import type { Language } from '../../types';
  * "Sign in" is a plain link to /login — the address Cloudflare Access protects —
  * so the sign-in itself is always done by Access, never by this page.
  */
-export function PublicLanding({ initialLang, signInFailed }: { initialLang: Language; signInFailed: boolean }) {
+export function PublicLanding({ initialLang, notice }: { initialLang: Language; notice: LandingNotice }) {
   const [lang, setLang] = useState<Language>(initialLang);
 
   useEffect(() => {
@@ -33,7 +34,9 @@ export function PublicLanding({ initialLang, signInFailed }: { initialLang: Lang
           <strong>{t(lang, 'landing.tagline')}</strong>
         </p>
         <p>{t(lang, 'landing.description')}</p>
-        {signInFailed ? <p role="alert">{t(lang, 'landing.signInFailed')}</p> : null}
+        {notice === 'signInFailed' ? <p role="alert">{t(lang, 'landing.signInFailed')}</p> : null}
+        {notice === 'sessionEnded' ? <p role="status">{t(lang, 'landing.sessionEnded')}</p> : null}
+        {notice === 'logoutIncomplete' ? <p role="alert">{t(lang, 'landing.logoutIncomplete')}</p> : null}
         <div className="link-actions">
           <a className="btn btn-primary" href="/login">
             {t(lang, 'landing.signIn')}

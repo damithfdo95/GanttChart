@@ -132,6 +132,8 @@ export interface PersistenceStatusApi {
   health: PersistenceBoot['health'];
   /** Committed workspace revision of the latest save (V6.7 §2). */
   revision: number;
+  /** Write any pending edit to this device's database now (used before signing out). */
+  saveNow: () => Promise<void>;
 }
 
 const PersistenceStatusContext = createContext<PersistenceStatusApi | null>(null);
@@ -255,6 +257,7 @@ function useWorkspacePersistence(app: AppStateApi, reports: ReportsStateApi, boo
     migrationFailureReason: boot.migrationFailureReason,
     health: boot.health,
     revision,
+    saveNow,
   };
 }
 

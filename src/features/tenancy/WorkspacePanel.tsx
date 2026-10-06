@@ -7,7 +7,8 @@ import { browserMigrationDeps } from './migrationDeps';
 import { MigrateToLocal } from './MigrateToLocal';
 import { MigrateToWeb } from './MigrateToWeb';
 import { UsersManager } from './UsersManager';
-import { errorKey, panelCapabilities, whenText } from './format';
+import { errorKey, isSessionEnded, panelCapabilities, whenText } from './format';
+import { useSession } from '../../app/session-context';
 
 type Dialog = 'to-web' | 'to-local' | null;
 
@@ -25,6 +26,7 @@ export function WorkspacePanel() {
   const [tenantOverride, setTenantOverride] = useState<TenantDto | null>(null);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const session = useSession();
 
   const tenant = tenantOverride ?? principal?.tenant ?? null;
   const deps = useMemo(
@@ -45,7 +47,8 @@ export function WorkspacePanel() {
     try {
       setTenantOverride(action === 'request' ? await api.requestDeletion() : await api.cancelDeletion());
     } catch (e) {
-      setMessage({ kind: 'error', text: t(lang, errorKey(e)) });
+      if (isSessionEnded(e)) session.endSession('expired');
+      else setMessage({ kind: 'error', text: t(lang, errorKey(e)) });
     } finally {
       setBusy(false);
     }

@@ -129,6 +129,15 @@ describe('PUBLIC: an anonymous visitor gets the sign-in shell and nothing else',
     if (index.status !== 200) expect(index.headers.get('location')).toBe('/');
   });
 
+  it('Cloudflare’s sign-out path is not an application route: if it ever reaches the Worker it serves only the public shell and changes nothing', async () => {
+    const r = await send('GET', '/cdn-cgi/access/logout');
+    // (Cloudflare answers this itself in production; here no Access is in front, the strictest reading.)
+    expect(r.status).toBe(200);
+    expect(r.text).toContain('PUBLIC-SHELL');
+    expect(r.headers.get('set-cookie')).toBeNull();
+    expect(r.text).not.toMatch(/"email"|"tenant"/);
+  });
+
   it('"/login" without a verified token never signs anyone in: it returns to the public page with a notice', async () => {
     const r = await send('GET', '/login');
     expect(r.status).toBe(302);

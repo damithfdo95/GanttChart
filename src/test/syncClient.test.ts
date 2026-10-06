@@ -536,6 +536,57 @@ describe('stop()', () => {
   });
 });
 
+describe('stop() as used by sign-out', () => {
+  it('stops the heartbeat: no ping is ever sent after stop', () => {
+    const r = rig();
+    const s = connect(r, [], 1);
+    r.client.stop();
+    r.timers.advance(10 * 60_000);
+    expect(s.messages('ping')).toHaveLength(0);
+    expect(s.closedWith).toMatchObject({ code: 1000 });
+  });
+
+  it('stops a reconnect that was already scheduled, and ignores network-online and local changes afterwards', () => {
+    const r = rig();
+    const s = connect(r, [], 1);
+    s.serverDrop(1006); // a reconnect timer is now armed
+    r.client.stop();
+    r.timers.advance(10 * 60_000);
+    r.client.networkOnline();
+    r.host.edit('project', 'a', 1);
+    r.client.notifyLocalChange();
+    r.client.flushNow();
+    r.timers.advance(10 * 60_000);
+    expect(r.sockets).toHaveLength(1);
+    expect(r.host.status).toBe('stopped');
+  });
+
+  it('leaves NO timer behind (heartbeat, reconnect, flush, probe) — nothing can wake it up later', () => {
+    const connected = rig();
+    connect(connected, [], 1);
+    connected.host.edit('project', 'a', 1);
+    connected.client.notifyLocalChange(); // a flush timer
+    connected.client.stop();
+    expect(connected.timers.pending).toBe(0);
+
+    const dropped = rig();
+    const s = connect(dropped, [], 1);
+    s.serverDrop(1006); // a reconnect timer
+    dropped.client.stop();
+    expect(dropped.timers.pending).toBe(0);
+  });
+
+  it('sends nothing more once stopped, even with edits that were never sent', () => {
+    const r = rig();
+    const s = connect(r, [], 1);
+    r.host.edit('project', 'a', 1);
+    r.client.notifyLocalChange();
+    r.client.stop();
+    r.timers.advance(60_000);
+    expect(s.messages('commit')).toHaveLength(0);
+  });
+});
+
 describe('stale-revert guard (never push an old copy over a newer one)', () => {
   const V2 = { n: 'v2', updatedAt: '2026-10-06T13:31:55.269Z' };
   const V3 = { n: 'v3', updatedAt: '2026-10-06T13:32:49.000Z' };

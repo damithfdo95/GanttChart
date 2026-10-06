@@ -25,6 +25,17 @@ export function errorKey(error: unknown): TranslationKey {
   return (KNOWN_ERRORS.has(code) ? `tenancy.error.${code}` : 'tenancy.error.generic') as TranslationKey;
 }
 
+/**
+ * The server refused an API call because the sign-in itself is gone (no/invalid Access token, or Access redirected
+ * the call to its login). It is the same situation as a closed WebSocket with code 4401: the session ended.
+ * A refusal because of PERMISSIONS (forbidden, not found, ...) is not.
+ */
+export function isSessionEnded(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  if (error.status === 401 || error.code === 'login_required') return true;
+  return error.status === 403 && (error.code === 'Invalid Access token' || error.code === 'Missing Access token');
+}
+
 export function whenText(iso: string | null | undefined, lang: Language): string {
   if (iso === null || iso === undefined) return '';
   const d = new Date(iso);

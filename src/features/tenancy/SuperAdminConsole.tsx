@@ -3,7 +3,9 @@ import { t, LANGUAGES, type TranslationKey } from '../../i18n';
 import type { DeletionAudit, TenancyApi } from '../../lib/tenancy/api';
 import type { PrincipalDto, TenantSummaryDto } from '../../../shared/tenancy';
 import type { Language } from '../../types';
-import { errorKey, whenText } from './format';
+import { errorKey, isSessionEnded, whenText } from './format';
+import { LogoutButton } from './LogoutButton';
+import { useSession } from '../../app/session-context';
 
 type Message = { kind: 'ok' | 'error'; text: string } | null;
 
@@ -19,6 +21,7 @@ export function deletionConfirmed(tenant: Pick<TenantSummaryDto, 'id' | 'adminEm
  */
 export function SuperAdminConsole({ initialLang, principal, api }: { initialLang: Language; principal: PrincipalDto; api: TenancyApi }) {
   const [lang, setLang] = useState<Language>(initialLang);
+  const session = useSession();
   const [tenants, setTenants] = useState<TenantSummaryDto[] | null>(null);
   const [audit, setAudit] = useState<DeletionAudit[]>([]);
   const [message, setMessage] = useState<Message>(null);
@@ -29,7 +32,13 @@ export function SuperAdminConsole({ initialLang, principal, api }: { initialLang
   const [typedId, setTypedId] = useState('');
   const [typedEmail, setTypedEmail] = useState('');
 
-  const fail = useCallback((e: unknown) => setMessage({ kind: 'error', text: t(lang, errorKey(e)) }), [lang]);
+  const fail = useCallback(
+    (e: unknown) => {
+      if (isSessionEnded(e)) session.endSession('expired'); // the sign-in ended: same signed-out flow as everywhere
+      else setMessage({ kind: 'error', text: t(lang, errorKey(e)) });
+    },
+    [lang, session],
+  );
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -94,6 +103,17 @@ export function SuperAdminConsole({ initialLang, principal, api }: { initialLang
         <p>{t(lang, 'tenancy.super.subtitle')}</p>
         <p>{t(lang, 'tenancy.super.signedIn', { email: principal.email, role: t(lang, 'tenancy.role.super_admin') })}</p>
         <div className="dr-button-row" role="group" aria-label="Language">
+          <LogoutButton
+            lang={lang}
+            who={principal.email}
+            deps={{
+              unsentChanges: () => 0,
+              saveLocal: () => Promise.resolve(),
+              stopSync: () => undefined,
+              endSession: () => session.endSession('logout'),
+              navigate: (path) => window.location.assign(path),
+            }}
+          />
           {LANGUAGES.map((option) => (
             <button key={option.code} type="button" className={`btn ${option.code === lang ? 'btn-primary' : ''}`} aria-pressed={option.code === lang} onClick={() => setLang(option.code)}>
               {option.short}

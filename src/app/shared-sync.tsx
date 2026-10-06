@@ -35,6 +35,10 @@ export interface SharedSyncApi {
   stashCount: number;
   retryNow: () => void;
   flushNow: () => void;
+  /** Edits made here that the server does not have yet (0 when none, read-only, or not shared). Always current. */
+  unsentChanges: () => number;
+  /** Sign-out: close the connection, stop every timer, forget the live state and the diagnostic trail. Local data is untouched. */
+  stopForSignOut: () => void;
 }
 
 const DISABLED: SharedSyncApi = {
@@ -46,6 +50,8 @@ const DISABLED: SharedSyncApi = {
   stashCount: 0,
   retryNow: () => undefined,
   flushNow: () => undefined,
+  unsentChanges: () => 0,
+  stopForSignOut: () => undefined,
 };
 
 const SharedSyncContext = createContext<SharedSyncApi>(DISABLED);
@@ -194,7 +200,20 @@ export function useSharedSyncEngine(app: AppStateApi, reports: ReportsStateApi, 
   }, []);
   const retryNow = useCallback((): void => clientRef.current?.networkOnline(), []);
   const flushNow = useCallback((): void => clientRef.current?.flushNow(), []);
+  const unsentChanges = useCallback((): number => {
+    const s = syncRef.current;
+    return s === null || s.status === 'readonly' ? 0 : s.pending;
+  }, []);
+  const stopForSignOut = useCallback((): void => {
+    clientRef.current?.stop();
+    clientRef.current = null;
+    syncRef.current = null; // the leave-the-page warning reads this: nothing is "pending" for a stopped session
+    cacheRef.current = null;
+    setSync(null);
+    setNotices([]);
+    delete (window as unknown as { __gcSyncLog?: unknown }).__gcSyncLog;
+  }, []);
 
   if (shared === null) return DISABLED;
-  return { enabled: true, identity: shared.identity, sync, notices, dismissNotice, stashCount, retryNow, flushNow };
+  return { enabled: true, identity: shared.identity, sync, notices, dismissNotice, stashCount, retryNow, flushNow, unsentChanges, stopForSignOut };
 }

@@ -140,7 +140,7 @@ describe('the guard stays in step with the application code', () => {
 
   it('isWorkerPath covers every protected route and nothing public', () => {
     for (const p of ['/ws', '/login', '/api/whoami', '/api/', '/api/tenant/users']) expect(isWorkerPath(p), p).toBe(true);
-    for (const p of ['/', '/index.html', '/assets/app.js', '/apix', '/api', '/login/', '/loginx', '/wss', '/anything/else']) expect(isWorkerPath(p), p).toBe(false);
+    for (const p of ['/', '/index.html', '/assets/app.js', '/apix', '/api', '/login/', '/loginx', '/wss', '/anything/else', '/cdn-cgi/access/logout']) expect(isWorkerPath(p), p).toBe(false);
   });
 });
 

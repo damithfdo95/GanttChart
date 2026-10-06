@@ -1437,5 +1437,14 @@
   "landing.language": "Language",
   "tenancy.error.email_domain_not_allowed": "That email address is not in an organization domain that GanttChart allows for accounts.",
   "tenancy.error.managed_domains_not_configured": "Accounts cannot be created right now: no organization domain is configured. Contact the platform administrator.",
-  "tenancy.super.outsideDomainWarning": "This identity is outside the currently allowed organization domains and may not be able to authenticate under the current Access policy."
+  "tenancy.super.outsideDomainWarning": "This identity is outside the currently allowed organization domains and may not be able to authenticate under the current Access policy.",
+  "logout.button": "Logout",
+  "logout.title": "Sign out?",
+  "logout.unsentWarning": "Changes are still syncing. Signing out now may leave unsent changes on this device.",
+  "logout.deviceKept": "Your data on this device is kept; nothing is deleted.",
+  "logout.cancel": "Cancel",
+  "logout.confirm": "Sign out anyway",
+  "logout.signingOut": "Signing out…",
+  "landing.sessionEnded": "Your sign-in has ended. Please sign in again.",
+  "landing.logoutIncomplete": "Cloudflare Access did not complete the sign-out, so you may still be signed in. Close this browser window to end the session."
 }

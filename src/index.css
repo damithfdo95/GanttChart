@@ -3290,3 +3290,17 @@ textarea:focus-visible,
   border-bottom: 1px solid var(--border, #d7dee6);
   vertical-align: top;
 }
+
+/* Sign-out control (all roles) */
+.logout-control {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+}
+.logout-confirm {
+  position: fixed;
+  top: 56px;
+  right: 16px;
+  z-index: 50;
+  max-width: min(480px, calc(100vw - 32px));
+}

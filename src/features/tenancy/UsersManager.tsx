@@ -3,7 +3,8 @@ import { t, type TranslationKey } from '../../i18n';
 import type { TenancyApi } from '../../lib/tenancy/api';
 import type { UserAccess, UserDto } from '../../../shared/tenancy';
 import type { Language } from '../../types';
-import { errorKey, whenText } from './format';
+import { errorKey, isSessionEnded, whenText } from './format';
+import { useSession } from '../../app/session-context';
 
 type Message = { kind: 'ok' | 'error'; text: string } | null;
 
@@ -14,14 +15,16 @@ export function UsersManager({ lang, api }: { lang: Language; api: TenancyApi })
   const [access, setAccess] = useState<UserAccess>('editor');
   const [message, setMessage] = useState<Message>(null);
   const [busy, setBusy] = useState(false);
+  const session = useSession();
 
   const load = useCallback(async (): Promise<void> => {
     try {
       setUsers(await api.listUsers());
     } catch (e) {
-      setMessage({ kind: 'error', text: t(lang, errorKey(e)) });
+      if (isSessionEnded(e)) session.endSession('expired');
+      else setMessage({ kind: 'error', text: t(lang, errorKey(e)) });
     }
-  }, [api, lang]);
+  }, [api, lang, session]);
 
   useEffect(() => {
     void load();
@@ -34,7 +37,8 @@ export function UsersManager({ lang, api }: { lang: Language; api: TenancyApi })
       const text = await action();
       if (text !== null) setMessage({ kind: 'ok', text });
     } catch (e) {
-      setMessage({ kind: 'error', text: t(lang, errorKey(e)) });
+      if (isSessionEnded(e)) session.endSession('expired');
+      else setMessage({ kind: 'error', text: t(lang, errorKey(e)) });
     } finally {
       setBusy(false);
       await load();

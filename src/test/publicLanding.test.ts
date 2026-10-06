@@ -10,7 +10,7 @@ const REGISTRATION_EN = /\b(register|registration|sign ?up|create (an |your |a )
 const REGISTRATION_JA = /新規登録|会員登録|サインアップ|アカウント(を)?(作成|申請|登録)(する|できます|はこちら)|アカウント申請/;
 
 describe('the public page', () => {
-  const html = (lang: 'en' | 'ja', failed = false): string => renderToStaticMarkup(createElement(PublicLanding, { initialLang: lang, signInFailed: failed }));
+  const html = (lang: 'en' | 'ja', failed = false): string => renderToStaticMarkup(createElement(PublicLanding, { initialLang: lang, notice: failed ? 'signInFailed' : null }));
 
   it('shows the product, a short description, the language choice and ONE sign-in link to /login', () => {
     const en = html('en');

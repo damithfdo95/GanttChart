@@ -1437,5 +1437,14 @@
   "landing.language": "言語",
   "tenancy.error.email_domain_not_allowed": "このメールアドレスは、GanttChartがアカウント作成を許可している組織のドメインではありません。",
   "tenancy.error.managed_domains_not_configured": "現在アカウントを作成できません。組織のドメインが設定されていません。プラットフォーム管理者にお問い合わせください。",
-  "tenancy.super.outsideDomainWarning": "このIDは現在許可されている組織ドメインの外にあり、現在のAccessポリシーでは認証できない可能性があります。"
+  "tenancy.super.outsideDomainWarning": "このIDは現在許可されている組織ドメインの外にあり、現在のAccessポリシーでは認証できない可能性があります。",
+  "logout.button": "サインアウト",
+  "logout.title": "サインアウトしますか？",
+  "logout.unsentWarning": "変更がまだ同期中です。今サインアウトすると、未送信の変更がこの端末に残ったままになる可能性があります。",
+  "logout.deviceKept": "この端末のデータは保持されます。削除されるものはありません。",
+  "logout.cancel": "キャンセル",
+  "logout.confirm": "このままサインアウト",
+  "logout.signingOut": "サインアウトしています…",
+  "landing.sessionEnded": "サインインの有効期限が切れました。もう一度サインインしてください。",
+  "landing.logoutIncomplete": "Cloudflare Accessがサインアウトを完了できなかったため、まだサインインしている可能性があります。セッションを終了するには、このブラウザウィンドウを閉じてください。"
 }
