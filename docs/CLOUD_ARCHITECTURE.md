@@ -660,6 +660,13 @@ out of Settings) and **Team / Users** (Admin only); Platform Administration has 
 log. The dashboard gains an execution summary (needs attention, overdue, executing today, planned/remaining cases, progress) computed only from
 existing project data.
 
+### 15.6b Tester wording and the cross-workspace answer
+
+The QA-facing name of the `user` role is **Tester** (EN/JA); the stored role, the API and the permission table are unchanged. Creating a Tester whose email already
+belongs to another workspace now returns `email_in_other_workspace` (409) instead of the generic `email_taken`, so the Admin gets a clear message. The response carries
+no workspace name, id or admin address; it only reveals that the address is registered somewhere in the platform, which the Admin could already infer. Same-workspace
+duplicates keep `email_taken`. Nothing is moved, duplicated or created in either case.
+
 ### 15.7 Free-plan impact
 
 Audit entries are written only on administrative actions (a few per day at most). No per-request writes were added. The list endpoint reads

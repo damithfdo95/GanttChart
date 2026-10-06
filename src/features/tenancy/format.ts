@@ -8,6 +8,7 @@ const KNOWN_ERRORS: ReadonlySet<string> = new Set([
   'invalid_display_name',
   'invalid_input',
   'email_taken',
+  'email_in_other_workspace',
   'email_reserved',
   'email_domain_not_allowed',
   'managed_domains_not_configured',
@@ -21,8 +22,10 @@ const KNOWN_ERRORS: ReadonlySet<string> = new Set([
 ]);
 
 /** A server error code -> a translated message. Unknown codes get the generic message (and never the raw server text). */
-export function errorKey(error: unknown): TranslationKey {
+export function errorKey(error: unknown, context?: 'tester'): TranslationKey {
   const code = error instanceof ApiError ? error.code : '';
+  // Adding a Tester: "already registered" means in THIS workspace (another workspace has its own answer).
+  if (context === 'tester' && code === 'email_taken') return 'tenancy.error.tester_duplicate';
   return (KNOWN_ERRORS.has(code) ? `tenancy.error.${code}` : 'tenancy.error.generic') as TranslationKey;
 }
 

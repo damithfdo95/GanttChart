@@ -105,7 +105,8 @@ describe('users are bound to ONE tenant and cannot be reached across tenants', (
     const b = webTenant('B', 'b@example.com');
     const u = mustOk(addUser(a.tenant.id, 'User@Example.com', 'viewer'));
     expect(u).toMatchObject({ email: 'user@example.com', tenant_id: a.tenant.id, role: 'user', access: 'viewer', status: 'active' });
-    expect(addUser(b.tenant.id, 'user@example.com')).toEqual({ ok: false, error: 'email_taken' }); // same person cannot be in two tenants
+    expect(addUser(b.tenant.id, 'user@example.com')).toEqual({ ok: false, error: 'email_in_other_workspace' }); // same person cannot be in two tenants (never moved, never duplicated)
+    expect(addUser(a.tenant.id, 'USER@example.com')).toEqual({ ok: false, error: 'email_taken' }); // already a member of THIS workspace
     expect(addUser(a.tenant.id, 'a@example.com')).toEqual({ ok: false, error: 'email_taken' }); // an admin's email is taken too
     expect(addUser(a.tenant.id, 'super@example.com')).toEqual({ ok: false, error: 'email_reserved' });
     expect(addUser(a.tenant.id, 'nonsense')).toEqual({ ok: false, error: 'invalid_email' });

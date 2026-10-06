@@ -266,7 +266,7 @@ describe('Admin: managing Users', () => {
     const cases: Array<[Record<string, unknown>, number, string]> = [
       [{ email: 'friend@gmail.com' }, 400, 'email_domain_not_allowed'],
       [{ email: taken.toUpperCase() }, 409, 'email_taken'],
-      [{ email: w.userB }, 409, 'email_taken'], // another workspace's account: same answer, no information about whose it is
+      [{ email: w.userB }, 409, 'email_in_other_workspace'], // another workspace's account: a clear answer, but never whose
       [{ email: rk('x'), displayName: 'a<b' }, 400, 'invalid_display_name'],
       [{ email: rk('x'), access: 'owner' }, 400, 'invalid_input'],
       [{ email: '' }, 400, 'invalid_email'],
@@ -458,5 +458,104 @@ describe('the sign-in entry and the shell identity', () => {
     expect((await whoami(SUPER)).json).toMatchObject({ role: 'super_admin', displayName: null, tenant: null });
     const res = await exports.default.fetch(new Request(`${BASE}/api/whoami`, { headers: { 'x-dev-email': mail } }));
     expect(res.status).toBe(200);
+  });
+});
+
+describe('the Tester account model (the Tester is the stored role "user")', () => {
+  it('Admin adds a Tester by email; the Tester later signs in with that address and lands in THAT workspace automatically', async () => {
+    const w = await twoTenants();
+    const mail = rk('tester');
+    const made = await post<{ user: UserDto }>(w.a.adminEmail, '/api/tenant/users', { email: mail, displayName: 'Hana Sato', access: 'editor' });
+    expect(made.status).toBe(201);
+    expect(made.json.user).toMatchObject({ role: 'user', status: 'active', displayName: 'Hana Sato' });
+
+    // Later, on first sign-in: the registry matches the verified email and puts them in the Admin's workspace.
+    const who = await whoami(mail);
+    expect(who.status).toBe(200);
+    expect(who.json).toMatchObject({ role: 'user', displayName: 'Hana Sato', tenant: { id: w.a.id }, sharedWorkspace: true });
+    const sock = await openSocket(mail);
+    expect(sock.ok).toBe(true);
+    expect((await get(mail, '/api/export')).text).toContain(SECRET_A);
+    expect((await get(mail, '/api/export')).text).not.toContain('BETA-CONFIDENTIAL');
+  });
+
+  it('the tenant is assigned by the server only: the browser cannot choose one, name one, or move a Tester afterwards', async () => {
+    const w = await twoTenants();
+    const mail = rk('bound');
+    expect((await post(w.a.adminEmail, '/api/tenant/users', { email: mail, tenantId: w.b.id })).status).toBe(403);
+    expect((await call(w.a.adminEmail, 'POST', `/api/tenant/users?workspaceId=${w.b.id}`, { email: mail })).status).toBe(403);
+    const ok = await post<{ user: UserDto }>(w.a.adminEmail, '/api/tenant/users', { email: mail });
+    expect(ok.status).toBe(201);
+    // There is no way to move or re-assign: every attempt is refused and the Tester stays where they were created.
+    for (const body of [{ tenantId: w.b.id }, { tenant_id: w.b.id }, { status: 'enabled', tenantId: w.b.id }]) {
+      expect((await patch(w.a.adminEmail, `/api/tenant/users/${ok.json.user.id}`, body)).status).toBe(403);
+      expect((await patch(w.b.adminEmail, `/api/tenant/users/${ok.json.user.id}`, { status: 'disabled' })).status).toBe(404); // not B's to touch
+    }
+    expect((await whoami(mail)).json.tenant?.id).toBe(w.a.id);
+  });
+
+  it('an address that belongs to ANOTHER workspace is refused with its own clear answer; nothing is moved or duplicated', async () => {
+    const w = await twoTenants();
+    const before = await rowCount('users');
+    for (const taken of [w.userB, w.userB.toUpperCase(), w.b.adminEmail]) {
+      const r = await post(w.a.adminEmail, '/api/tenant/users', { email: taken });
+      expect([r.status, r.json.error], taken).toEqual([409, 'email_in_other_workspace']);
+      // The answer says it belongs elsewhere — never whose.
+      expect(r.text).not.toContain(w.b.id);
+      expect(r.text).not.toContain(w.b.name);
+      expect(r.text).not.toContain(w.b.adminEmail);
+    }
+    expect(await rowCount('users')).toBe(before);
+    expect((await whoami(w.userB)).json.tenant?.id).toBe(w.b.id);
+    expect((await whoami(w.b.adminEmail)).json).toMatchObject({ role: 'admin', tenant: { id: w.b.id } });
+    expect((await listUsers(w.a.adminEmail)).map((u) => u.email)).not.toContain(w.userB);
+  });
+
+  it('an address already in the SAME workspace is a duplicate (Tester or the Admin’s own)', async () => {
+    const w = await twoTenants();
+    for (const dup of [w.userA, w.userA.toUpperCase(), ` ${w.viewerA} `, w.a.adminEmail]) {
+      const r = await post(w.a.adminEmail, '/api/tenant/users', { email: dup });
+      expect([r.status, r.json.error], dup).toEqual([409, 'email_taken']);
+    }
+  });
+
+  it('only Web-mode Admins can add Testers; a Local-mode Admin cannot', async () => {
+    const t = await createTenant('Local workspace', rk('localadmin'));
+    expect((await post(t.adminEmail, '/api/tenant/users', { email: rk('x') })).status).toBe(403);
+    await activateWeb(t, [rec('project', 'p')]);
+    expect((await post(t.adminEmail, '/api/tenant/users', { email: rk('x') })).status).toBe(201);
+  });
+
+  it('nobody becomes a Tester just by being authenticated, and there is no public or code-based way in', async () => {
+    const w = await twoTenants();
+    const stranger = rk('stranger');
+    const before = await rowCount('users');
+    expect((await whoami(stranger)).json.reason).toBe('unregistered');
+    expect((await whoami(stranger)).json.reason).toBe('unregistered');
+    for (const path of ['/api/register', '/api/signup', '/api/join', '/api/invite', '/api/tenant/join', '/api/tenant/invite', '/api/tenant/accept']) {
+      const r = await post(stranger, path, { email: stranger, code: 'ABC', tenantId: w.a.id, inviteCode: 'ABC' });
+      expect(r.status, path).toBeGreaterThanOrEqual(403);
+    }
+    expect(await rowCount('users')).toBe(before);
+  });
+
+  it('a disabled Tester cannot reach the workspace or reconnect, yet stays in the history and audit trail', async () => {
+    const w = await twoTenants();
+    const mail = rk('leaver');
+    const made = await post<{ user: UserDto }>(w.a.adminEmail, '/api/tenant/users', { email: mail, displayName: 'Ken Mori' });
+    const live = await openSocket(mail);
+    if (!live.ok) throw new Error('connect');
+    await patch(w.a.adminEmail, `/api/tenant/users/${made.json.user.id}`, { status: 'disabled' });
+    expect((await live.sock.closed).code).toBe(CLOSE_CODES.accessRevoked);
+    expect(await openSocket(mail)).toMatchObject({ ok: false, status: 403 });
+    expect((await get(mail, '/api/export')).status).toBe(403);
+    // Still in the list (with their name), and still named in the administration history.
+    expect((await listUsers(w.a.adminEmail)).find((u) => u.id === made.json.user.id)).toMatchObject({ status: 'disabled', displayName: 'Ken Mori', email: mail });
+    const actions = (await tenantAudit(w.a.adminEmail)).json.audit.filter((e) => e.targetEmail === mail).map((e) => e.action);
+    expect(actions).toEqual(expect.arrayContaining(['user.created', 'user.disabled']));
+    // Reactivation brings the same account back, in the same workspace.
+    await patch(w.a.adminEmail, `/api/tenant/users/${made.json.user.id}`, { status: 'enabled' });
+    expect((await whoami(mail)).json).toMatchObject({ role: 'user', tenant: { id: w.a.id } });
+    expect((await openSocket(mail)).ok).toBe(true);
   });
 });

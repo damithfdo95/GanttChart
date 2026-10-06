@@ -165,6 +165,7 @@ const REGISTRY_STATUS: Record<RegistryError, number> = {
   invalid_name: 400,
   invalid_input: 400,
   email_taken: 409,
+  email_in_other_workspace: 409,
   email_reserved: 409,
   invalid_display_name: 400,
   email_domain_not_allowed: 400,

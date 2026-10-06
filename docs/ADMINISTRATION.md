@@ -30,6 +30,21 @@ Super Admin    configured by the platform operator (SUPER_ADMIN_EMAILS); sees wo
 * Email addresses of Admins and Users must belong to the **managed organization domain(s)**
   (`MANAGED_USER_EMAIL_DOMAINS`, exact domain match). Super Admin addresses are configuration and exempt.
 
+### Testers
+
+In the QA-facing screens (English and Japanese) the subordinate account is called a **Tester**. Internally its role is still
+`user`; renaming the stored value would only add migration risk. The flow:
+
+1. The Admin (Web storage) opens **Team / Testers → Add tester** and enters the Tester's organization email address (and, optionally, a display name).
+2. The server creates the account **bound permanently to that Admin's workspace**. The workspace comes from the Admin's own verified identity; the browser
+   never submits one, there is no workspace selector, and nothing can move a Tester to another workspace.
+3. Later the Tester signs in through Cloudflare Access with the same address. The registry matches the verified email and puts them in that workspace.
+   No invitation code, no password, no Super Admin approval, no public registration, and no account is ever created just because someone authenticated.
+4. If the address already belongs to a **different** workspace, adding it is refused with a clear message (it is not moved or duplicated, and the answer never
+   says whose it is). If it is already in **this** workspace (as a Tester or the Admin), it is refused as a duplicate.
+5. Local-mode Admins see why this is unavailable (collaboration with Testers requires Web storage). Disabling a Tester cuts access and any live connection
+   at once; the record, their name and the audit entries stay, and reactivating restores the same account.
+
 ## 2. Account lifecycle
 
 | Object | States | Notes |

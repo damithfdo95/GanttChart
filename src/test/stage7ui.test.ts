@@ -74,7 +74,7 @@ describe('who is signed in (header)', () => {
 
   it('falls back to the email when there is no display name, and shows the role for each kind of person', () => {
     const user = render(createElement(AccountBadge, { lang: 'en', principal: principal('user') }));
-    expect(user).toContain('>User<');
+    expect(user).toContain('>Tester<');
     expect(user.match(/taro\.yamada@rakuten\.com/g)?.length).toBe(2); // tooltip + name
     expect(render(createElement(AccountBadge, { lang: 'ja', principal: principal('admin') }))).toContain('管理者');
   });
@@ -126,7 +126,7 @@ describe('storage modes are explained in plain words', () => {
     const html = render(createElement(StorageModeExplainer, { lang: 'en', mode: 'local' }));
     expect(html).toContain('stays on this device');
     expect(html).toContain('cannot collaborate');
-    expect(html).toContain('User management is not available');
+    expect(html).toContain('Adding Testers is not available');
     expect(html).toContain('no shared live sync');
   });
 
@@ -146,15 +146,16 @@ describe('storage modes are explained in plain words', () => {
 describe('Team / Users', () => {
   it('Local mode explains why there is nothing to manage — it does not show a dead form', () => {
     const html = render(createElement(TeamView, { lang: 'en', principal: principal('admin', { tenant: tenant('local') }), api: fakeApi, onOpenSettings: () => undefined }));
-    expect(html).toContain('User management is available when this workspace uses Web storage.');
+    expect(html).toContain('Adding Testers is available when this workspace uses Web storage.');
+    expect(html).toContain('collaboration with Testers requires Web storage');
     expect(html).toContain('Open storage settings');
-    expect(html).not.toContain('Add a user');
+    expect(html).not.toContain('Add a tester');
     expect(html).not.toContain('type="email"');
   });
 
   it('Web mode shows the Users manager (add form) and the administration history', () => {
     const html = render(createElement(TeamView, { lang: 'en', principal: principal('admin'), api: fakeApi, onOpenSettings: () => undefined }));
-    expect(html).toContain('Add a user');
+    expect(html).toContain('Add a tester');
     expect(html).toContain('type="email"');
     expect(html).toContain('Administration history');
     expect(html).not.toContain('role-selector');
@@ -347,5 +348,40 @@ describe('empty workspace', () => {
     expect(en).toContain('role="note"');
     expect(render(createElement(WorkspaceEmptyNotice, { lang: 'ja', principal: principal('admin'), projectCount: 0 }))).toContain('プロジェクト');
     expect(render(createElement(WorkspaceEmptyNotice, { lang: 'en', principal: principal('admin'), projectCount: 2 }))).toBe('');
+  });
+});
+
+describe('Testers (the QA-facing name of the User role)', () => {
+  const en = dictionaries.en as Record<string, string>;
+  const ja = dictionaries.ja as Record<string, string>;
+
+  it('subordinate accounts are called Testers in English and Japanese; the Admin and Super Admin keep their names', () => {
+    expect(en['tenancy.role.user']).toBe('Tester');
+    expect(ja['tenancy.role.user']).toBe('テスター');
+    expect(en['nav.team']).toBe('Team / Testers');
+    expect(en['tenancy.role.admin']).toBe('Admin');
+    expect(en['tenancy.role.super_admin']).toBe('Super Admin');
+  });
+
+  it('QA-facing administration text never calls a tester a "user" (the role value stays "user" internally)', () => {
+    const keys = Object.keys(en).filter((k) => k.startsWith('tenancy.users.') || k.startsWith('team.') || k === 'nav.team' || k.startsWith('tenancy.storage.') || k.startsWith('dashboard.empty.') || k.startsWith('tenancy.audit.action.user.'));
+    for (const k of keys) {
+      expect(en[k], k).not.toMatch(/users?/i);
+      expect(ja[k], k).not.toContain('ユーザー');
+    }
+  });
+
+  it('the add form explains the flow: organization email, optional name, signs in later with that address, no code, no password, no selector', () => {
+    const html = render(createElement(TeamView, { lang: 'en', principal: principal('admin'), api: fakeApi, onOpenSettings: () => undefined }));
+    expect(html).toContain('Add a tester');
+    expect(html).toContain('Display name (optional)');
+    expect(html).toContain('no invitation code and no password');
+    expect(html).toContain('there is no workspace selector');
+    expect(html).not.toMatch(/<select[^>]*tenant/i);
+  });
+
+  it('a Tester sees the role "Tester" in the header', () => {
+    expect(render(createElement(AccountBadge, { lang: 'en', principal: principal('user') }))).toContain('>Tester<');
+    expect(render(createElement(AccountBadge, { lang: 'ja', principal: principal('user') }))).toContain('テスター');
   });
 });

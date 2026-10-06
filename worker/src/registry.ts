@@ -78,6 +78,8 @@ export type RegistryError =
   | 'invalid_display_name'
   | 'invalid_input'
   | 'email_taken'
+  /** Creating a Tester: the address already belongs to a DIFFERENT workspace. It is never moved or duplicated. */
+  | 'email_in_other_workspace'
   | 'email_reserved'
   /** The address is valid but not in a managed organisation domain. */
   | 'email_domain_not_allowed'
@@ -607,7 +609,8 @@ export class RegistryStore {
     if (input.reserved.includes(email)) return fail('email_reserved');
     const domain = checkManagedDomain(email, input.managedDomains);
     if (domain !== null) return fail(domain);
-    if (this.findUserByEmail(email) !== null) return fail('email_taken');
+    const existing = this.findUserByEmail(email);
+    if (existing !== null) return fail(existing.tenant_id === input.tenantId ? 'email_taken' : 'email_in_other_workspace');
     return this.storage.transactionSync(() => {
       const id = newUserId();
       this.storage.sql.exec(

@@ -113,6 +113,8 @@ describe('Super Admin deletion confirmation', () => {
 describe('error messages', () => {
   it('known server codes map to their own message, anything else to the generic one (raw server text is never shown)', () => {
     expect(errorKey(new ApiError(409, 'email_taken', {}))).toBe('tenancy.error.email_taken');
+    expect(errorKey(new ApiError(409, 'email_taken', {}), 'tester')).toBe('tenancy.error.tester_duplicate');
+    expect(errorKey(new ApiError(409, 'email_in_other_workspace', {}), 'tester')).toBe('tenancy.error.email_in_other_workspace');
     expect(errorKey(new ApiError(403, 'same_person', {}))).toBe('tenancy.error.same_person');
     expect(errorKey(new ApiError(500, '<script>alert(1)</script>', {}))).toBe('tenancy.error.generic');
     expect(errorKey(new Error('x'))).toBe('tenancy.error.generic');

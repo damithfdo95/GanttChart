@@ -75,7 +75,8 @@ describe('Admin A cannot reach tenant B', () => {
     const w = await twoTenants();
     const r = await post(w.a.adminEmail, '/api/tenant/users', { email: w.userB });
     expect(r.status).toBe(409);
-    expect(r.json).toMatchObject({ error: 'email_taken' });
+    expect(r.json).toMatchObject({ error: 'email_in_other_workspace' });
+    expect(JSON.stringify(r.json)).not.toContain(w.b.id); // says only that it belongs elsewhere, never whose
     expect((await whoami(w.userB)).json.tenant?.id).toBe(w.b.id);
   });
 });

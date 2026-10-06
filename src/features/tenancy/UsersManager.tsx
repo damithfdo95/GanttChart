@@ -25,7 +25,7 @@ export function UsersManager({ lang, api }: { lang: Language; api: TenancyApi })
   const handle = useCallback(
     (e: unknown): void => {
       if (isSessionEnded(e)) session.endSession('expired');
-      else setMessage({ kind: 'error', text: t(lang, errorKey(e)) });
+      else setMessage({ kind: 'error', text: t(lang, errorKey(e, 'tester')) });
     },
     [lang, session],
   );
