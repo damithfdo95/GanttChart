@@ -16,8 +16,9 @@ as they are.
 Decisions already made by the owner: private GitHub repo; Cloudflare hosting
 on the **Free plans only** ($0, no purchased/custom domain); the app lives at
 the Cloudflare-provided `https://ganttchart.<subdomain>.workers.dev`;
-**hostname-based** Cloudflare Access (invited emails only) protects that
-hostname, so both HTTP and WebSocket upgrades are authenticated; Worker +
+Cloudflare Access (the sign-in step) protects the application's data routes
+(`/login`, `/api/*`, `/ws`; see section 14), so both HTTP and WebSocket upgrades are
+authenticated; the public page at `/` is static and holds no data; Worker +
 Durable Object (SQLite) for the shared workspace and WebSocket coordination;
 near-real-time sync; the existing local storage kept only as an offline
 cache/fallback; the existing revision history adapted to the shared backend.
@@ -116,9 +117,9 @@ Browser (React SPA, unchanged UI)
 
 One Worker deployment serves the SPA (Workers Static Assets with SPA
 fallback), `/api/*` and `/ws`. The production `workers.dev` hostname **is** the
-app URL and stays enabled; a hostname-based Access application protects it.
+app URL and stays enabled; Access protects its data routes (section 14).
 Preview and version URLs are disabled (`preview_urls: false`) so there is no
-second, unprotected hostname. The Worker additionally verifies the Access JWT
+second hostname Access does not know. The Worker additionally verifies the Access JWT
 itself, so a misconfigured Access policy alone cannot expose data.
 
 ## 5. Server data model
@@ -488,11 +489,11 @@ only, loopback only). State-changing calls need the `X-GC-Intent` header.
 * The first Super Admin is set by the `SUPER_ADMIN_EMAILS` worker variable (comma separated). There is no
   way to create one from the application.
 * A Super Admin signs in, opens the platform console, and creates an Admin workspace (name + admin
-  email). The Admin signs in with that email (it must also be allowed by the Access policy) and chooses
-  local or web storage.
-* **Access policy and the registry are two separate gates.** Adding a user to the registry does not let
-  them through Access: their email also has to be in the Access policy (a manual Cloudflare step, listed in
-  the final report). Nothing in the registry changes the Access policy.
+  email). The Admin signs in with that email and chooses local or web storage.
+* **Access policy and the registry are two separate gates** (updated in Stage 6, section 14): Access decides who can
+  *authenticate* (an organization-wide rule such as "emails ending in @rakuten.com"); the registry decides who may
+  *use* the application. Users are therefore **not** added to Access one by one. Nothing in the registry changes the
+  Access policy.
 * No email is sent anywhere. "Invited" only means "registered, has not signed in yet".
 
 ## 13.13 Test coverage added
@@ -515,3 +516,74 @@ deletion confirmation, error mapping, EN/JA key parity. Every security suite was
 * `loadLocal` read-back during Web -> Local needs IndexedDB persistence; in the localStorage fallback the
   migration aborts safely instead of switching.
 * Workers + Access on `workers.dev` has not been exercised against real Cloudflare.
+
+## 14. Stage 6: public sign-in page, protected routes, provisioning rules
+
+Status: implemented and tested locally; **not deployed**. The deployment steps are in
+[DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md).
+
+### 14.1 Audit of Stage 5 against the new requirement
+
+| Finding | Consequence |
+|---|---|
+| Access protected the **whole hostname**, so even the page that asks someone to sign in required a sign-in | The public landing page was impossible |
+| The Worker already verifies the Access JWT on `/api/*` and `/ws` and fails closed; unauthenticated calls return `401` before any routing | Opening `/` publicly does not weaken data protection |
+| `run_worker_first` sent only `/api/*` and `/ws` to the Worker; any other path is the SPA | A sign-in URL for Access to protect needed a Worker route |
+| An authenticated, unregistered email was refused `403 unregistered` and nothing is created | The "no account" behaviour already existed; the text and the log needed work |
+| Admin/User creation checked only that the email was well formed | Any address (e.g. Gmail) could be provisioned |
+| `ACCESS_AUD` / `SUPER_ADMIN_EMAILS` were supplied with `--var` at each deploy | A plain deploy would overwrite them with empty values and take the app offline |
+| `startupDecision`: with no session and a linked device the app opened the device copy | With a public page this would show saved data to a signed-out visitor |
+
+### 14.2 Route model (chosen)
+
+* **Public:** `/`, `/assets/*` and every path that is not one of the three below (the SPA fallback). The page shows only
+  static text, EN/JA, one **Sign in** link and no registration of any kind. A signed-out visitor is detected by the app's
+  first call, `/api/whoami`, being refused (Access redirect or `401`).
+* **Protected:** `/login`, `/api/*`, `/ws`. Access challenges them; the Worker verifies the token itself, resolves the
+  registry principal and checks the permission. `/login` verifies the token and answers `302 /` (fixed target, no redirect
+  parameter, so no open redirect); without a valid token it answers `302 /?signin=unavailable`.
+* `shared/routes.ts` is the single source of truth, tied to `wrangler.jsonc` and the documented Access destinations by a
+  unit test and by the deployment guard.
+
+Considered and rejected: a separate `/app` page (second HTML entry, routing changes and an Access redirect back for no
+security gain, since data is behind `/api` and `/ws`, not behind a page URL); keeping Access on the whole hostname (conflicts
+with the public page).
+
+### 14.3 Why this is safe with Access and WebSockets
+
+1. The Worker authenticates `/api/*`, `/ws` and `/login` itself. The `prod-sim` suite runs the Worker configured like
+   production with **no Access in front** and checks that every API, state-changing call and WebSocket upgrade without a valid
+   token is refused with no information, and that forged identity headers/cookies, wrong key, audience, issuer, expiry,
+   `alg: none`, HS256 and RS384 tokens are all refused.
+2. Browsers send the same-origin Access cookie on the WebSocket upgrade exactly as before. Where this is not so, the result is
+   fail-closed (the sign-in page), never open. The rollout verifies it explicitly.
+3. There is no intermediate deployment state in which data is public: code first (Access still on the whole hostname), then
+   Access narrowed to the three paths; or the reverse, or only half applied: the Worker's own checks hold in all of them.
+
+### 14.4 Authentication versus authorization
+
+Authentication (Cloudflare Access, the Worker's JWT verification) yields an email. Authorization is the registry:
+`email -> user -> tenant -> status -> role -> permission`. An authenticated person with no account is refused
+(`403`, reason `unregistered`) and **nothing is created**: tested, including repeated attempts and every create route.
+
+### 14.5 Provisioning rules
+
+* Only the configured Super Admin creates Admins; only a tenant's Admin creates its Users; the tenant comes from the verified
+  principal, never from the request.
+* `MANAGED_USER_EMAIL_DOMAINS` (exact domain match, comma separated, fail closed) is enforced inside the registry store, the
+  single choke point for both creations, and the domain list is read inside the registry Durable Object so no caller can skip
+  or alter it. Admin creation stays atomic: a rejected address creates no tenant.
+* Older accounts outside the managed domains stay as they are. The Super Admin list marks them
+  (`adminOutsideManagedDomains`); deletion remains the explicit request/approval workflow.
+
+### 14.6 Production configuration and the guard
+
+Non-secret settings live in `wrangler.jsonc`; `ACCESS_AUD` and `SUPER_ADMIN_EMAILS` are Worker secrets (never deleted by a
+deploy) declared in `secrets.required`. `worker/scripts/check-production.mjs` runs before every deploy of that config and
+refuses incomplete or drifting production settings (list in DEPLOYMENT_PLAN.md section 8). It deploys nothing.
+
+### 14.7 Compatibility
+
+No Durable Object migration and no schema change. `TenantSummaryDto` gains one computed field. Existing registry data,
+workspaces and the existing Gmail test workspace are untouched. Device links are unchanged.
+

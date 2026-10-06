@@ -22,7 +22,10 @@ export interface AuthEnv {
   ENVIRONMENT?: string;
   /** e.g. https://myteam.cloudflareaccess.com (no trailing slash) */
   ACCESS_TEAM_DOMAIN?: string;
-  /** The Access application's AUD tag. */
+  /**
+   * The Access application's AUD tag. A comma-separated list is accepted for the rare case of more
+   * than one Access application in front of this Worker; every entry must match a token's audience EXACTLY.
+   */
   ACCESS_AUD?: string;
   /** Comma-separated emails of the platform's Super Admins (configuration, not data). */
   SUPER_ADMIN_EMAILS?: string;
@@ -94,8 +97,11 @@ export async function authenticate(request: Request, env: AuthEnv, jwks?: JWTVer
   }
 
   const teamDomain = env.ACCESS_TEAM_DOMAIN?.replace(/\/+$/, '');
-  const audience = env.ACCESS_AUD;
-  if (!teamDomain || !audience || !teamDomain.startsWith('https://')) {
+  const audience = (env.ACCESS_AUD ?? '')
+    .split(',')
+    .map((a) => a.trim())
+    .filter((a) => a.length > 0);
+  if (!teamDomain || audience.length === 0 || !teamDomain.startsWith('https://')) {
     throw new AuthError(500, 'Access is not configured');
   }
 
@@ -107,7 +113,7 @@ export async function authenticate(request: Request, env: AuthEnv, jwks?: JWTVer
   try {
     const { payload } = await jwtVerify(token, jwks ?? remoteJwks(teamDomain), {
       issuer: teamDomain,
-      audience,
+      audience: audience.length === 1 ? audience[0] : audience,
       algorithms: ['RS256'],
     });
     email = payload.email;

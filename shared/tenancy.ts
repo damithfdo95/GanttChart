@@ -78,6 +78,42 @@ export function normalizeEmail(raw: unknown): string | null {
   return e;
 }
 
+// ---- managed organisation domains ----
+
+/** One DNS name: dot-separated labels, no wildcard, no leading/trailing hyphen, at least two labels. */
+const DOMAIN_SHAPE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])$/;
+
+/**
+ * The organisation domains whose people may be given an Admin or User account
+ * (the `MANAGED_USER_EMAIL_DOMAINS` setting, comma separated).
+ *
+ * Fail closed: an entry that is not a plain domain name (a wildcard, a path, an
+ * address, a typo) is DROPPED, so a mistake in the setting can only shrink what
+ * is allowed, never widen it. A subdomain is a different domain and must be
+ * listed on its own. An empty result means nobody can be provisioned.
+ */
+export function parseManagedDomains(raw: unknown): string[] {
+  if (typeof raw !== 'string') return [];
+  const out: string[] = [];
+  for (const part of raw.split(',')) {
+    const d = part.normalize('NFKC').trim().toLowerCase();
+    if (DOMAIN_SHAPE.test(d) && !out.includes(d)) out.push(d);
+  }
+  return out;
+}
+
+/** The domain of an already-normalised email (everything after its single "@"). */
+export function emailDomain(normalizedEmail: string): string {
+  return normalizedEmail.slice(normalizedEmail.lastIndexOf('@') + 1);
+}
+
+/** Exact match of the email's whole domain against the managed list — never "ends with", never "contains". */
+export function isManagedEmail(rawEmail: unknown, managedDomains: readonly string[]): boolean {
+  const email = normalizeEmail(rawEmail);
+  if (email === null) return false;
+  return managedDomains.includes(emailDomain(email));
+}
+
 /** A tenant's display name: 1–80 characters, no control characters. */
 export function normalizeTenantName(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
@@ -102,6 +138,8 @@ export interface TenantSummaryDto extends TenantDto {
   adminEmail: string;
   adminStatus: UserStatus;
   userCount: number;
+  /** The Admin's address is outside the managed organisation domains (an older account): shown as a warning, never acted on. */
+  adminOutsideManagedDomains: boolean;
 }
 
 export interface UserDto {

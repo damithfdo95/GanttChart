@@ -149,7 +149,15 @@ export function SuperAdminConsole({ initialLang, principal, api }: { initialLang
                         <br />
                         <code>{tn.id}</code>
                       </td>
-                      <td>{tn.adminEmail}</td>
+                      <td>
+                        {tn.adminEmail}
+                        {tn.adminOutsideManagedDomains ? (
+                          <p className="link-help" role="note">
+                            <span aria-hidden="true">⚠ </span>
+                            {t(lang, 'tenancy.super.outsideDomainWarning')}
+                          </p>
+                        ) : null}
+                      </td>
                       <td>{t(lang, `tenancy.mode.${tn.storageMode}` as TranslationKey)}</td>
                       <td>{tn.userCount}</td>
                       <td>{t(lang, `tenancy.tenantStatus.${tn.status}` as TranslationKey)}</td>

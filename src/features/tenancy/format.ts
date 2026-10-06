@@ -8,6 +8,8 @@ const KNOWN_ERRORS: ReadonlySet<string> = new Set([
   'invalid_input',
   'email_taken',
   'email_reserved',
+  'email_domain_not_allowed',
+  'managed_domains_not_configured',
   'not_found',
   'wrong_mode',
   'tenant_inactive',

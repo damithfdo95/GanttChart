@@ -3,6 +3,9 @@ import { RegistryStore, decideAccess, type TenantRow, type UserRow } from '../sr
 import { isTenantId, isUserId } from '../../shared/tenancy';
 import { createTestStorage } from './helpers/sqlJsStorage';
 
+/** The organisation domains the fixtures use; the real rule is tested in managed-domains.test.ts. */
+const MANAGED = ['example.com', 'b.co', 'c.co', 'e.co', 'x.yz', 'y.zz', 'tenant.test', 'old.test', 'dev.test'];
+
 type TestStorage = Awaited<ReturnType<typeof createTestStorage>>;
 
 let storage: TestStorage;
@@ -24,7 +27,7 @@ function mustOk<T>(r: { ok: true; value: T } | { ok: false; error: string }): T 
 }
 
 function newTenant(name: string, adminEmail: string) {
-  return mustOk(reg.createTenantWithAdmin({ name, adminEmail, reserved: SUPER, actorEmail: SUPER[0], now: now() }));
+  return mustOk(reg.createTenantWithAdmin({ name, adminEmail, managedDomains: MANAGED, reserved: SUPER, actorEmail: SUPER[0], now: now() }));
 }
 
 /** A tenant switched to web mode, ready to have users. */
@@ -35,7 +38,7 @@ function webTenant(name: string, adminEmail: string) {
 }
 
 function addUser(tenantId: string, email: string, access: 'editor' | 'viewer' = 'editor', actor = 'usr_x') {
-  return reg.createUser({ tenantId, email, access, reserved: SUPER, actorUserId: actor, now: now() });
+  return reg.createUser({ tenantId, email, access, managedDomains: MANAGED, reserved: SUPER, actorUserId: actor, now: now() });
 }
 
 describe('tenant + admin creation', () => {
@@ -49,22 +52,22 @@ describe('tenant + admin creation', () => {
 
   it('rejects bad names and emails', () => {
     for (const name of ['', '   ', 'x'.repeat(81)]) {
-      expect(reg.createTenantWithAdmin({ name, adminEmail: 'a@example.com', reserved: [], actorEmail: 's', now: now() })).toEqual({ ok: false, error: 'invalid_name' });
+      expect(reg.createTenantWithAdmin({ name, adminEmail: 'a@example.com', managedDomains: MANAGED, reserved: [], actorEmail: 's', now: now() })).toEqual({ ok: false, error: 'invalid_name' });
     }
     for (const email of ['', 'nope', 'a@b', 'a b@example.com', '@example.com', 'a@@example.com']) {
-      expect(reg.createTenantWithAdmin({ name: 'T', adminEmail: email, reserved: [], actorEmail: 's', now: now() })).toEqual({ ok: false, error: 'invalid_email' });
+      expect(reg.createTenantWithAdmin({ name: 'T', adminEmail: email, managedDomains: MANAGED, reserved: [], actorEmail: 's', now: now() })).toEqual({ ok: false, error: 'invalid_email' });
     }
   });
 
   it('treats differently spelled emails as the same identity (case, whitespace, full-width characters)', () => {
     newTenant('A', 'bob@example.com');
     for (const dup of ['BOB@EXAMPLE.COM', '  bob@example.com ', 'ｂｏｂ@example.com']) {
-      expect(reg.createTenantWithAdmin({ name: 'B', adminEmail: dup, reserved: [], actorEmail: 's', now: now() })).toEqual({ ok: false, error: 'email_taken' });
+      expect(reg.createTenantWithAdmin({ name: 'B', adminEmail: dup, managedDomains: MANAGED, reserved: [], actorEmail: 's', now: now() })).toEqual({ ok: false, error: 'email_taken' });
     }
   });
 
   it('refuses the Super Admin emails (a person cannot be both)', () => {
-    expect(reg.createTenantWithAdmin({ name: 'T', adminEmail: 'SUPER@example.com', reserved: SUPER, actorEmail: 's', now: now() })).toEqual({ ok: false, error: 'email_reserved' });
+    expect(reg.createTenantWithAdmin({ name: 'T', adminEmail: 'SUPER@example.com', managedDomains: MANAGED, reserved: SUPER, actorEmail: 's', now: now() })).toEqual({ ok: false, error: 'email_reserved' });
   });
 
   it('the database itself refuses a second admin for a tenant', () => {
@@ -230,7 +233,7 @@ describe('tenant administration', () => {
       ['A', 'a@example.com', 3, 'web'],
       ['B', 'b@example.com', 1, 'local'],
     ]);
-    expect(Object.keys(rows[0]).sort()).toEqual(['adminEmail', 'adminStatus', 'createdAt', 'deletionRequestedAt', 'id', 'name', 'status', 'storageMode', 'userCount']);
+    expect(Object.keys(rows[0]).sort()).toEqual(['adminEmail', 'adminOutsideManagedDomains', 'adminStatus', 'createdAt', 'deletionRequestedAt', 'id', 'name', 'status', 'storageMode', 'userCount']);
   });
 });
 
@@ -286,7 +289,7 @@ describe('deletion workflow', () => {
     expect(reg.listUsers(a.tenant.id)).toEqual([]);
     expect(reg.authenticate('u@example.com', now())).toEqual({ allowed: false, reason: 'unregistered' });
     // The email identity is free again.
-    expect(reg.createTenantWithAdmin({ name: 'Reborn', adminEmail: 'u@example.com', reserved: SUPER, actorEmail: SUPER[0], now: now() }).ok).toBe(true);
+    expect(reg.createTenantWithAdmin({ name: 'Reborn', adminEmail: 'u@example.com', managedDomains: MANAGED, reserved: SUPER, actorEmail: SUPER[0], now: now() }).ok).toBe(true);
 
     const audit = reg.listAudit();
     expect(audit).toHaveLength(1);

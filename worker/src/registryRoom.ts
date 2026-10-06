@@ -8,7 +8,7 @@
  */
 
 import { DurableObject } from 'cloudflare:workers';
-import type { StorageMode, TenantDto, TenantSummaryDto, UserAccess, UserDto } from '../../shared/tenancy';
+import { isManagedEmail, parseManagedDomains, type StorageMode, type TenantDto, type TenantSummaryDto, type UserAccess, type UserDto } from '../../shared/tenancy';
 import { RegistryStore, toTenantDto, toUserDto, type AuthResult, type DeletionAuditRow, type Reg } from './registry';
 
 const mapReg = <A, B>(r: Reg<A>, f: (a: A) => B): Reg<B> => (r.ok ? { ok: true, value: f(r.value) } : r);
@@ -31,6 +31,14 @@ export class RegistryRoom extends DurableObject<Env> {
     return new Date().toISOString();
   }
 
+  /**
+   * The managed organisation domains, read from the deployment's configuration HERE, so no
+   * caller can forget to apply the rule or pass a different one.
+   */
+  private managedDomains(): string[] {
+    return parseManagedDomains(this.env.MANAGED_USER_EMAIL_DOMAINS);
+  }
+
   /** Authenticated email → may they use the application, and as what? */
   async authenticate(email: string): Promise<AuthResult> {
     return this.store.authenticate(email, this.now());
@@ -48,11 +56,12 @@ export class RegistryRoom extends DurableObject<Env> {
   // ---- Super Admin ----
 
   async listTenants(): Promise<TenantSummaryDto[]> {
-    return this.store.listTenantSummaries();
+    const domains = this.managedDomains();
+    return this.store.listTenantSummaries().map((t) => ({ ...t, adminOutsideManagedDomains: t.adminEmail !== '' && !isManagedEmail(t.adminEmail, domains) }));
   }
 
   async createTenant(input: { name: string; adminEmail: string; reserved: string[]; actorEmail: string }): Promise<Reg<{ tenant: TenantDto; admin: UserDto }>> {
-    return mapReg(this.store.createTenantWithAdmin({ ...input, now: this.now() }), (v) => ({ tenant: toTenantDto(v.tenant), admin: toUserDto(v.admin) }));
+    return mapReg(this.store.createTenantWithAdmin({ ...input, managedDomains: this.managedDomains(), now: this.now() }), (v) => ({ tenant: toTenantDto(v.tenant), admin: toUserDto(v.admin) }));
   }
 
   async setTenantStatus(tenantId: string, status: 'active' | 'deactivated'): Promise<Reg<TenantDto>> {
@@ -78,7 +87,7 @@ export class RegistryRoom extends DurableObject<Env> {
   }
 
   async createUser(input: { tenantId: string; email: string; access: UserAccess; reserved: string[]; actorUserId: string }): Promise<Reg<UserDto>> {
-    return mapReg(this.store.createUser({ ...input, now: this.now() }), toUserDto);
+    return mapReg(this.store.createUser({ ...input, managedDomains: this.managedDomains(), now: this.now() }), toUserDto);
   }
 
   async updateUser(input: { tenantId: string; userId: string; status?: 'enabled' | 'disabled'; access?: UserAccess }): Promise<Reg<UserDto>> {

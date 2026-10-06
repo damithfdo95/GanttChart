@@ -70,12 +70,23 @@ describe('decideStartup', () => {
     expect(decideStartup(member(), { link: null, hasMirror: true })).toMatchObject({ kind: 'link', foreignDevice: true });
   });
 
-  it('offline or signed-out: only a properly recorded linked device keeps working', () => {
+  it('offline: only a properly recorded linked device keeps working', () => {
     expect(decideStartup({ mode: 'unreachable' }, linked('u@x.co', 'ten_a')).kind).toBe('resume');
-    expect(decideStartup({ mode: 'login-required' }, linked('u@x.co', 'ten_a')).kind).toBe('resume');
     expect(decideStartup({ mode: 'unreachable' }, linked('u@x.co'))).toEqual({ kind: 'problem', problem: 'unreachable' });
-    expect(decideStartup({ mode: 'login-required' }, NO_DEVICE)).toEqual({ kind: 'problem', problem: 'login' });
+    expect(decideStartup({ mode: 'unreachable' }, NO_DEVICE)).toEqual({ kind: 'problem', problem: 'unreachable' });
     expect(decideStartup({ mode: 'error', status: 500 }, NO_DEVICE)).toEqual({ kind: 'problem', problem: 'error', status: 500 });
+  });
+
+  it('NOT signed in shows the public page only — a linked device copy is never opened for an anonymous visitor', () => {
+    expect(decideStartup({ mode: 'login-required' }, NO_DEVICE)).toEqual({ kind: 'landing' });
+    expect(decideStartup({ mode: 'login-required' }, linked('u@x.co', 'ten_a'))).toEqual({ kind: 'landing' });
+    expect(decideStartup({ mode: 'login-required' }, { link: null, hasMirror: true })).toEqual({ kind: 'landing' });
+  });
+
+  it('an authenticated person the registry does not know gets the denial, never a workspace or an account', () => {
+    for (const reason of ['unregistered', 'disabled', 'tenant_inactive', 'workspace_not_shared'] as const) {
+      expect(decideStartup({ mode: 'denied', reason, email: 'e@rakuten.com' }, NO_DEVICE)).toEqual({ kind: 'denied', reason, email: 'e@rakuten.com' });
+    }
   });
 
   it('deviceBelongsTo needs the link, the mirror, the person and the workspace', () => {

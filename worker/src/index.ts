@@ -8,17 +8,20 @@
  *   5. authorize     -> one named permission per route                 [permissions.ts]
  *   6. act           -> on the tenant taken from the PRINCIPAL, never from the request
  *
- * Static assets (the built SPA) are served by the platform; `run_worker_first`
- * sends only /api/* and /ws here.
+ * Static assets (the built SPA) are PUBLIC and served by the platform; `run_worker_first`
+ * sends only the routes in shared/routes.ts (/api/*, /ws, /login) here. Those
+ * are the only routes that matter for security, and each one verifies the
+ * Cloudflare Access token ITSELF — the Worker never assumes Access was in front.
  */
 
 import { AuthError, DEV_IDENTITY_COOKIE, authenticate, type VerifiedIdentity } from './auth';
+import { isWorkerPath } from '../../shared/routes';
 import { can, toPrincipalDto, workspaceRoleOf, type Action, type MemberPrincipal, type Principal } from './permissions';
 import { parseEmailList, resolvePrincipal } from './principal';
 import type { RegistryError } from './registry';
 import { IDENTITY_EMAIL_HEADER, IDENTITY_EXPIRES_HEADER, IDENTITY_ROLE_HEADER, IDENTITY_USER_HEADER, LEGACY_WORKSPACE_NAME, TENANT_HEADER, WorkspaceRoom } from './workspaceRoom';
 import { RegistryRoom } from './registryRoom';
-import { CLOSE_CODES, REPLACE_CONFIRMATION, SWITCH_TO_LOCAL_CONFIRMATION, canonicalRecordsHash, isTenantId, isUserId, normalizeEmail, type DenyReason, type UserAccess } from '../../shared/tenancy';
+import { CLOSE_CODES, REPLACE_CONFIRMATION, SWITCH_TO_LOCAL_CONFIRMATION, canonicalRecordsHash, emailDomain, isTenantId, isUserId, normalizeEmail, type DenyReason, type UserAccess } from '../../shared/tenancy';
 
 export { WorkspaceRoom, RegistryRoom };
 
@@ -141,6 +144,8 @@ const REGISTRY_STATUS: Record<RegistryError, number> = {
   invalid_input: 400,
   email_taken: 409,
   email_reserved: 409,
+  email_domain_not_allowed: 400,
+  managed_domains_not_configured: 503,
   not_found: 404,
   wrong_mode: 409,
   tenant_inactive: 409,
@@ -175,10 +180,12 @@ async function route(request: Request, env: Env): Promise<Response> {
   const path = url.pathname;
   const method = request.method;
 
-  if (path !== '/ws' && !path.startsWith('/api/')) {
-    // Everything else is the SPA (normally served by the platform before reaching here).
+  if (!isWorkerPath(path)) {
+    // Everything else is the PUBLIC SPA shell (normally served by the platform before reaching here).
     return env.ASSETS.fetch(request);
   }
+
+  if (path === '/login') return login(request, env);
 
   // 1. origin / CSRF
   if (path === '/ws') {
@@ -218,7 +225,32 @@ async function route(request: Request, env: Env): Promise<Response> {
 }
 
 function denied(reason: DenyReason, email: string): Response {
+  // A person Cloudflare Access let in but the application does not know (or no longer allows). Logged without the
+  // mailbox name: enough to see that someone is trying, not enough to build a list of people.
+  console.warn(JSON.stringify({ event: 'access_denied', reason, domain: emailDomain(email) }));
   return problem(403, 'forbidden', { reason, email });
+}
+
+// ---- sign-in ----------------------------------------------------------------------
+
+/**
+ * `/login` exists so that "Sign in" has a URL Cloudflare Access protects. Access
+ * challenges the visitor there; once they are through, the request reaches this
+ * Worker WITH a token, which is verified like any other, and the person is sent
+ * back to the app at "/". The destination is fixed: there is no redirect parameter, so this
+ * can never be used as an open redirect. Reaching this code without a valid token
+ * (Access not configured for the path) never signs anybody in; it sends them back to the
+ * public page with a notice.
+ */
+async function login(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'GET' && request.method !== 'HEAD') return problem(405, 'method_not_allowed');
+  let target = '/';
+  try {
+    await authenticate(request, env);
+  } catch {
+    target = '/?signin=unavailable';
+  }
+  return new Response(null, { status: 302, headers: { Location: target, ...SECURITY_HEADERS } });
 }
 
 // ---- who am I -------------------------------------------------------------------

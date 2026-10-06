@@ -19,6 +19,7 @@
     "ENVIRONMENT": "development",
     "DEV_EMAIL": "super@dev.test",
     "SUPER_ADMIN_EMAILS": "super@dev.test",
+    "MANAGED_USER_EMAIL_DOMAINS": "rakuten.com,example.com,tenant.test,b.co,c.co,e.co,old.test,x.yz,y.zz",
     "ALLOWED_ORIGINS": "http://localhost:5173",
     "HISTORY_RETENTION_DAYS": "30"
   }

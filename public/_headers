@@ -1,0 +1,6 @@
+# Static-asset response headers (Workers Static Assets "_headers"). The public shell only.
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: same-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()

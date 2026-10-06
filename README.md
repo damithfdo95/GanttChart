@@ -73,9 +73,16 @@ The same app can run as a **shared web app** so a team sees the same data live.
 Without the backend it is exactly the local-only app described above.
 
 * Design and decisions: [docs/CLOUD_ARCHITECTURE.md](docs/CLOUD_ARCHITECTURE.md)
-* What would be created in Cloudflare, what it costs ($0 on the Free plans), the
-  Access policy and the deployment steps — **a proposal, nothing deployed**:
+* The production model, the Cloudflare configuration, the manual rollout and rollback
+  steps and the cost ($0 on the Free plans):
   [docs/DEPLOYMENT_PLAN.md](docs/DEPLOYMENT_PLAN.md)
+
+How it is organized in short: the site address shows a **public sign-in page** (static, no
+data); **Sign in** goes through Cloudflare Access; the application then looks the verified email
+up in its own registry. **Cloudflare authentication is not GanttChart authorization:** a verified
+person with no GanttChart account sees "no account" and is never added automatically. Accounts
+are created only top-down: the configured Super Admin creates Admins, an Admin creates Users
+(both limited to the managed organization domains). There is no public registration.
 
 Try it locally (needs Node 22; uses the real Workers runtime, no Cloudflare account):
 
@@ -90,8 +97,9 @@ Open `http://127.0.0.1:8787` and `http://localhost:8787` — two different brows
 origins behave like two people's computers.
 
 Tests: `npm run test` (app, Node 20/22) · `cd worker && npm run test` (Worker unit
-tests plus the real-runtime Durable Object and WebSocket tests) ·
-`cd worker && npm run typecheck`.
+tests, the real-runtime Durable Object and WebSocket tests, and the production-configuration
+simulation) · `cd worker && npm run typecheck` (needs `npm run build` first because of the
+pre-deployment guard) · `cd worker && npm run validate` (guard + deploy dry-run, uploads nothing).
 
 ## Requirements
 

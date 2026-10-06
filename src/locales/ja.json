@@ -1300,7 +1300,7 @@
   "tenancy.counts": "プロジェクト{projects}件 · 日報{reports}件 · 勤怠{attendance}件 · トピック{topics}件 · メンバー{members}名",
   "tenancy.denied.title": "アクセスが許可されていません",
   "tenancy.denied.signedInAs": "{email} でサインインしていますが、このアプリケーションへのアクセスは許可されていません。",
-  "tenancy.denied.unregistered": "このメールアドレスは登録されていません。管理者に追加を依頼してください。",
+  "tenancy.denied.unregistered": "本人確認は完了しましたが、GanttChartのアカウントがありません。アカウントは、組織のGanttChart管理者が作成します。",
   "tenancy.denied.disabled": "あなたのアカウントは管理者により無効にされています。",
   "tenancy.denied.tenant_inactive": "あなたのワークスペースは現在停止されています。",
   "tenancy.denied.workspace_not_shared": "管理者のワークスペースはローカルに保存されており共有されていないため、ユーザーは開けません。管理者にWebストレージへの切り替えを依頼してください。",
@@ -1426,5 +1426,16 @@
   "shared.banner.movedTitle": "このワークスペースはローカルストレージに移行しました",
   "shared.banner.movedBody": "管理者がワークスペースをローカルストレージに戻したため、共有ワークスペースは閉じられました。最後の同期以降の変更は保存されていません。データが必要な場合は管理者にコピーを依頼してください。",
   "shared.banner.deletedTitle": "このワークスペースは削除されました",
-  "shared.banner.deletedBody": "管理者がこのワークスペースとその内容をすべて完全に削除しました。"
+  "shared.banner.deletedBody": "管理者がこのワークスペースとその内容をすべて完全に削除しました。",
+  "landing.title": "GanttChart",
+  "landing.tagline": "社内QAテスト実行管理",
+  "landing.description": "ガントチャートでテスト実行を計画し、日々の進捗を追跡して、チームに報告します。組織全体で一つの場所に。",
+  "landing.signIn": "サインイン",
+  "landing.signInHelp": "組織のメールアドレスで本人確認を行います。",
+  "landing.noAccountHelp": "アカウントは、組織のGanttChart管理者が作成します。サインインできない場合は、管理者にお問い合わせください。",
+  "landing.signInFailed": "サインインを完了できませんでした。もう一度お試しいただくか、管理者にお問い合わせください。",
+  "landing.language": "言語",
+  "tenancy.error.email_domain_not_allowed": "このメールアドレスは、GanttChartがアカウント作成を許可している組織のドメインではありません。",
+  "tenancy.error.managed_domains_not_configured": "現在アカウントを作成できません。組織のドメインが設定されていません。プラットフォーム管理者にお問い合わせください。",
+  "tenancy.super.outsideDomainWarning": "このIDは現在許可されている組織ドメインの外にあり、現在のAccessポリシーでは認証できない可能性があります。"
 }

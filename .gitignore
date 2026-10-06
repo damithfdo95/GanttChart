@@ -11,3 +11,7 @@ backup/
 .dev.vars
 .dev.vars.*
 worker-configuration.d.ts
+
+# Local-only files that must never be committed
+.claude/scheduled_tasks.lock
+Application Audience*

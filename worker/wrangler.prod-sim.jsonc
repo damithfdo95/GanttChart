@@ -1,0 +1,33 @@
+{
+  // Used ONLY by `npm run test:prod-sim` (local workerd). Never deployed.
+  // It mirrors PRODUCTION: no development identity, real Access JWT verification,
+  // the public static shell, and the same run_worker_first routes as wrangler.jsonc
+  // (a unit test keeps those two identical). Only the secret VALUES are test values.
+  "name": "ganttchart-prod-sim",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-06",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./test/fixtures/public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/ws", "/login"]
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "WORKSPACE", "class_name": "WorkspaceRoom" },
+      { "name": "REGISTRY", "class_name": "RegistryRoom" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["WorkspaceRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["RegistryRoom"] }
+  ],
+  "vars": {
+    "ACCESS_TEAM_DOMAIN": "https://sim-team.cloudflareaccess.com",
+    "ACCESS_AUD": "sim-aud-tag",
+    "SUPER_ADMIN_EMAILS": "boss@rakuten.com",
+    "MANAGED_USER_EMAIL_DOMAINS": "rakuten.com",
+    "HISTORY_RETENTION_DAYS": "30"
+  }
+}

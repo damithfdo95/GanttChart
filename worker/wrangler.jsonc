@@ -9,10 +9,14 @@
   "compatibility_flags": ["nodejs_compat"],
 
   // The production workers.dev hostname (ganttchart.<your-subdomain>.workers.dev)
-  // IS the application URL; no custom domain is purchased. It must be covered
-  // by a hostname-based Cloudflare Access application BEFORE the first deploy
-  // (docs/DEPLOYMENT_PLAN.md). Preview / version URLs stay OFF so there is no
-  // second, unprotected hostname for the same Worker.
+  // IS the application URL; no custom domain is purchased.
+  //
+  // PUBLIC vs PROTECTED (docs/DEPLOYMENT_PLAN.md):
+  //   public     "/" and the built SPA files - code and static text only, never data
+  //   protected  /login, /api/*, /ws - Cloudflare Access destinations, AND every one of
+  //              them verifies the Access token inside the Worker, so they stay closed
+  //              even if an Access destination were missing.
+  // Preview / version URLs stay OFF so there is no second hostname for the same Worker.
   "workers_dev": true,
   "preview_urls": false,
 
@@ -21,7 +25,8 @@
     "directory": "../dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/ws"]
+    // Must equal WORKER_ROUTES in shared/routes.ts (checked by scripts/check-production.mjs).
+    "run_worker_first": ["/api/*", "/ws", "/login"]
   },
 
   // WORKSPACE: one instance PER TENANT (addressed by tenant id) = the data plane.
@@ -38,17 +43,27 @@
     { "tag": "v2", "new_sqlite_classes": ["RegistryRoom"] }
   ],
 
+  // Kept at 1: this is a low-traffic internal app (far below the free 200k log events/day), and
+  // head sampling would drop most of the rare security events (access_denied, auth_misconfigured)
+  // that are the point of the logs. Rationale and when to lower it: docs/DEPLOYMENT_PLAN.md.
   "observability": { "enabled": true, "head_sampling_rate": 1 },
 
-  // Production values are set at deploy time (never commit real team/AUD values
-  // if you prefer to keep them private). While empty the Worker FAILS CLOSED
-  // (HTTP 500 on every API/WebSocket request).
+  // Non-secret production configuration lives HERE, so a plain deploy can never blank it.
   "vars": {
-    "ACCESS_TEAM_DOMAIN": "",
-    "ACCESS_AUD": "",
-    "SUPER_ADMIN_EMAILS": "",
+    "ACCESS_TEAM_DOMAIN": "https://qa-internal.cloudflareaccess.com",
+    "MANAGED_USER_EMAIL_DOMAINS": "rakuten.com",
     "HISTORY_RETENTION_DAYS": "30"
   },
+
+  // ACCESS_AUD and SUPER_ADMIN_EMAILS are Worker SECRETS (set once with `wrangler secret put`,
+  // never listed in "vars"). Wrangler never deletes a secret on deploy, so a deploy cannot wipe
+  // them; listing them here makes a deploy refuse to go ahead if they are missing, and the
+  // guard below refuses to let them reappear under "vars" (where a deploy WOULD overwrite them).
+  "secrets": { "required": ["ACCESS_AUD", "SUPER_ADMIN_EMAILS"] },
+
+  // Runs before EVERY `wrangler deploy` of this config (and its --dry-run). It deploys nothing;
+  // it only stops a deployment whose production safety settings are incomplete.
+  "build": { "command": "node scripts/check-production.mjs" },
 
   "env": {
     // `wrangler dev --env dev`: local identity, no Access. Loopback hosts only.
@@ -57,6 +72,7 @@
         "ENVIRONMENT": "development",
         "DEV_EMAIL": "super@dev.test",
         "SUPER_ADMIN_EMAILS": "super@dev.test",
+        "MANAGED_USER_EMAIL_DOMAINS": "example.com,dev.test",
         "ALLOWED_ORIGINS": "http://localhost:5173,http://localhost:8787",
         "HISTORY_RETENTION_DAYS": "30"
       },
@@ -70,7 +86,7 @@
         "directory": "../dist",
         "binding": "ASSETS",
         "not_found_handling": "single-page-application",
-        "run_worker_first": ["/api/*", "/ws"]
+        "run_worker_first": ["/api/*", "/ws", "/login"]
       }
     }
   }

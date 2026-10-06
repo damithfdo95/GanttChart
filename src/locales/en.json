@@ -1300,7 +1300,7 @@
   "tenancy.counts": "{projects} project(s) · {reports} daily report(s) · {attendance} attendance record(s) · {topics} topic(s) · {members} member(s)",
   "tenancy.denied.title": "Access not granted",
   "tenancy.denied.signedInAs": "You are signed in as {email}, but this application has not granted you access.",
-  "tenancy.denied.unregistered": "This email address is not registered. Ask your administrator to add it.",
+  "tenancy.denied.unregistered": "Your identity was verified, but you do not have a GanttChart account. Accounts are created by your organization’s GanttChart administrator.",
   "tenancy.denied.disabled": "Your account has been disabled by your administrator.",
   "tenancy.denied.tenant_inactive": "Your workspace is currently deactivated.",
   "tenancy.denied.workspace_not_shared": "Your administrator’s workspace is stored locally and is not shared, so users cannot open it. Ask your administrator to switch it to web storage.",
@@ -1426,5 +1426,16 @@
   "shared.banner.movedTitle": "This workspace moved to local storage",
   "shared.banner.movedBody": "The administrator switched the workspace back to local storage, so the shared workspace is closed. Changes you made since the last sync were not saved. Ask the administrator for a copy if you need your data.",
   "shared.banner.deletedTitle": "This workspace was deleted",
-  "shared.banner.deletedBody": "An administrator permanently deleted this workspace and everything in it."
+  "shared.banner.deletedBody": "An administrator permanently deleted this workspace and everything in it.",
+  "landing.title": "GanttChart",
+  "landing.tagline": "Internal QA test-execution management",
+  "landing.description": "Plan test runs on a Gantt chart, track daily progress and report to your team — in one place for your organization.",
+  "landing.signIn": "Sign in",
+  "landing.signInHelp": "You will be asked to verify your identity with your organization email address.",
+  "landing.noAccountHelp": "Accounts are created by your organization’s GanttChart administrator. If you cannot sign in, contact them.",
+  "landing.signInFailed": "Sign-in could not be completed. Please try again, or contact your administrator.",
+  "landing.language": "Language",
+  "tenancy.error.email_domain_not_allowed": "That email address is not in an organization domain that GanttChart allows for accounts.",
+  "tenancy.error.managed_domains_not_configured": "Accounts cannot be created right now: no organization domain is configured. Contact the platform administrator.",
+  "tenancy.super.outsideDomainWarning": "This identity is outside the currently allowed organization domains and may not be able to authenticate under the current Access policy."
 }

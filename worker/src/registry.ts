@@ -15,6 +15,7 @@
 import {
   newTenantId,
   newUserId,
+  isManagedEmail,
   normalizeEmail,
   normalizeTenantName,
   type DenyReason,
@@ -69,6 +70,10 @@ export type RegistryError =
   | 'invalid_input'
   | 'email_taken'
   | 'email_reserved'
+  /** The address is valid but not in a managed organisation domain. */
+  | 'email_domain_not_allowed'
+  /** The deployment lists no managed domain at all: nobody can be provisioned (fail closed). */
+  | 'managed_domains_not_configured'
   | 'not_found'
   | 'wrong_mode'
   | 'tenant_inactive'
@@ -79,6 +84,15 @@ export type RegistryError =
 export type Reg<T> = { ok: true; value: T } | { ok: false; error: RegistryError };
 
 const fail = (error: RegistryError): { ok: false; error: RegistryError } => ({ ok: false, error });
+
+/**
+ * The managed-domain rule for registry-created Admins and Users. The Super
+ * Admin identities are configuration, are never created here, and are exempt.
+ */
+function checkManagedDomain(normalizedEmail: string, managedDomains: readonly string[]): 'managed_domains_not_configured' | 'email_domain_not_allowed' | null {
+  if (managedDomains.length === 0) return 'managed_domains_not_configured';
+  return isManagedEmail(normalizedEmail, managedDomains) ? null : 'email_domain_not_allowed';
+}
 const ok = <T>(value: T): { ok: true; value: T } => ({ ok: true, value });
 
 const SCHEMA = [
@@ -215,7 +229,8 @@ export class RegistryStore {
           ORDER BY t.created_at, t.id`,
       )
       .toArray();
-    return rows.map((r) => ({ ...toTenantDto(r), adminEmail: r.admin_email ?? '', adminStatus: r.admin_status ?? 'disabled', userCount: r.user_count }));
+    // `adminOutsideManagedDomains` is filled in by the caller, which knows the configured domains.
+    return rows.map((r) => ({ ...toTenantDto(r), adminEmail: r.admin_email ?? '', adminStatus: r.admin_status ?? 'disabled', userCount: r.user_count, adminOutsideManagedDomains: false }));
   }
 
   listAudit(): DeletionAuditRow[] {
@@ -257,12 +272,14 @@ export class RegistryStore {
    * (no cloud data exists until the Admin chooses to migrate). `reserved` are
    * emails that may not be used (the Super Admin list).
    */
-  createTenantWithAdmin(input: { name: string; adminEmail: string; reserved: readonly string[]; actorEmail: string; now: string }): Reg<{ tenant: TenantRow; admin: UserRow }> {
+  createTenantWithAdmin(input: { name: string; adminEmail: string; reserved: readonly string[]; managedDomains: readonly string[]; actorEmail: string; now: string }): Reg<{ tenant: TenantRow; admin: UserRow }> {
     const name = normalizeTenantName(input.name);
     if (name === null) return fail('invalid_name');
     const email = normalizeEmail(input.adminEmail);
     if (email === null) return fail('invalid_email');
     if (input.reserved.includes(email)) return fail('email_reserved');
+    const domain = checkManagedDomain(email, input.managedDomains);
+    if (domain !== null) return fail(domain);
     if (this.findUserByEmail(email) !== null) return fail('email_taken');
 
     return this.storage.transactionSync(() => {
@@ -320,7 +337,7 @@ export class RegistryStore {
    * Add a subordinate user. Only a WEB-mode, active tenant can have users; the
    * tenant comes from the caller's verified principal, never from request data.
    */
-  createUser(input: { tenantId: string; email: string; access: UserAccess; reserved: readonly string[]; actorUserId: string; now: string }): Reg<UserRow> {
+  createUser(input: { tenantId: string; email: string; access: UserAccess; reserved: readonly string[]; managedDomains: readonly string[]; actorUserId: string; now: string }): Reg<UserRow> {
     const tenant = this.getTenant(input.tenantId);
     if (tenant === null) return fail('not_found');
     if (tenant.status !== 'active') return fail('tenant_inactive');
@@ -329,6 +346,8 @@ export class RegistryStore {
     const email = normalizeEmail(input.email);
     if (email === null) return fail('invalid_email');
     if (input.reserved.includes(email)) return fail('email_reserved');
+    const domain = checkManagedDomain(email, input.managedDomains);
+    if (domain !== null) return fail(domain);
     if (this.findUserByEmail(email) !== null) return fail('email_taken');
     const id = newUserId();
     this.storage.sql.exec(

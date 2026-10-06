@@ -4,6 +4,8 @@
  * unit-tested.
  *
  * The rules that matter:
+ *  - Not signed in (no session) shows the PUBLIC page only. The page itself is public, so a device's
+ *    saved copy is never opened for someone who has not signed in; they sign in first.
  *  - Denied is final: no offline copy is opened for a person the server refuses.
  *  - A Super Admin never gets a workspace, only the platform console.
  *  - A workspace stored locally (an Admin's local mode) runs the plain local app.
@@ -27,6 +29,8 @@ export interface DeviceState {
 
 export type StartupDecision =
   | { kind: 'local' }
+  /** Not signed in: the public page with the Sign In button (no data, no offline copy is opened). */
+  | { kind: 'landing' }
   | { kind: 'denied'; reason: DenyReason; email: string }
   | { kind: 'super-admin'; principal: PrincipalDto }
   /** A tenant whose data lives in this browser (local storage mode). `clearDevice`: leftover sync state of an earlier web mode. */
@@ -35,7 +39,7 @@ export type StartupDecision =
   | { kind: 'resume'; principal: PrincipalDto | null; identity: Identity }
   /** First time on this device: link, or (foreign copy) take the server's workspace without offering a merge. */
   | { kind: 'link'; principal: PrincipalDto; identity: Identity; foreignDevice: boolean }
-  | { kind: 'problem'; problem: 'unreachable' | 'login' | 'error'; status?: number };
+  | { kind: 'problem'; problem: 'unreachable' | 'error'; status?: number };
 
 /** The device copy belongs to exactly this person in exactly this workspace. */
 export function deviceBelongsTo(device: DeviceState, principal: PrincipalDto): boolean {
@@ -52,15 +56,16 @@ export function decideStartup(detection: ServerDetection, device: DeviceState): 
       return { kind: 'denied', reason: detection.reason, email: detection.email };
     case 'error':
       return { kind: 'problem', problem: 'error', status: detection.status };
-    case 'unreachable':
-    case 'login-required': {
-      // Offline or signed out: a device that was linked keeps working from its own copy (the sync client
-      // reports it and recovers). The server has not been able to say who this is, so only a copy that
-      // was recorded as linked is used.
+    case 'login-required':
+      return { kind: 'landing' };
+    case 'unreachable': {
+      // Offline: a device that was linked keeps working from its own copy (the sync client reports it
+      // and recovers). The server has not been able to say who this is, so only a copy that was
+      // recorded as linked is used.
       if (device.link !== null && device.hasMirror && device.link.tenantId !== undefined) {
         return { kind: 'resume', principal: null, identity: { email: device.link.email, role: 'editor' } };
       }
-      return { kind: 'problem', problem: detection.mode === 'unreachable' ? 'unreachable' : 'login' };
+      return { kind: 'problem', problem: 'unreachable' };
     }
     case 'server': {
       const { principal, identity } = detection;

@@ -25,6 +25,7 @@ import { createBackupPayload } from '../lib/backup/backup';
 import { downloadTextFile } from '../lib/export/download';
 import { AccessDenied } from '../features/tenancy/AccessDenied';
 import { SuperAdminConsole } from '../features/tenancy/SuperAdminConsole';
+import { PublicLanding } from '../features/tenancy/PublicLanding';
 import { t } from '../i18n';
 
 /** History retention shown to the user (the server's default, see wrangler.jsonc). */
@@ -34,6 +35,7 @@ type Phase =
   | { kind: 'detecting' }
   | { kind: 'ready'; boot: PersistenceBoot; shared: SharedBoot | null; tenant: TenantApi }
   | { kind: 'link'; principal: PrincipalDto; identity: Identity; plan: LinkPlan; server: ServerWorkspace }
+  | { kind: 'landing'; signInFailed: boolean }
   | { kind: 'denied'; reason: DenyReason; email: string }
   | { kind: 'super'; principal: PrincipalDto }
   | { kind: 'problem'; problem: 'unreachable' | 'login' | 'error' | 'export'; status?: number };
@@ -69,6 +71,9 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
     switch (decision.kind) {
       case 'local':
         setPhase({ kind: 'ready', boot, shared: null, tenant: NO_TENANT });
+        return;
+      case 'landing':
+        setPhase({ kind: 'landing', signInFailed: new URLSearchParams(window.location.search).get('signin') === 'unavailable' });
         return;
       case 'denied':
         setPhase(decision);
@@ -124,6 +129,7 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
   }, []);
 
   if (phase.kind === 'ready') return <App boot={phase.boot} shared={phase.shared} tenant={phase.tenant} />;
+  if (phase.kind === 'landing') return <PublicLanding initialLang={lang} signInFailed={phase.signInFailed} />;
   if (phase.kind === 'denied') return <AccessDenied lang={lang} reason={phase.reason} email={phase.email} onRetry={() => void detect()} />;
   if (phase.kind === 'super') return <SuperAdminConsole initialLang={lang} principal={phase.principal} api={createTenancyApi()} />;
 
