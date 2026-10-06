@@ -8,8 +8,12 @@
   "compatibility_date": "2026-10-06",
   "compatibility_flags": ["nodejs_compat"],
 
-  // Access must be the only way in: no workers.dev / preview URLs to bypass it.
-  "workers_dev": false,
+  // The production workers.dev hostname (ganttchart.<your-subdomain>.workers.dev)
+  // IS the application URL; no custom domain is purchased. It must be covered
+  // by a hostname-based Cloudflare Access application BEFORE the first deploy
+  // (docs/DEPLOYMENT_PLAN.md). Preview / version URLs stay OFF so there is no
+  // second, unprotected hostname for the same Worker.
+  "workers_dev": true,
   "preview_urls": false,
 
   // The built SPA (`npm run build` in the repo root → ../dist).
@@ -35,7 +39,7 @@
     "ACCESS_AUD": "",
     "ADMIN_EMAILS": "",
     "READ_ONLY_EMAILS": "",
-    "HISTORY_RETENTION_DAYS": "90"
+    "HISTORY_RETENTION_DAYS": "30"
   },
 
   "env": {
@@ -45,7 +49,7 @@
         "ENVIRONMENT": "development",
         "DEV_EMAIL": "dev@localhost",
         "ALLOWED_ORIGINS": "http://localhost:5173,http://localhost:8787",
-        "HISTORY_RETENTION_DAYS": "90"
+        "HISTORY_RETENTION_DAYS": "30"
       },
       "durable_objects": {
         "bindings": [{ "name": "WORKSPACE", "class_name": "WorkspaceRoom" }]

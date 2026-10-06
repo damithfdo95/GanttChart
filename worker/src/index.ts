@@ -14,7 +14,7 @@
  */
 
 import { AuthError, authenticate } from './auth';
-import { IDENTITY_EMAIL_HEADER, IDENTITY_ROLE_HEADER, WorkspaceRoom } from './workspaceRoom';
+import { IDENTITY_EMAIL_HEADER, IDENTITY_EXPIRES_HEADER, IDENTITY_ROLE_HEADER, WorkspaceRoom } from './workspaceRoom';
 
 export { WorkspaceRoom };
 
@@ -88,8 +88,10 @@ async function route(request: Request, env: Env): Promise<Response> {
     const headers = new Headers(request.headers);
     headers.delete(IDENTITY_EMAIL_HEADER);
     headers.delete(IDENTITY_ROLE_HEADER);
+    headers.delete(IDENTITY_EXPIRES_HEADER);
     headers.set(IDENTITY_EMAIL_HEADER, identity.email);
     headers.set(IDENTITY_ROLE_HEADER, identity.role);
+    if (identity.expiresAt !== null) headers.set(IDENTITY_EXPIRES_HEADER, String(identity.expiresAt));
     return env.WORKSPACE.getByName(WORKSPACE_NAME).fetch(new Request(request, { headers }));
   }
 
@@ -108,7 +110,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (request.headers.get(INTENT_HEADER) === null) return problem(403, 'Missing intent header');
   }
 
-  if (path === '/api/whoami' && isRead) return json(identity);
+  if (path === '/api/whoami' && isRead) return json({ email: identity.email, role: identity.role });
 
   if (path === '/api/export' && isRead) return json(await room.exportAll());
 

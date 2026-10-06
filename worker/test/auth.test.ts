@@ -45,7 +45,8 @@ async function failure(promise: Promise<unknown>): Promise<AuthError> {
 describe('authenticate (Cloudflare Access JWT)', () => {
   it('accepts a valid token and normalizes the email', async () => {
     const id = await authenticate(req(await token({ email: 'Alice@Example.com' })), ENV, jwks);
-    expect(id).toEqual({ email: 'alice@example.com', role: 'editor' });
+    expect(id).toMatchObject({ email: 'alice@example.com', role: 'editor' });
+    expect(id.expiresAt).toBeGreaterThan(Date.now()); // the session end, for closing long-lived sockets
   });
 
   it('rejects requests without a token (401)', async () => {
@@ -107,7 +108,7 @@ describe('roles', () => {
 describe('development bypass', () => {
   it('works only for ENVIRONMENT=development on localhost', async () => {
     const dev: AuthEnv = { ENVIRONMENT: 'development' };
-    expect(await authenticate(req(undefined, 'http://localhost:8787/ws'), dev)).toEqual({ email: 'dev@localhost', role: 'admin' });
+    expect(await authenticate(req(undefined, 'http://localhost:8787/ws'), dev)).toEqual({ email: 'dev@localhost', role: 'admin', expiresAt: null });
     expect((await failure(authenticate(req(undefined, 'https://gantt.example.com/ws'), dev))).status).toBe(403);
   });
 

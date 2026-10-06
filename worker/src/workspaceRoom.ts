@@ -31,16 +31,32 @@ interface Attachment {
   role: Role;
   /** Set by the client's hello; commits before it are refused. */
   clientId: string | null;
+  /** End of the Access session (ms epoch); null for the local dev identity. */
+  expiresAt: number | null;
 }
 
 const IDENTITY_EMAIL_HEADER = 'x-gc-verified-email';
 const IDENTITY_ROLE_HEADER = 'x-gc-verified-role';
+const IDENTITY_EXPIRES_HEADER = 'x-gc-verified-exp';
 const DAY_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_RETENTION_DAYS = 90;
+/**
+ * Default history retention. Kept at 30 days (not longer) so the full-record
+ * history stays far below the Workers Free 5 GB storage cap even with heavy use.
+ */
+const DEFAULT_RETENTION_DAYS = 30;
+const MAX_RETENTION_DAYS = 365;
+/** Above this database size the alarm prunes harder (Workers Free storage cap is 5 GB). */
+const SIZE_GUARD_BYTES = 2 * 1024 * 1024 * 1024;
+const SIZE_GUARD_RETENTION_DAYS = 7;
+const WS_CLOSE_SESSION_EXPIRED = 4401;
 const WS_CLOSE_UNSUPPORTED_DATA = 1003;
 const WS_CLOSE_MESSAGE_TOO_BIG = 1009;
 
-export { IDENTITY_EMAIL_HEADER, IDENTITY_ROLE_HEADER };
+export { IDENTITY_EMAIL_HEADER, IDENTITY_EXPIRES_HEADER, IDENTITY_ROLE_HEADER };
+
+function isExpired(attachment: Attachment): boolean {
+  return attachment.expiresAt !== null && Date.now() > attachment.expiresAt;
+}
 
 function isRole(value: string | null): value is Role {
   return value === 'admin' || value === 'editor' || value === 'viewer';
@@ -72,11 +88,16 @@ export class WorkspaceRoom extends DurableObject<Env> {
     const email = request.headers.get(IDENTITY_EMAIL_HEADER);
     const role = request.headers.get(IDENTITY_ROLE_HEADER);
     if (email === null || email === '' || !isRole(role)) return new Response('Unauthenticated', { status: 401 });
+    const expRaw = request.headers.get(IDENTITY_EXPIRES_HEADER);
+    const expiresAt = expRaw === null ? null : Number(expRaw);
+    if (expiresAt !== null && (!Number.isFinite(expiresAt) || expiresAt <= Date.now())) {
+      return new Response('Session expired', { status: 401 });
+    }
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server);
-    const attachment: Attachment = { email, role, clientId: null };
+    const attachment: Attachment = { email, role, clientId: null, expiresAt };
     server.serializeAttachment(attachment);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -89,6 +110,11 @@ export class WorkspaceRoom extends DurableObject<Env> {
     const attachment = ws.deserializeAttachment() as Attachment | null;
     if (attachment === null) {
       ws.close(1008, 'no session');
+      return;
+    }
+    if (isExpired(attachment)) {
+      this.send(ws, { t: 'error', code: 'session_expired', message: 'Your sign-in session has ended; reload to sign in again.' });
+      ws.close(WS_CLOSE_SESSION_EXPIRED, 'session expired');
       return;
     }
     const parsed = parseClientMessage(message);
@@ -229,7 +255,11 @@ export class WorkspaceRoom extends DurableObject<Env> {
 
   override async alarm(): Promise<void> {
     const days = Number(this.env.HISTORY_RETENTION_DAYS ?? DEFAULT_RETENTION_DAYS);
-    const retention = Number.isFinite(days) && days >= 7 ? days : DEFAULT_RETENTION_DAYS;
+    let retention = Number.isFinite(days) && days >= 7 ? Math.min(days, MAX_RETENTION_DAYS) : DEFAULT_RETENTION_DAYS;
+    if (this.ctx.storage.sql.databaseSize > SIZE_GUARD_BYTES) {
+      console.warn(JSON.stringify({ event: 'size_guard', bytes: this.ctx.storage.sql.databaseSize }));
+      retention = Math.min(retention, SIZE_GUARD_RETENTION_DAYS);
+    }
     this.store.prune(new Date(Date.now() - retention * DAY_MS).toISOString());
     await this.ctx.storage.setAlarm(Date.now() + DAY_MS);
   }
@@ -249,6 +279,12 @@ export class WorkspaceRoom extends DurableObject<Env> {
     for (const socket of this.ctx.getWebSockets()) {
       if (socket === except) continue;
       try {
+        // A revoked/expired Access session must stop receiving data immediately.
+        const attachment = socket.deserializeAttachment() as Attachment | null;
+        if (attachment === null || isExpired(attachment)) {
+          socket.close(WS_CLOSE_SESSION_EXPIRED, 'session expired');
+          continue;
+        }
         socket.send(frame);
       } catch {
         // dead socket — ignored, it will be cleaned up by the runtime

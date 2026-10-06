@@ -2,17 +2,20 @@ import initSqlJs from 'sql.js';
 import type { SqlValue, StoreStorage } from '../../src/store';
 
 /** In-memory real SQLite (sql.js) behind the same interface as ctx.storage. */
-export async function createTestStorage(): Promise<StoreStorage & { failOn: (needle: string | null) => void }> {
+export async function createTestStorage(): Promise<StoreStorage & { failOn: (needle: string | null) => void; writes: { count: number } }> {
   const SQL = await initSqlJs();
   const db = new SQL.Database();
   let failNeedle: string | null = null;
+  const writes = { count: 0 };
   return {
+    writes,
     failOn(needle) {
       failNeedle = needle;
     },
     sql: {
       exec<T extends Record<string, SqlValue>>(query: string, ...bindings: SqlValue[]) {
         if (failNeedle !== null && query.includes(failNeedle)) throw new Error(`injected failure: ${failNeedle}`);
+        if (/^\s*(INSERT|UPDATE|DELETE)/i.test(query)) writes.count += 1;
         const stmt = db.prepare(query);
         try {
           if (bindings.length > 0) {

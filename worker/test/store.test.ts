@@ -218,3 +218,41 @@ describe('atomicity', () => {
     expect(commit({ puts: [put('project', 'a', 2)], deletes: [] })).toMatchObject({ ok: true, revision: 2 });
   });
 });
+
+describe('write budget (Workers Free: 100,000 rows written per day)', () => {
+  it('a single-record commit issues exactly 3 write statements (records, history, revision)', () => {
+    commit({ puts: [put('project', 'a', 1)], deletes: [] }); // warm-up: first insert
+    storage.writes.count = 0;
+    commit({ puts: [put('project', 'a', 2)], deletes: [] });
+    expect(storage.writes.count).toBe(3);
+    storage.writes.count = 0;
+    commit({ puts: [], deletes: [{ kind: 'project', id: 'a' }] });
+    expect(storage.writes.count).toBe(3); // delete: records delete + history tombstone + revision
+    storage.writes.count = 0;
+    commit({ puts: [put('project', 'a', 2)], deletes: [] }); // resurrect after delete, not a duplicate
+    expect(storage.writes.count).toBe(3);
+  });
+
+  it('a no-op commit and a conflict write nothing', () => {
+    commit({ puts: [put('project', 'a', 1)], deletes: [] });
+    storage.writes.count = 0;
+    commit({ puts: [put('project', 'a', 1)], deletes: [] });
+    expect(storage.writes.count).toBe(0);
+    commit({ baseRevision: 0, puts: [put('project', 'a', 'x')], deletes: [] });
+    expect(storage.writes.count).toBe(0);
+  });
+
+  it('the hot tables have no secondary indexes (each index entry would count as a written row)', () => {
+    const rows = storage.sql
+      .exec<{ name: string }>(`SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name IN ('records', 'record_history', 'revisions')`)
+      .toArray();
+    expect(rows).toEqual([]);
+  });
+
+  it('waking from hibernation (init) performs no writes', () => {
+    commit({ puts: [put('project', 'a', 1)], deletes: [] });
+    storage.writes.count = 0;
+    store.init();
+    expect(storage.writes.count).toBe(0);
+  });
+});

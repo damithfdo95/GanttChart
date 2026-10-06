@@ -28,6 +28,11 @@ export interface AuthEnv {
   DEV_EMAIL?: string;
 }
 
+/** A verified identity plus when its Access session ends (ms epoch; null for the local dev identity). */
+export interface VerifiedIdentity extends Identity {
+  expiresAt: number | null;
+}
+
 export class AuthError extends Error {
   constructor(
     readonly status: 401 | 403 | 500,
@@ -74,14 +79,14 @@ function isLocalHost(hostname: string): boolean {
  * Resolve the verified identity of a request.
  * `jwks` is injectable for tests; production uses the team's remote key set.
  */
-export async function authenticate(request: Request, env: AuthEnv, jwks?: JWTVerifyGetKey): Promise<Identity> {
+export async function authenticate(request: Request, env: AuthEnv, jwks?: JWTVerifyGetKey): Promise<VerifiedIdentity> {
   if (env.ENVIRONMENT === 'development') {
     // Local development only: exactly "development" AND a loopback host.
     if (!isLocalHost(new URL(request.url).hostname)) {
       throw new AuthError(403, 'Development identity is only available on localhost');
     }
     const email = (env.DEV_EMAIL ?? 'dev@localhost').toLowerCase();
-    return { email, role: roleFor(email, env) === 'viewer' ? 'viewer' : 'admin' };
+    return { email, role: roleFor(email, env) === 'viewer' ? 'viewer' : 'admin', expiresAt: null };
   }
 
   const teamDomain = env.ACCESS_TEAM_DOMAIN?.replace(/\/+$/, '');
@@ -94,6 +99,7 @@ export async function authenticate(request: Request, env: AuthEnv, jwks?: JWTVer
   if (token === null || token === '') throw new AuthError(401, 'Missing Access token');
 
   let email: unknown;
+  let exp: unknown;
   try {
     const { payload } = await jwtVerify(token, jwks ?? remoteJwks(teamDomain), {
       issuer: teamDomain,
@@ -101,6 +107,7 @@ export async function authenticate(request: Request, env: AuthEnv, jwks?: JWTVer
       algorithms: ['RS256'],
     });
     email = payload.email;
+    exp = payload.exp;
   } catch {
     // Do not leak why (expired vs. bad signature vs. wrong audience).
     throw new AuthError(403, 'Invalid Access token');
@@ -110,5 +117,8 @@ export async function authenticate(request: Request, env: AuthEnv, jwks?: JWTVer
     throw new AuthError(403, 'Access token has no user identity');
   }
   const normalized = email.toLowerCase();
-  return { email: normalized, role: roleFor(normalized, env) };
+  // jwtVerify already rejected expired tokens; keep the expiry so a long-lived
+  // WebSocket can be closed when the Access session ends.
+  const expiresAt = typeof exp === 'number' && Number.isFinite(exp) ? exp * 1000 : null;
+  return { email: normalized, role: roleFor(normalized, env), expiresAt };
 }

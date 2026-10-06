@@ -1,6 +1,7 @@
 # GanttChart — shared web deployment (Cloudflare)
 
-Status: **design (Stages 1–2)**. Nothing here is deployed. No Cloudflare
+Status: **design (Stages 1–2), revised for Workers Free + `workers.dev`**. Nothing here is deployed.
+The concrete, reviewable deployment proposal is in [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md). No Cloudflare
 account state, DNS or production resource is created by the code in this
 repository until the owner approves the exact commands listed in
 [§10 Actions that need approval](#10-actions-that-need-approval).
@@ -12,11 +13,15 @@ see and edit the **same** data, with changes appearing for other connected
 users within about a second. The UI, calculation engine and domain model stay
 as they are.
 
-Decisions already made by the owner: private GitHub repo; Cloudflare hosting;
-Cloudflare Access (invited emails only) in front of the whole app; Worker +
-Durable Object for the shared workspace and WebSocket coordination;
+Decisions already made by the owner: private GitHub repo; Cloudflare hosting
+on the **Free plans only** ($0, no purchased/custom domain); the app lives at
+the Cloudflare-provided `https://ganttchart.<subdomain>.workers.dev`;
+**hostname-based** Cloudflare Access (invited emails only) protects that
+hostname, so both HTTP and WebSocket upgrades are authenticated; Worker +
+Durable Object (SQLite) for the shared workspace and WebSocket coordination;
 near-real-time sync; the existing local storage kept only as an offline
 cache/fallback; the existing revision history adapted to the shared backend.
+Keep it simple — this is a small internal tool, not a SaaS product.
 
 ## 2. Audit of the current app (Stage 1)
 
@@ -110,9 +115,11 @@ Browser (React SPA, unchanged UI)
 ```
 
 One Worker deployment serves the SPA (Workers Static Assets with SPA
-fallback), `/api/*` and `/ws`. Cloudflare Access protects the whole
-hostname; `workers.dev` and preview URLs are disabled so Access cannot be
-bypassed.
+fallback), `/api/*` and `/ws`. The production `workers.dev` hostname **is** the
+app URL and stays enabled; a hostname-based Access application protects it.
+Preview and version URLs are disabled (`preview_urls: false`) so there is no
+second, unprotected hostname. The Worker additionally verifies the Access JWT
+itself, so a misconfigured Access policy alone cannot expose data.
 
 ## 5. Server data model
 
@@ -192,6 +199,9 @@ against the new server mirror and commit what is still different.
   (restore a revision, import a whole workspace) require `ADMIN_EMAILS`.
 * WebSocket upgrades also require `Origin` to equal the app's own origin
   (cross-site WebSocket hijacking protection).
+* **Session lifetime:** the Durable Object remembers when each connection's
+  Access JWT expires and closes the socket (code 4401) on the next message or
+  broadcast after that, so an expired or revoked session stops receiving data.
 * Local development: `ENVIRONMENT=development` (a var set only by the dev
   config) enables a fixed dev identity. The production config never sets it
   and the Worker refuses to start the bypass unless the var is exactly
@@ -205,8 +215,10 @@ against the new server mirror and commit what is still different.
 * **History screen** keeps its semantics: list revisions, preview, restore as
   a *new* revision (append-only, admin only). Reconstruction replays
   `record_history`.
-* **Retention** is by age (default 90 days) with a baseline fold, run from a
-  daily alarm. This fixes audit finding #6.
+* **Retention** is by age (default **30 days**, because full-record history
+  must stay far below the Workers Free 5 GB storage cap) with a baseline fold,
+  run from a daily alarm; a size guard prunes to 7 days above 2 GB. This fixes
+  audit finding #6.
 * **Disaster recovery:** DO SQLite point-in-time recovery (30 days) via
   bookmarks — an admin-only, confirmed operation — plus a JSON **export**
   endpoint that produces the existing backup file format (so the current
@@ -239,6 +251,8 @@ against the new server mirror and commit what is still different.
 None of these are run by the code or by me without the exact command being
 shown to the owner first:
 
+0. Registering a `workers.dev` account subdomain or creating the Zero Trust
+   organization, if the account has neither.
 1. `wrangler login` / creating anything in the Cloudflare account.
 2. `wrangler deploy` (first creation of the Worker and the DO migration
    `v1 → new_sqlite_classes: ["WorkspaceRoom"]`).
@@ -265,3 +279,13 @@ shown to the owner first:
 7. Shared revision history UI + retention alarm + export.
 8. Failure / reconnect / conflict tests, offline behavior.
 9. Security and deployment-readiness audit.
+
+## 12. Free-plan write budget (design constraint)
+
+Workers Free allows 100,000 SQLite rows written per day and every index entry
+counts. The store therefore writes exactly **3 rows per single-record save**
+(`records`, `record_history`, `revisions`): the first two are `WITHOUT ROWID`
+tables keyed directly, `revisions.rev` is the rowid, and the revision counter
+is derived with `MAX(rev)` instead of being stored. This is pinned by tests
+(`worker/test/store.test.ts`, "write budget"). See DEPLOYMENT_PLAN.md §7 for
+the full operating budget.

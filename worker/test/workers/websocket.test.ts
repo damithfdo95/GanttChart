@@ -208,6 +208,43 @@ describe('disconnect and reconnect', () => {
   });
 });
 
+describe('Access session lifetime', () => {
+  it('refuses a connection whose Access session has already ended', async () => {
+    const ws = newWorkspace();
+    const res = await ws.fetch(
+      new Request('http://localhost/ws', {
+        headers: { Upgrade: 'websocket', 'x-gc-verified-email': 'a@b.c', 'x-gc-verified-role': 'editor', 'x-gc-verified-exp': String(Date.now() - 1000) },
+      }),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('closes a socket whose session ends: next message gets session_expired + close 4401', async () => {
+    const ws = newWorkspace();
+    const { sock } = await join(ws, 'alice@example.com', null, 'editor', Date.now() + 1200);
+    await sock.next('snapshot');
+    sock.send(commitMsg(0, [rec('project', 'a', 1)]));
+    expect((await sock.next('ack')).revision).toBe(1); // still valid
+    await new Promise((r) => setTimeout(r, 1400)); // the session ends
+    sock.send(commitMsg(1, [rec('project', 'a', 2)]));
+    expect(await sock.next('error')).toMatchObject({ code: 'session_expired' });
+    expect((await sock.closed).code).toBe(4401);
+    expect((await ws.exportAll()).records[0].json).toBe('1'); // the late write was NOT applied
+  });
+
+  it('never delivers a broadcast to an expired session, and closes it', async () => {
+    const ws = newWorkspace();
+    const writer = (await join(ws, 'writer@example.com')).sock;
+    const short = (await join(ws, 'short@example.com', null, 'editor', Date.now() + 1000)).sock;
+    await Promise.all([writer.next('snapshot'), short.next('snapshot')]);
+    await new Promise((r) => setTimeout(r, 1200)); // short's session has ended (it never sent anything)
+    writer.send(commitMsg(0, [rec('project', 'secret', 'classified')]));
+    await writer.next('ack');
+    expect((await short.closed).code).toBe(4401);
+    await short.expectNone('changes'); // it never saw the data
+  });
+});
+
 describe('hibernation / eviction', () => {
   it('a hibernated connection keeps its session: commits and broadcasts work without a new hello', async () => {
     const ws = newWorkspace();

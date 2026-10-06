@@ -33,10 +33,20 @@ export interface TestSocket {
 }
 
 /** Open a WebSocket to a workspace as a given verified identity (what the Worker would forward). */
-export async function connect(workspace: Workspace, email = 'alice@example.com', role: Role = 'editor'): Promise<TestSocket> {
+export async function connect(
+  workspace: Workspace,
+  email = 'alice@example.com',
+  role: Role = 'editor',
+  expiresAt: number | null = null,
+): Promise<TestSocket> {
   const response = await workspace.fetch(
     new Request('http://localhost/ws', {
-      headers: { Upgrade: 'websocket', 'x-gc-verified-email': email, 'x-gc-verified-role': role },
+      headers: {
+        Upgrade: 'websocket',
+        'x-gc-verified-email': email,
+        'x-gc-verified-role': role,
+        ...(expiresAt === null ? {} : { 'x-gc-verified-exp': String(expiresAt) }),
+      },
     }),
   );
   if (response.status !== 101 || response.webSocket === null) throw new Error(`upgrade failed: ${response.status}`);
@@ -101,8 +111,14 @@ export function wrap(ws: WebSocket, email: string): TestSocket {
 }
 
 /** Connect and complete the hello handshake. Returns the socket and what the server sent first. */
-export async function join(workspace: Workspace, email = 'alice@example.com', lastRevision: number | null = null, role: Role = 'editor') {
-  const sock = await connect(workspace, email, role);
+export async function join(
+  workspace: Workspace,
+  email = 'alice@example.com',
+  lastRevision: number | null = null,
+  role: Role = 'editor',
+  expiresAt: number | null = null,
+) {
+  const sock = await connect(workspace, email, role, expiresAt);
   sock.send({ t: 'hello', v: PROTOCOL_VERSION, clientId: `client-${email}-${crypto.randomUUID()}`, lastRevision });
   const ready = await sock.next('ready');
   return { sock, ready };

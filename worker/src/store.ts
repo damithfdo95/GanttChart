@@ -11,7 +11,13 @@
  *   records         current state, one row per (kind, id)
  *   record_history  append-only log; json NULL = deleted at that revision
  *   revisions       one row per commit (who / when / why / size)
- *   meta            revision counter, history floor
+ *   meta            history floor (written only when history is pruned)
+ *
+ * Write budget (Workers Free plan: 100,000 rows written per day, indexes
+ * count): a single-record commit writes exactly 3 rows — records,
+ * record_history, revisions — because the first two are WITHOUT ROWID tables
+ * keyed directly (no second index entry), `revisions.rev` is the rowid, and
+ * the revision counter is derived (MAX(rev)) instead of stored.
  */
 
 import type { RecordDelete, RecordKind, RecordPut, RecordVersion } from '../../shared/protocol';
@@ -84,33 +90,31 @@ const SCHEMA = [
      json TEXT NOT NULL,
      rev  INTEGER NOT NULL,
      PRIMARY KEY (kind, id)
-   )`,
+   ) WITHOUT ROWID`,
+  // PK order (kind, id, rev) makes "latest revision of a key" an index seek.
   `CREATE TABLE IF NOT EXISTS record_history (
-     rev  INTEGER NOT NULL,
      kind TEXT NOT NULL,
      id   TEXT NOT NULL,
+     rev  INTEGER NOT NULL,
      json TEXT,
-     PRIMARY KEY (rev, kind, id)
-   )`,
-  `CREATE INDEX IF NOT EXISTS record_history_by_key ON record_history (kind, id, rev)`,
+     PRIMARY KEY (kind, id, rev)
+   ) WITHOUT ROWID`,
   `CREATE TABLE IF NOT EXISTS revisions (
-     rev             INTEGER PRIMARY KEY,
-     committed_at    TEXT NOT NULL,
-     actor           TEXT NOT NULL,
-     reason          TEXT NOT NULL,
-     puts            INTEGER NOT NULL,
-     deletes         INTEGER NOT NULL,
-     summary         TEXT NOT NULL,
+     rev              INTEGER PRIMARY KEY,
+     committed_at     TEXT NOT NULL,
+     actor            TEXT NOT NULL,
+     reason           TEXT NOT NULL,
+     puts             INTEGER NOT NULL,
+     deletes          INTEGER NOT NULL,
+     summary          TEXT NOT NULL,
      client_commit_id TEXT
    )`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS revisions_by_commit_id ON revisions (client_commit_id) WHERE client_commit_id IS NOT NULL`,
 ];
 
-const META_REVISION = 'revision';
 const META_FLOOR = 'history_floor';
 
-/** Keep this many most-recent commit ids for idempotent retries (older ids are NULLed). */
-const COMMIT_ID_RETENTION = 500;
+/** A retried commit is recognised among this many most recent revisions (no index needed). */
+const IDEMPOTENCY_WINDOW = 50;
 
 type KeyRow = { kind: string; id: string };
 
@@ -123,9 +127,8 @@ export class WorkspaceStore {
 
   /** Create tables (idempotent). Call once from the DO constructor. */
   init(): void {
+    // Reads only once the schema exists: this runs on every wake from hibernation.
     for (const statement of SCHEMA) this.storage.sql.exec(statement);
-    this.storage.sql.exec(`INSERT OR IGNORE INTO meta (key, value) VALUES (?, '0')`, META_REVISION);
-    this.storage.sql.exec(`INSERT OR IGNORE INTO meta (key, value) VALUES (?, '0')`, META_FLOOR);
   }
 
   private metaNumber(key: string): number {
@@ -139,7 +142,8 @@ export class WorkspaceStore {
 
   /** Current committed revision (0 = empty workspace). */
   revision(): number {
-    return this.metaNumber(META_REVISION);
+    const row = this.storage.sql.exec<{ m: number | null }>(`SELECT MAX(rev) AS m FROM revisions`).toArray()[0];
+    return row?.m ?? 0;
   }
 
   /** Oldest revision whose full state / deltas are still reconstructable. */
@@ -216,7 +220,11 @@ export class WorkspaceStore {
 
       // Idempotent retry: this commit id already produced a revision.
       const prior = this.storage.sql
-        .exec<{ rev: number }>(`SELECT rev FROM revisions WHERE client_commit_id = ?`, input.commitId)
+        .exec<{ rev: number }>(
+          `SELECT rev FROM revisions WHERE rev > ? AND client_commit_id = ?`,
+          Math.max(0, head - IDEMPOTENCY_WINDOW),
+          input.commitId,
+        )
         .toArray()[0];
       if (prior !== undefined) {
         return { ok: true as const, revision: prior.rev, changed: true, duplicate: true, puts: [], deletes: [], at: input.now };
@@ -283,12 +291,6 @@ export class WorkspaceStore {
         JSON.stringify([...perKind.values()]),
         input.commitId,
       );
-      this.storage.sql.exec(
-        `UPDATE revisions SET client_commit_id = NULL
-          WHERE client_commit_id IS NOT NULL AND rev <= ?`,
-        rev - COMMIT_ID_RETENTION,
-      );
-      this.setMeta(META_REVISION, rev);
       return { ok: true as const, revision: rev, changed: true, duplicate: false, puts, deletes, at: input.now };
     }
   }
