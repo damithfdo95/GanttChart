@@ -1,6 +1,6 @@
 # GanttChart ユーザーマニュアル（日本語）
 
-QAテスト実行スケジュール管理ツールの使い方ガイド — 概要、起動方法、各画面の操作手順を説明します。
+このQA管理ツールの使い方ガイド — 概要、起動方法、各画面の操作手順を説明します。
 
 > For the English version, see [MANUAL.en.md](MANUAL.en.md).
 

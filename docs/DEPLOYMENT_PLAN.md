@@ -371,3 +371,15 @@ editing all day, a save every ~20 s each): 43,200 rows written (43%), ≈720 DO 
 * After deploying check: (1) as the Super Admin the console lists workspaces with their Owner SV; (2) as an existing workspace's SV, *Team Members* shows
   them as **SV ★ Owner**; (3) add a second SV and a Tester; (4) sign in as the Tester: the menu is Dashboard, Projects / Test Executions, Gantt, Tickets,
   Performance, Team Members; History and Settings are absent; (5) as an SV open *History* and page through it; (6) Settings shows Data & Backup.
+
+## Stage 8C rollout notes (test scopes, test cases)
+
+* **No Cloudflare change** and **no Wrangler migration tag**; no registry schema change. Deploy like any code release: `npm run build`, `cd worker && npm run validate`,
+  then `npx wrangler deploy --env=""`.
+* **No data migration.** Existing workspaces have no scopes or cases until an SV creates them. Existing Testers keep their project-level assignments, which now mean
+  "all active scopes of the project". Workspaces that still hold the old placeholder members (USER0001 to USER0008) keep them until an SV uses Team Members ->
+  Clean up placeholders; nothing is deleted automatically.
+* **Rollback.** The previous (Stage 8B.1) Worker ignores the three new record kinds it has stored (it would still list them as opaque records and serve them to every
+  Tester); roll forward rather than back once test management data exists. The rule from Stage 8B (do not roll back to Stage 8A after a second SV) still applies.
+* After deploying check: (1) the header shows your Tool Name or "QA Management", never the old label; (2) as an SV, Test Management -> add a scope and a few cases,
+  assign a Tester to one scope; (3) sign in as that Tester: My Testing lists only that scope, results save; (4) other scopes are not visible to them.

@@ -280,3 +280,15 @@ of a role-migration stage. R2 is not used.
 
 Changing a member's role later (SV <-> Tester), editing a member's display name, cross-workspace transfer, notification scheduling,
 the Morning/Evening Meeting Gantt, per-test-case execution, Excel import, weighted capacity.
+
+## 10. Stage 8C additions
+
+* **Permission matrix.** SV: Test Management (scopes, cases, bulk add, scope assignments, all results). Tester: **My Testing** only; they read and update results
+  of the scopes they are assigned to (a project-level assignment from before Stage 8C = every active scope of that project) and receive nothing of other scopes,
+  other projects or other people's account assignments. See QA_EXECUTION.md §12 for the full read/write rules.
+* **Navigation.** SV: Dashboard, Cycles / Releases, Projects / Test Executions, Gantt, **Test Management**, Daily Report, Tickets, Performance, Review, Reports &
+  Export, Team Members, History, Settings. Tester: Dashboard, Projects / Test Executions, Gantt, **My Testing**, Tickets, Performance, Team Members.
+* **Team Members.** Nobody is created by default. A workspace that still has the old placeholder members (USER0001 to USER0008) offers an SV the explicit
+  clean-up described in QA_EXECUTION.md §12; the profile id is no longer shown anywhere.
+* **Shared History** records scope, case, assignment and result changes as ordinary QA revisions (SV only, as before); the administrative audit trail is
+  unchanged and contains no test content.

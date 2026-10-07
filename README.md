@@ -1,4 +1,4 @@
-# GanttChart — QA Test Execution Schedule Tracker
+# GanttChart — QA management for test execution
 
 A local-first, offline-capable dashboard that answers one question:
 **"Are we going to finish testing on time?"**
@@ -712,3 +712,11 @@ Two workspace roles: **SV** (manages the workspace; there can be several, one of
 tickets and performance; reads Overall and Gantt). Team Members replaces RCS Members and Team / Testers; History is SV-only and paged; Export / Import /
 Reset moved to Settings → Data & Backup; a workspace can have its own tool name. Roles, the permission matrix, the Owner SV rules and the schema upgrade are
 in [docs/ADMINISTRATION.md](docs/ADMINISTRATION.md) §1 and §9 and [docs/CLOUD_ARCHITECTURE.md](docs/CLOUD_ARCHITECTURE.md) §17.
+
+## Stage 8C: test scopes, test cases and case-level execution
+
+Test Management replaces the spreadsheet: a project has **Scopes** (Ecosystem, HTMA, VVM ...), a scope has **Test Cases** with readable keys (`ECO-001`),
+and every case has one current **result** (status, retest, question, memo, device, OS). SVs manage scopes, cases (including paste-from-Excel bulk add) and
+assignments; Testers see **My Testing** with the scopes they are assigned to. Also in this stage: the old product label is gone (the fallback name is
+"QA Management"; a workspace's Tool Name replaces it), nothing creates default people any more, and no internal id is ever shown as a person's name.
+Details, formulas and permissions: [docs/QA_EXECUTION.md](docs/QA_EXECUTION.md) §12 to §22.

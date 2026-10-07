@@ -716,3 +716,17 @@ See [QA_EXECUTION.md](QA_EXECUTION.md).
 * Tests: `worker/test/registry-stage8b.test.ts`, `worker/test/tester-rules.test.ts`, `worker/test/workers/stage8b-roles.test.ts`, `src/test/stage8bRoles.test.ts`.
 
 See [ADMINISTRATION.md](ADMINISTRATION.md) §9 for the permission matrix.
+
+## 18. Stage 8C: test scopes, test cases and results
+
+* Three new record kinds (`scope`, `testCase`, `caseResult`) in the existing tenant `WorkspaceRoom`; `TesterProjectAssignment.scopeId` is optional. No new Durable
+  Object class, **no migration tag**, no registry change.
+* **Commit rules** (`shared/testManagement.ts`, called from `qaCommitError` for every commit): shapes, project/scope/case relationships inside the tenant,
+  unique codes and keys, immutable key/scope/project, archived refusal, actor stamping, delete rules (a scope with cases or a case with a result cannot be deleted;
+  a deleted project takes its records with it), and for Testers the assignment check. `WorkspaceStore.commit` rules receive `list(kind)` for these lookups.
+* **Read filtering** (`shared/testManagementAccess.ts`, applied in `WorkspaceRoom.visibleFor`): per socket, in the snapshot, catch-up, broadcast and export. When an
+  assignment or scope record changes, each Tester socket gets a corrective `changes` message (puts for what they may now see, deletes for what they may not), and a
+  reconnect after such a change gets a fresh snapshot. Frames are pre-serialised per audience.
+* **Cost.** Broadcast adds a read of the (small) assignment and scope tables per distinct Tester per change; results are one record each, created lazily.
+* **Assignments.** `assignTester` takes an optional `scopeId` and validates it against the project and its status.
+* Tests: `worker/test/test-management.test.ts`, `worker/test/tm-access.test.ts`, `worker/test/workers/stage8c-test-management.test.ts`, `src/test/stage8c*.test.ts`.

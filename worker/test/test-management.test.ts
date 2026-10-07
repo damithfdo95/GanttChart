@@ -133,6 +133,11 @@ describe('results (SV)', () => {
     expect(run('admin', [put('caseResult', 'x', result({ id: 'x' }))])).toBe('result_invalid_id');
   });
 
+  it('refuses a result whose scope belongs to another project than the result says (damaged data cannot be extended)', () => {
+    const damaged = world({ 'scope:scp_1': J(scope({ projectId: 'PRJ-002' })) });
+    expect(run('admin', [put('caseResult', caseResultId('tc_1'), result())], damaged)).toBe('result_scope_mismatch');
+  });
+
   it('validates the fields: status, flags, lengths', () => {
     expect(run('admin', [put('caseResult', caseResultId('tc_1'), result({ status: 'done' }))])).toBe('result_invalid_status');
     expect(run('admin', [put('caseResult', caseResultId('tc_1'), result({ retest: 'yes' }))])).toBe('result_invalid_flag');

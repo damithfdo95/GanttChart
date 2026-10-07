@@ -1,6 +1,6 @@
 # GanttChart User Manual (English)
 
-A practical guide to the QA Test Execution Schedule Tracker — what it does, how to run it, and how to use every screen.
+A practical guide to this QA management tool — what it does, how to run it, and how to use every screen.
 
 > 日本語版は [MANUAL.ja.md](MANUAL.ja.md) を参照してください。
 
@@ -251,7 +251,7 @@ Objective data is evidence only — ratings and bonus decisions stay with the su
 
 The member master (stable identities behind all records):
 
-- **Member table**: ID (auto-assigned, e.g. USER0009), name, role, start/end dates, Active/Inactive status, and **Name History**. Renaming a member never breaks old records — historical names resolve to the same stable ID.
+- **Member table**: name (the profile id is internal and is never shown), role, start/end dates, Active/Inactive status, and **Name History**. Renaming a member never breaks old records — historical names resolve to the same stable ID.
 - **Add / Edit Member** with a name-history editor (validates duplicates and date order).
 - **Identity Resolution Center** (appears when legacy, name-based records need attention): review each unmatched or ambiguous name, resolve it to a member individually or in bulk. Ambiguous records are never auto-resolved. A data-quality panel summarizes issues by type.
 
