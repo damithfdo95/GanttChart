@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import type {
   AppState,
   AttendanceRecord,
+  Cycle,
   DailyReport,
   DailyTopic,
   IdentityAuditEntry,
@@ -57,6 +58,8 @@ export interface ReportsStateApi {
   upsertTesterAssignment: (assignment: TesterProjectAssignment) => void;
   /** Tester→project assignments (V6.7): remove one by id. */
   removeTesterAssignment: (id: string) => void;
+  /** Test cycles (Stage 8A): add or replace one cycle by id. */
+  upsertCycle: (cycle: Cycle) => void;
   /** Review records (V6.7): save one review (same tester+period updates in place). */
   upsertReview: (review: TesterReview) => void;
   /** Review records (V6.7): remove one by id. */
@@ -197,6 +200,13 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
     setState((prev) => ({ ...prev, testerAssignments: (prev.testerAssignments ?? []).filter((a) => a.id !== id) }));
   }, []);
 
+  const upsertCycleAction = useCallback((cycle: Cycle): void => {
+    setState((prev) => {
+      const cycles = prev.cycles ?? [];
+      return { ...prev, cycles: cycles.some((c) => c.id === cycle.id) ? cycles.map((c) => (c.id === cycle.id ? cycle : c)) : [...cycles, cycle] };
+    });
+  }, []);
+
   const upsertReviewAction = useCallback((review: TesterReview): void => {
     setState((prev) => ({ ...prev, reviews: upsertTesterReviewImpl(prev.reviews ?? [], review) }));
   }, []);
@@ -242,6 +252,7 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
     seedInitialProject,
     upsertTesterAssignment: upsertTesterAssignmentAction,
     removeTesterAssignment: removeTesterAssignmentAction,
+    upsertCycle: upsertCycleAction,
     upsertReview: upsertReviewAction,
     removeReview: removeReviewAction,
     upsertMember: upsertMemberAction,

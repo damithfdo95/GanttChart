@@ -136,3 +136,10 @@ save on the free plan), stay inside the tenant, and be covered by the export/imp
 (`canonicalRecordsHash`). Tables like results should be modelled as **per-day aggregates**, not per-case rows, to
 stay inside the free-plan write budget. If per-case history is ever required, a relational store (D1) would be the
 documented option; it is **not** used or needed now.
+
+## 9. Stage 8A update
+
+Section 8 above is now implemented (cycles, results metrics, risk indicators, Tester workload, Daily Report
+integration); see [QA_EXECUTION.md](QA_EXECUTION.md). Navigation gains **Cycles** after Dashboard. Admins gain
+`GET /api/tenant/team` and `POST /api/tenant/assignments`; permissions `team.view` and `assignments.manage`. Still no
+new Wrangler migration tag. Super Admin sees no QA data.

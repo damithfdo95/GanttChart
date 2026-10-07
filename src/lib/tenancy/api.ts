@@ -5,7 +5,7 @@
  */
 
 import type { RecordPut } from '../../../shared/protocol';
-import { REQUEST_DELETION_CONFIRMATION, type AdminAuditDto, type PrincipalDto, type TenantDto, type TenantListQuery, type TenantListResult, type UserAccess, type UserDto } from '../../../shared/tenancy';
+import { REQUEST_DELETION_CONFIRMATION, type TesterDto, type AdminAuditDto, type PrincipalDto, type TenantDto, type TenantListQuery, type TenantListResult, type UserAccess, type UserDto } from '../../../shared/tenancy';
 
 export class ApiError extends Error {
   constructor(
@@ -64,6 +64,10 @@ export interface TenancyApi {
   updateUser(userId: string, patch: { status?: 'enabled' | 'disabled'; access?: UserAccess }): Promise<{ user: UserDto; disconnected: boolean }>;
   requestDeletion(): Promise<TenantDto>;
   cancelDeletion(): Promise<TenantDto>;
+  /** The Testers of this workspace (every member may read it). */
+  team(): Promise<TesterDto[]>;
+  /** Assign a Tester account to a project (Admin; the server checks the account and the project). */
+  assignTester(projectId: string, userId: string): Promise<{ created: boolean; assignment: { id: string; projectId: string; userId: string } }>;
   /** This workspace's administrative history (Admin only). */
   tenantAudit(limit?: number): Promise<AdminAuditDto[]>;
   // Super Admin
@@ -123,6 +127,8 @@ export function createTenancyApi(fetchFn: FetchLike = (i, init) => fetch(i, init
     createUser: async (email, access, displayName) => (await call<{ user: UserDto }>('POST', '/api/tenant/users', { email, access, ...(displayName === undefined || displayName.trim() === '' ? {} : { displayName }) })).user,
     updateUser: (userId, patch) => call('PATCH', `/api/tenant/users/${encodeURIComponent(userId)}`, patch),
     requestDeletion: async () => (await call<{ tenant: TenantDto }>('POST', '/api/tenant/deletion-request', { confirm: REQUEST_DELETION_CONFIRMATION })).tenant,
+    team: async () => (await call<{ testers: TesterDto[] }>('GET', '/api/tenant/team')).testers,
+    assignTester: (projectId, userId) => call('POST', '/api/tenant/assignments', { projectId, userId }),
     tenantAudit: async (limit = 100) => (await call<{ audit: AdminAuditDto[] }>('GET', `/api/tenant/audit?limit=${limit}`)).audit,
     cancelDeletion: async () => (await call<{ tenant: TenantDto }>('POST', '/api/tenant/deletion-request/cancel', {})).tenant,
     listTenants: (query = {}) => {

@@ -49,6 +49,11 @@ export interface CommitInput {
   reason: string;
   /** ISO timestamp (injected so tests are deterministic). */
   now: string;
+  /**
+   * Rules beyond "well-formed": references between records and who may change what. Called with the commit's
+   * effective changes (no-ops already dropped) before anything is written; a string refuses the whole commit.
+   */
+  rules?: (view: { puts: RecordPut[]; deletes: RecordDelete[]; get: (kind: string, id: string) => string | null }) => string | null;
 }
 
 export type CommitResult =
@@ -63,7 +68,8 @@ export type CommitResult =
       at: string;
     }
   | { ok: false; reason: 'conflict'; revision: number; conflicts: RecordVersion[] }
-  | { ok: false; reason: 'stale'; revision: number };
+  | { ok: false; reason: 'stale'; revision: number }
+  | { ok: false; reason: 'invalid'; revision: number; message: string };
 
 export interface RevisionInfo {
   revision: number;
@@ -262,6 +268,11 @@ export class WorkspaceStore {
         return { ok: true as const, revision: head, changed: false, duplicate: false, puts: [], deletes: [], at: input.now };
       }
 
+      if (input.rules !== undefined) {
+        const problem = input.rules({ puts, deletes, get: (kind, id) => this.currentJson(kind, id) });
+        if (problem !== null) return { ok: false as const, reason: 'invalid' as const, revision: head, message: problem };
+      }
+
       const rev = head + 1;
       for (const p of puts) {
         this.storage.sql.exec(
@@ -304,6 +315,20 @@ export class WorkspaceStore {
       );
       return { ok: true as const, revision: rev, changed: true, duplicate: false, puts, deletes, at: input.now };
     }
+  }
+
+  /** The current JSON of the project with this STABLE project id ("PRJ-001"), or null. Projects are few; a scan is fine. */
+  findProjectByStableId(stableId: string): { id: string; json: string } | null {
+    const rows = this.storage.sql.exec<{ id: string; json: string }>(`SELECT id, json FROM records WHERE kind = 'project'`).toArray();
+    for (const row of rows) {
+      try {
+        const parsed = JSON.parse(row.json) as { projectId?: unknown };
+        if (parsed.projectId === stableId) return row;
+      } catch {
+        /* an unreadable record is simply not a match */
+      }
+    }
+    return null;
   }
 
   /** Newest-first list of retained revisions (metadata only). */

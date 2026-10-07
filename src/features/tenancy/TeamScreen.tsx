@@ -7,6 +7,7 @@ import type { TenancyApi } from '../../lib/tenancy/api';
 import type { Language } from '../../types';
 import { AuditLog } from './AuditLog';
 import { UsersManager } from './UsersManager';
+import { TesterWorkload } from './TesterWorkload';
 
 /** What each storage mode means, in plain words. Used wherever a person decides or wonders. */
 export function StorageModeExplainer({ lang, mode }: { lang: Language; mode: StorageMode }) {
@@ -31,7 +32,12 @@ export function TeamScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { principal, api } = useTenant();
   const { state } = useAppStateCtx();
   if (principal === null || api === null) return null;
-  return <TeamView lang={state.language} principal={principal} api={api} onOpenSettings={onOpenSettings} />;
+  return (
+    <>
+      <TeamView lang={state.language} principal={principal} api={api} onOpenSettings={onOpenSettings} />
+      {principal.role === 'admin' && principal.tenant?.storageMode === 'web' ? <TesterWorkload lang={state.language} /> : null}
+    </>
+  );
 }
 
 /** The screen itself, independent of app state so it can be rendered and tested on its own. */

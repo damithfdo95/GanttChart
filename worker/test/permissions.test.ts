@@ -5,7 +5,7 @@ import type { AuthResult, TenantRow, UserRow } from '../src/registry';
 
 const ACTIONS: Action[] = [
   'registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'audit.platform', 'legacy.adopt',
-  'tenant.view', 'tenant.requestDeletion', 'storage.migrate', 'users.manage', 'audit.tenant',
+  'tenant.view', 'tenant.requestDeletion', 'storage.migrate', 'users.manage', 'audit.tenant', 'team.view', 'assignments.manage',
   'data.read', 'data.write', 'data.restore', 'data.replace',
 ];
 
@@ -30,7 +30,7 @@ describe('permission matrix (default deny)', () => {
 
   it('Admin of a WEB workspace: everything inside their tenant, nothing in the control plane', () => {
     expect(allowedFor(member({ role: 'admin' }))).toEqual(
-      ['audit.tenant', 'data.read', 'data.replace', 'data.restore', 'data.write', 'storage.migrate', 'tenant.requestDeletion', 'tenant.view', 'users.manage'],
+      ['assignments.manage', 'audit.tenant', 'data.read', 'data.replace', 'data.restore', 'data.write', 'storage.migrate', 'team.view', 'tenant.requestDeletion', 'tenant.view', 'users.manage'],
     );
   });
 
@@ -39,18 +39,18 @@ describe('permission matrix (default deny)', () => {
   });
 
   it('User (editor) in a web workspace: read + write only', () => {
-    expect(allowedFor(member({ role: 'user', access: 'editor' }))).toEqual(['data.read', 'data.write', 'tenant.view']);
+    expect(allowedFor(member({ role: 'user', access: 'editor' }))).toEqual(['data.read', 'data.write', 'team.view', 'tenant.view']);
   });
 
   it('User (viewer): read only; the former "read-only" concept maps here', () => {
-    expect(allowedFor(member({ role: 'user', access: 'viewer' }))).toEqual(['data.read', 'tenant.view']);
+    expect(allowedFor(member({ role: 'user', access: 'viewer' }))).toEqual(['data.read', 'team.view', 'tenant.view']);
   });
 
   it('a User can never perform an Admin or Super Admin action, in any state', () => {
     for (const storageMode of ['web', 'local'] as const) {
       for (const access of ['editor', 'viewer'] as const) {
         const u = member({ role: 'user', access, storageMode });
-        for (const a of ['users.manage', 'audit.tenant', 'audit.platform', 'storage.migrate', 'tenant.requestDeletion', 'data.restore', 'data.replace', 'registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'legacy.adopt'] as const) {
+        for (const a of ['users.manage', 'assignments.manage', 'audit.tenant', 'audit.platform', 'storage.migrate', 'tenant.requestDeletion', 'data.restore', 'data.replace', 'registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'legacy.adopt'] as const) {
           expect(can(u, a), `${storageMode}/${access}/${a}`).toBe(false);
         }
       }

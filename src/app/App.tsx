@@ -25,6 +25,7 @@ import { pad2 } from '../lib/formatting/format';
 import { NAV_ITEMS, navItems, type Screen } from './navigation';
 import { AccountBadge } from '../features/tenancy/AccountBadge';
 import { TeamScreen } from '../features/tenancy/TeamScreen';
+import { CyclesScreen } from '../features/cycles/CyclesScreen';
 import { RevisionHistory } from '../features/settings/RevisionHistory';
 import { SharedHistory } from '../features/settings/SharedHistory';
 
@@ -262,6 +263,8 @@ function Shell() {
       <AutoBackupBanner />
       {screen === 'dashboard' ? (
         <Dashboard onOpenOverall={openOverall} />
+      ) : screen === 'cycles' ? (
+        <CyclesScreen />
       ) : screen === 'overall' ? (
         <Overall focus={overallFocus} onOpenGantt={openGantt} onProjectCreated={() => setScreen('dashboard')} />
       ) : screen === 'gantt' ? (

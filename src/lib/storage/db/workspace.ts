@@ -10,6 +10,7 @@
 
 import type {
   AttendanceRecord,
+  Cycle,
   DailyActualSnapshot,
   DailyReport,
   DailyTopic,
@@ -54,6 +55,7 @@ export interface WorkspaceCollections {
   rcsMembers: RcsMember[];
   identityAuditLog: IdentityAuditEntry[];
   externalIdentities: ExternalIdentity[];
+  cycles: Cycle[];
 }
 
 /** The complete split of a workspace into IndexedDB-shaped records. */
@@ -105,6 +107,7 @@ export function splitWorkspace(appState: unknown, reports: ReportsState): { appS
         rcsMembers: reports.rcsMembers ?? [],
         identityAuditLog: reports.identityAuditLog ?? [],
         externalIdentities: reports.externalIdentities ?? [],
+        cycles: reports.cycles ?? [],
       },
     },
   };
@@ -136,6 +139,7 @@ export function assembleReportsState(parts: WorkspaceParts): ReportsState {
     rcsMembers: parts.collections.rcsMembers,
     identityAuditLog: parts.collections.identityAuditLog,
     externalIdentities: parts.collections.externalIdentities,
+    cycles: parts.collections.cycles,
   };
 }
 

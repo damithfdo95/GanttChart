@@ -162,6 +162,7 @@ function collectionEntries(parts: WorkspaceParts): Array<[string, unknown]> {
     [META_KEY_COLLECTION.rcsMembers, parts.collections.rcsMembers],
     [META_KEY_COLLECTION.identityAuditLog, parts.collections.identityAuditLog],
     [META_KEY_COLLECTION.externalIdentities, parts.collections.externalIdentities],
+    [META_KEY_COLLECTION.cycles, parts.collections.cycles],
   ];
 }
 
@@ -259,6 +260,7 @@ export async function verifyMigration(
   if (!jsonEquals(read.parts.collections.externalIdentities, parts.collections.externalIdentities)) {
     return fail('externalIdentities collection differs');
   }
+  if (!jsonEquals(read.parts.collections.cycles, parts.collections.cycles)) return fail('cycles collection differs');
   if (!jsonEquals(assembleReportsState(read.parts), assembleReportsState(parts))) {
     return fail('reassembled workspace differs from the migrated workspace');
   }

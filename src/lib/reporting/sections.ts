@@ -135,6 +135,8 @@ export interface ReportSectionsInput {
   nextDay: NextDayItem[];
   jiraUrl: string;
   rules: ProgressRules;
+  /** The rendered Execution Summary block (see lib/reporting/execution.ts); empty when not supplied. */
+  executionSummary?: string;
 }
 
 /** All {placeholders} consumed by the default report templates. */
@@ -149,6 +151,7 @@ export function buildReportSections(input: ReportSectionsInput): Record<string, 
     activities: renderActivitiesSection(language, input.activities),
     topics: renderTopicsSection(language, input.topics),
     progress: renderProgressSection(language, input.activities, input.rules),
+    execution_summary: input.executionSummary ?? '',
     jira_url: input.jiraUrl,
     next_business_day: renderNextDaySection(language, input.nextDay),
   };

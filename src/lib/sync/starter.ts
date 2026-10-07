@@ -47,6 +47,7 @@ export function emptySharedState(local: ReportsState): ReportsState {
     rcsMembers: [],
     identityAuditLog: [],
     externalIdentities: [],
+    cycles: [],
     activeProjectId: null,
   };
 }

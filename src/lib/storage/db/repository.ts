@@ -47,6 +47,7 @@ export const META_KEY_COLLECTION = {
   rcsMembers: 'rcsMembers',
   identityAuditLog: 'identityAuditLog',
   externalIdentities: 'externalIdentities',
+  cycles: 'cycles',
 } as const;
 export const META_KEY_PERSISTENCE_META = 'persistenceMeta';
 export const META_KEY_STORAGE_MIGRATION = 'storageMigration';

@@ -30,6 +30,7 @@ import {
   type Role,
   type ServerMessage,
 } from '../../shared/protocol';
+import { qaCommitError } from '../../shared/qaRules';
 import { CLOSE_CODES, canonicalRecordsHash, isTenantId, recordsHaveData, summarizeRecords, validateImportRecords } from '../../shared/tenancy';
 import { WorkspaceStore, type CommitResult, type RevisionInfo } from './store';
 
@@ -269,6 +270,8 @@ export class WorkspaceRoom extends DurableObject<Env> {
         actor: attachment.email,
         reason: msg.reason ?? 'edit',
         now: new Date().toISOString(),
+        // Who may change what, and what may refer to what (shared/qaRules.ts).
+        rules: ({ puts, deletes, get }) => qaCommitError({ role: attachment.role, puts, deletes, view: { get } }),
       });
     } catch (error) {
       // transactionSync rolled back: nothing was applied.
@@ -283,6 +286,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
         reason: result.reason,
         revision: result.revision,
         conflicts: result.reason === 'conflict' ? result.conflicts : [],
+        ...(result.reason === 'invalid' ? { message: result.message } : {}),
       });
       return;
     }
@@ -293,6 +297,49 @@ export class WorkspaceRoom extends DurableObject<Env> {
         ws,
       );
     }
+  }
+
+  // ---- RPC: Tester assignment ----------------------------------------------------
+
+  /**
+   * Assign a Tester ACCOUNT to a project of this workspace as one ordinary revision (the Worker has already checked the account
+   * against the registry). Idempotent: an assignment that is already current is returned as it is. The project must exist HERE,
+   * so a project of another workspace can never be named.
+   */
+  async assignTester(
+    tenantId: string,
+    input: { projectId: string; userId: string; testerName: string; actor: string; today: string },
+  ): Promise<{ ok: true; assignment: { id: string; projectId: string; userId: string }; revision: number; created: boolean } | { ok: false; error: 'project_not_found' | 'archived' | 'failed' }> {
+    this.assertTenant(tenantId);
+    if (this.frozen) return { ok: false, error: 'archived' };
+    if (this.store.findProjectByStableId(input.projectId) === null) return { ok: false, error: 'project_not_found' };
+    const existing = this.store
+      .snapshot()
+      .records.filter((r) => r.kind === 'assignment')
+      .map((r) => ({ id: r.id, ...(JSON.parse(r.json) as { projectId?: string; userId?: string; active?: boolean; endDate?: string; startDate?: string }) }))
+      .find((a) => a.projectId === input.projectId && a.userId === input.userId && a.active === true && (a.endDate === undefined || a.endDate >= input.today));
+    if (existing !== undefined) return { ok: true, assignment: { id: existing.id, projectId: input.projectId, userId: input.userId }, revision: this.store.revision(), created: false };
+
+    const id = crypto.randomUUID();
+    const json = JSON.stringify({ id, projectId: input.projectId, userId: input.userId, testerName: input.testerName, startDate: input.today, active: true });
+    const now = new Date().toISOString();
+    let result: CommitResult;
+    try {
+      result = this.store.commit({
+        commitId: `assign-${crypto.randomUUID()}`,
+        baseRevision: this.store.revision(),
+        puts: [{ kind: 'assignment', id, json }],
+        deletes: [],
+        actor: input.actor,
+        reason: 'assign',
+        now,
+      });
+    } catch {
+      return { ok: false, error: 'failed' };
+    }
+    if (!result.ok) return { ok: false, error: 'failed' };
+    if (result.changed && !result.duplicate) this.broadcast({ t: 'changes', revision: result.revision, actor: input.actor, at: result.at, puts: result.puts, deletes: result.deletes });
+    return { ok: true, assignment: { id, projectId: input.projectId, userId: input.userId }, revision: result.revision, created: true };
   }
 
   // ---- RPC: reads --------------------------------------------------------------

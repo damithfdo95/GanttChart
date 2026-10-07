@@ -16,6 +16,7 @@ import type {
   TesterReview,
 } from '../../types';
 import { ATTENDANCE_STATUSES, REVIEW_PERIOD_TYPES, REVIEW_STATUSES } from '../../types';
+import { checkCycle } from '../../../shared/qaRules';
 import { DEFAULT_REPORT_TEMPLATES } from '../reporting/template';
 import { DEFAULT_PROGRESS_RULES } from '../reporting/progress';
 import { hasRecoveryPayload, stashCorruptedRaw } from './corruption';
@@ -72,6 +73,7 @@ export function defaultReportsState(): ReportsState {
     rcsMembers: seedRcsMembers(),
     identityAuditLog: [],
     externalIdentities: [],
+    cycles: [],
   };
 }
 
@@ -355,6 +357,7 @@ export function isTesterProjectAssignment(v: unknown): v is TesterProjectAssignm
     // Either may be absent, but at least one must be a string.
     (r.memberId === undefined || typeof r.memberId === 'string') &&
     (r.testerName === undefined || typeof r.testerName === 'string') &&
+    (r.userId === undefined || typeof r.userId === 'string') &&
     (r.memberId !== undefined || r.testerName !== undefined) &&
     (r.team === undefined || typeof r.team === 'string') &&
     typeof r.startDate === 'string' &&
@@ -421,6 +424,7 @@ function isProjectRecord(v: unknown): v is ProjectRecord {
     (r.completedBy === null || typeof r.completedBy === 'string') &&
     typeof r.createdAt === 'string' &&
     typeof r.updatedAt === 'string' &&
+    (r.cycleId === undefined || r.cycleId === null || typeof r.cycleId === 'string') &&
     isQaInputsShape(r.inputs)
   );
 }
@@ -459,7 +463,9 @@ export function isReportsState(v: unknown): v is ReportsState {
     // V6.9-B identity audit log is optional so pre-V6.9-B data stays valid.
     (s.identityAuditLog === undefined || (Array.isArray(s.identityAuditLog) && s.identityAuditLog.every(isIdentityAuditEntry))) &&
     // V6.9-B external-identity mappings are optional so pre-V6.9-B data stays valid.
-    (s.externalIdentities === undefined || (Array.isArray(s.externalIdentities) && s.externalIdentities.every(isExternalIdentity)))
+    (s.externalIdentities === undefined || (Array.isArray(s.externalIdentities) && s.externalIdentities.every(isExternalIdentity))) &&
+    // Stage 8A test cycles are optional so every earlier payload and backup stays valid.
+    (s.cycles === undefined || (Array.isArray(s.cycles) && s.cycles.every((c) => checkCycle(c).ok)))
   );
 }
 
@@ -510,6 +516,8 @@ export function normalizeReportsState(state: ReportsState): ReportsState {
     // V6.9-B: external identities are lookup aids — malformed entries are
     // filtered (never repaired) and valid mappings pass through unchanged.
     externalIdentities: (state.externalIdentities ?? []).filter(isExternalIdentity),
+    // Stage 8A: malformed cycles are filtered (never repaired); valid ones pass through unchanged.
+    cycles: (state.cycles ?? []).filter((c) => checkCycle(c).ok),
   };
 }
 

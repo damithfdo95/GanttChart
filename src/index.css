@@ -3561,3 +3561,23 @@ textarea:focus-visible,
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Stage 8A: cycles, manager panel, control center (meaning is never colour alone: symbols and words accompany every colour) ---- */
+.risk-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.risk, .risk-badge { border: 1px solid var(--neutral-border); background: var(--neutral-bg); color: var(--neutral-fg); border-radius: var(--radius); padding: 2px 8px; }
+.risk-badge { display: inline-block; font-weight: 600; font-size: 0.85em; }
+.risk-info { background: var(--info-bg); color: var(--info-fg); border-color: var(--info-border); }
+.risk-warning { background: #fff8e1; color: #6d4c00; border-color: #f9a825; }
+.risk-attention { background: var(--bad-bg); color: var(--bad-fg); border-color: var(--bad-border); }
+.risk-ok { background: var(--good-bg); color: var(--good-fg); border-color: var(--good-border); border-radius: var(--radius); padding: 2px 8px; border-width: 1px; border-style: solid; }
+.qa-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin: 8px 0; }
+.qa-warning { border: 1px solid #f9a825; background: #fff8e1; color: #6d4c00; border-radius: var(--radius); padding: 8px 12px; }
+.manager-panel, .control-center, .cycle-detail, .cycles-screen { display: grid; gap: 12px; }
+.manager-scope { color: var(--text-muted); font-size: 0.9em; }
+.attention-list { margin: 0; padding-left: 1.2em; }
+.cc-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 4px 16px; margin: 0; }
+.cc-people { list-style: none; margin: 0; padding: 0; }
+.status-cycle-planned { background: var(--neutral-bg); color: var(--neutral-fg); border-color: var(--neutral-border); }
+.status-cycle-active { background: var(--info-bg); color: var(--info-fg); border-color: var(--info-border); }
+.status-cycle-completed { background: var(--done-bg); color: var(--done-fg); border-color: var(--done-border); }
+.status-cycle-archived { background: var(--neutral-bg); color: var(--text-muted); border-color: var(--border); }

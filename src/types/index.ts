@@ -6,6 +6,12 @@ export type Language = 'en' | 'ja';
  * Both parts are free text as entered; when only one exists it is shown in
  * either language (see resolveBilingualName).
  */
+import type { CycleRecord, CycleStatus } from '../../shared/qaRules';
+
+/** A QA test cycle / release grouping test executions (projects). See shared/qaRules.ts. */
+export type Cycle = CycleRecord;
+export type { CycleStatus };
+
 export interface BilingualName {
   nameEn?: string;
   nameJa?: string;
@@ -755,6 +761,11 @@ export interface ReportsState {
    * payload stays valid; normalized to [] on load.
    */
   externalIdentities?: ExternalIdentity[];
+  /**
+   * Test cycles / releases (Stage 8A). Workspace-level, administered by the Admin. Optional so every
+   * earlier payload stays valid; normalized to [] on load/import.
+   */
+  cycles?: Cycle[];
 }
 
 // ---- Tester assignments & QA review workspace (V6.7) ----
@@ -779,6 +790,13 @@ export interface TesterProjectAssignment {
   memberId?: string;
   /** Legacy V6.7 free-text tester name — kept for unmigrated records. */
   testerName?: string;
+  /**
+   * The Tester ACCOUNT assigned (Stage 8A): the registry user id ("usr_…") of a Tester of THIS workspace.
+   * Set only by the server's assignment endpoint, which checks the account; `testerName` then holds the
+   * display name at the time of assignment. Never changes afterwards, so history keeps its attribution even
+   * if the account is later disabled.
+   */
+  userId?: string;
   team?: string;
   /** "YYYY-MM-DD" (required, inclusive). */
   startDate: string;
@@ -862,4 +880,9 @@ export interface ProjectRecord {
   description?: string;
   /** Optional project owner (V6.2). Metadata only. */
   owner?: string;
+  /**
+   * The test cycle / release this execution belongs to (Stage 8A). At most one; absent or null =
+   * not in any cycle (every project created before cycles existed). Never used in calculations.
+   */
+  cycleId?: string | null;
 }

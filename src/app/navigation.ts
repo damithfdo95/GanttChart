@@ -1,7 +1,7 @@
 import type { TranslationKey } from '../i18n';
 import type { AppRole } from '../../shared/tenancy';
 
-export type Screen = 'dashboard' | 'overall' | 'gantt' | 'dailyReport' | 'tickets' | 'performance' | 'review' | 'members' | 'reports' | 'history' | 'team' | 'settings';
+export type Screen = 'dashboard' | 'cycles' | 'overall' | 'gantt' | 'dailyReport' | 'tickets' | 'performance' | 'review' | 'members' | 'reports' | 'history' | 'team' | 'settings';
 
 export interface NavItem {
   id: Screen;
@@ -18,6 +18,7 @@ export interface NavItem {
  */
 export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'dashboard', key: 'nav.dashboard' },
+  { id: 'cycles', key: 'nav.cycles' },
   { id: 'overall', key: 'nav.overall' },
   { id: 'gantt', key: 'nav.gantt' },
   { id: 'dailyReport', key: 'nav.dailyReport' },

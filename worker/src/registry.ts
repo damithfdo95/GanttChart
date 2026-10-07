@@ -26,6 +26,7 @@ import {
   type AuditActor,
   type DenyReason,
   type TenantListQuery,
+  type TesterDto,
   type StorageMode,
   type TenantDto,
   type TenantStatus,
@@ -369,6 +370,21 @@ export class RegistryStore {
     return this.storage.sql
       .exec<UserRow & Record<string, string | number | null>>(`SELECT * FROM users WHERE tenant_id = ? ORDER BY role, email`, tenantId)
       .toArray();
+  }
+
+  /** The Tester accounts of one workspace (never an Admin), for the roster. */
+  listTesters(tenantId: string): TesterDto[] {
+    return this.storage.sql
+      .exec<UserRow & Record<string, string | number | null>>(`SELECT * FROM users WHERE tenant_id = ? AND role = 'user' ORDER BY COALESCE(display_name, email), email`, tenantId)
+      .toArray()
+      .map((u) => ({ id: u.id, email: u.email, displayName: u.display_name ?? null, status: userLifecycle(u.status) }));
+  }
+
+  /** One Tester account of THIS workspace, or null (another workspace's account, an Admin and an unknown id are all "not found"). */
+  getTester(tenantId: string, userId: string): TesterDto | null {
+    const u = this.getUserInTenant(tenantId, userId);
+    if (u === null || u.role !== 'user') return null;
+    return { id: u.id, email: u.email, displayName: u.display_name ?? null, status: userLifecycle(u.status) };
   }
 
   /**

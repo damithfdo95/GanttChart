@@ -8,7 +8,7 @@
  */
 
 import { DurableObject } from 'cloudflare:workers';
-import { isManagedEmail, parseManagedDomains, type AdminAuditDto, type AuditAction, type AuditActor, type StorageMode, type TenantDto, type TenantListQuery, type TenantListResult, type UserAccess, type UserDto } from '../../shared/tenancy';
+import { isManagedEmail, parseManagedDomains, type AdminAuditDto, type AuditAction, type AuditActor, type StorageMode, type TenantDto, type TenantListQuery, type TenantListResult, type TesterDto, type UserAccess, type UserDto } from '../../shared/tenancy';
 import { RegistryStore, toTenantDto, toUserDto, type AuthResult, type DeletionAuditRow, type Reg } from './registry';
 
 const mapReg = <A, B>(r: Reg<A>, f: (a: A) => B): Reg<B> => (r.ok ? { ok: true, value: f(r.value) } : r);
@@ -69,6 +69,14 @@ export class RegistryRoom extends DurableObject<Env> {
   /** An event that happens outside the registry (e.g. a workspace upload) but belongs in the trail. The actor comes from the Worker's verified principal. */
   async appendAudit(entry: { action: AuditAction; actor: AuditActor; tenantId: string; meta?: Record<string, string | number | boolean | null> }): Promise<void> {
     this.store.appendAudit({ at: this.now(), action: entry.action, actor: entry.actor, tenantId: entry.tenantId, targetType: 'tenant', targetId: entry.tenantId, meta: entry.meta });
+  }
+
+  async listTesters(tenantId: string): Promise<TesterDto[]> {
+    return this.store.listTesters(tenantId);
+  }
+
+  async getTester(tenantId: string, userId: string): Promise<TesterDto | null> {
+    return this.store.getTester(tenantId, userId);
   }
 
   async createTenant(input: { name: string; adminEmail: string; displayName?: unknown; reserved: string[]; actorEmail: string }): Promise<Reg<{ tenant: TenantDto; admin: UserDto }>> {

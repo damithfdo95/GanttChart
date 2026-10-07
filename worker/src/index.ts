@@ -436,6 +436,37 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     return result.ok ? json({ tenant: result.value }) : registryProblem(result.error);
   }
 
+  // ---- Testers of this workspace: the roster everyone may see; assignment is the Admin's ----
+  if (path === '/api/tenant/team' && isRead) {
+    const denial = need(ctx, 'team.view');
+    if (denial !== null) return denial;
+    return json({ testers: await ctx.registry.listTesters(p.tenantId) });
+  }
+
+  if (path === '/api/tenant/assignments' && method === 'POST') {
+    const denial = need(ctx, 'assignments.manage');
+    if (denial !== null) return denial;
+    const body = await readJson(ctx);
+    if (!body.ok) return body.response;
+    const projectId = body.body.projectId;
+    const userId = body.body.userId;
+    if (typeof projectId !== 'string' || projectId.length === 0 || projectId.length > 100) return problem(400, 'invalid_project_id');
+    if (!isUserId(userId)) return problem(400, 'invalid_user_id');
+    // The account must be a Tester of THIS workspace (the tenant is the principal's, never the request's) and must be enabled.
+    const tester = await ctx.registry.getTester(p.tenantId, userId);
+    if (tester === null) return problem(404, 'tester_not_found');
+    if (tester.status === 'disabled') return problem(409, 'tester_disabled');
+    const result = await roomFor(ctx, p).assignTester(p.tenantId, {
+      projectId,
+      userId,
+      testerName: tester.displayName ?? tester.email,
+      actor: p.email,
+      today: new Date().toISOString().slice(0, 10),
+    });
+    if (!result.ok) return problem(result.error === 'project_not_found' ? 404 : 409, result.error);
+    return json(result, result.created ? 201 : 200);
+  }
+
   // ---- this workspace's administrative history (Admin only; never another tenant's) ----
   if (path === '/api/tenant/audit' && isRead) {
     const denial = need(ctx, 'audit.tenant');

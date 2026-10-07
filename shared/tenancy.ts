@@ -176,6 +176,14 @@ export interface UserDto {
   lastLoginAt: string | null;
 }
 
+/** A Tester account as another member of the same workspace may see it (for assigning and for showing who is on what). */
+export interface TesterDto {
+  id: string;
+  email: string;
+  displayName: string | null;
+  status: UserLifecycle;
+}
+
 /** Search/filter/sort/paging of the Super Admin's workspace list (all applied on the server). */
 export interface TenantListQuery {
   q?: string;

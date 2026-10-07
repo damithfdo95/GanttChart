@@ -699,3 +699,9 @@ The architecture is deliberately wrapper-friendly:
   `beforeBuildCommand`). The webview serves the same local files.
 - Because there are no network calls, packaged builds stay offline with no
   CSP exceptions beyond local file access.
+
+## Stage 8A: QA test execution management
+
+Test cycles/releases, Tester assignment by user id, execution metrics (Executed, Passed, Failed, Blocked, Remaining,
+Pass rate = Passed / Executed), deterministic risk indicators, a manager dashboard, project control center, Tester
+workload view and a Daily Report Execution Summary. Details and definitions: [docs/QA_EXECUTION.md](docs/QA_EXECUTION.md).

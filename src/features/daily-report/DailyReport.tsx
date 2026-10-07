@@ -11,6 +11,7 @@ import { buildNextDaySuggestions, nextBusinessDay } from '../../lib/reporting/ne
 import { renderMorningAttendanceLine, renderMorningReport } from '../../lib/reporting/morning';
 import { buildReportSections, renderAttendanceSection, renderProgressSection } from '../../lib/reporting/sections';
 import { renderReport } from '../../lib/reporting/template';
+import { buildExecutionReport, renderExecutionSummarySection } from '../../lib/reporting/execution';
 import { createRevision, finalizeReport, findDraft, newDraft, seedAutoActivities } from '../../lib/reporting/drafts';
 import { entryForDate } from '../../lib/calculations/dailyExecuted';
 import { buildXlsx, type XlsxSheet } from '../../lib/export/xlsx';
@@ -179,6 +180,17 @@ export function DailyReport() {
       nextDay: draft.nextDay,
       jiraUrl: draft.jiraUrl ?? settings.projectJiraUrl ?? '',
       rules: settings.progressRules,
+      executionSummary: renderExecutionSummarySection(
+        draft.language,
+        buildExecutionReport({
+          date: draft.reportDate,
+          projects: reportsApi.state.projects,
+          cycles: reportsApi.state.cycles ?? [],
+          assignments: reportsApi.state.testerAssignments ?? [],
+          members: reportsApi.state.rcsMembers ?? [],
+          nowIso: nowIso(),
+        }),
+      ),
     });
     const text = renderReport(settings.templates[draft.language], sections);
     setPreviewText(text);

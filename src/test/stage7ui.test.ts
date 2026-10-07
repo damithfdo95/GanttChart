@@ -44,7 +44,7 @@ describe('navigation by role', () => {
   it('everyone with a workspace gets the QA screens, History and Settings, in a sensible order', () => {
     for (const role of ['admin', 'user', null] as const) {
       const list = ids(role);
-      expect(list.slice(0, 4), String(role)).toEqual(['dashboard', 'overall', 'gantt', 'dailyReport']);
+      expect(list.slice(0, 5), String(role)).toEqual(['dashboard', 'cycles', 'overall', 'gantt', 'dailyReport']);
       expect(list).toEqual(expect.arrayContaining(['history', 'settings', 'reports']));
       expect(list[list.length - 1]).toBe('settings');
     }

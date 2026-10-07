@@ -18,6 +18,7 @@
 
 import type {
   AttendanceRecord,
+  Cycle,
   DailyReport,
   DailyTopic,
   ExternalIdentity,
@@ -62,6 +63,7 @@ const ORDER: Record<Exclude<RecordKind, 'settings'>, (record: never) => string> 
   member: (r: RcsMember) => r.name ?? '',
   identityAudit: (r: IdentityAuditEntry) => r.timestamp ?? '',
   externalIdentity: (r: ExternalIdentity) => r.id,
+  cycle: (r: Cycle) => r.plannedStart ?? r.createdAt ?? '',
 };
 
 function sortKind<T extends Identified>(kind: Exclude<RecordKind, 'settings'>, items: T[]): T[] {
@@ -96,6 +98,7 @@ const ARRAY_FIELDS: ArrayField[] = [
   { kind: 'member', read: (s) => s.rcsMembers ?? [], write: (s, v) => ({ ...s, rcsMembers: v as RcsMember[] }) },
   { kind: 'identityAudit', read: (s) => s.identityAuditLog ?? [], write: (s, v) => ({ ...s, identityAuditLog: v as IdentityAuditEntry[] }) },
   { kind: 'externalIdentity', read: (s) => s.externalIdentities ?? [], write: (s, v) => ({ ...s, externalIdentities: v as ExternalIdentity[] }) },
+  { kind: 'cycle', read: (s) => s.cycles ?? [], write: (s, v) => ({ ...s, cycles: v as Cycle[] }) },
 ];
 
 const FIELD_BY_KIND = new Map(ARRAY_FIELDS.map((f) => [f.kind, f]));
@@ -223,6 +226,7 @@ export function reportsFromRecords(records: readonly RecordPut[], local: Reports
     rcsMembers: [],
     identityAuditLog: [],
     externalIdentities: [],
+    cycles: [],
   };
   const built = applyRecordChanges(empty, records, []);
   // The device's own project selection survives if that project still exists.
@@ -263,6 +267,7 @@ export function hasMeaningfulLocalData(state: ReportsState): boolean {
   if (state.reports.length > 0 || state.attendance.length > 0 || state.topics.length > 0) return true;
   if ((state.testerAssignments ?? []).length > 0 || (state.reviews ?? []).length > 0) return true;
   if ((state.identityAuditLog ?? []).length > 0 || (state.externalIdentities ?? []).length > 0) return true;
+  if ((state.cycles ?? []).length > 0) return true;
   if (state.projects.length >= 2) return true;
   // The seeded project is only bumped (updatedAt) by a real data change.
   return state.projects.some((p) => p.updatedAt !== p.createdAt);

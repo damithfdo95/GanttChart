@@ -672,3 +672,18 @@ duplicates keep `email_taken`. Nothing is moved, duplicated or created in either
 Audit entries are written only on administrative actions (a few per day at most). No per-request writes were added. The list endpoint reads
 the (small) registry with indexed filters. No new Cloudflare product.
 
+
+## 16. Stage 8A: QA execution management
+
+* New record kind `cycle`; `ProjectRecord.cycleId`; `TesterProjectAssignment.userId`. All opaque records in the
+  tenant's `WorkspaceRoom`; **no new DO class and no new migration tag**.
+* `shared/qaRules.ts` (`qaCommitError`) runs inside `WorkspaceStore.commit({rules})` using the role from the socket
+  attachment: cycles Admin-only, project cycle references must exist and not be archived, account assignments only via
+  the API, execution entries shape-validated. Violations return `reject{reason:'invalid', message}` (the client does
+  not go read-only). Rules check only changed data, so existing clients cannot be wedged.
+* `WorkspaceRoom.assignTester` (RPC) commits one revision and broadcasts; the Worker first checks the Tester in the
+  `RegistryRoom` (`listTesters`, `getTester`). Tenant isolation is by DO name (covered by tests).
+* Extra writes: none on read; cycles and assignments cost the usual 3 rows per save.
+* Tests: `worker/test/qa-rules.test.ts`, `worker/test/workers/stage8a-qa.test.ts`.
+
+See [QA_EXECUTION.md](QA_EXECUTION.md).

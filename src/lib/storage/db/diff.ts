@@ -169,6 +169,7 @@ export function diffWorkspaces(prev: CanonicalWorkspace | null, next: CanonicalW
       if (!jsonEquals(prev.app[field], next.app[field])) planningChanged = true;
     }
     if (
+      !jsonEquals(prevParts?.collections.cycles ?? [], nextParts.collections.cycles) ||
       prev.app.language !== next.app.language ||
       prev.app.projectNameEn !== next.app.projectNameEn ||
       prev.app.projectNameJa !== next.app.projectNameJa ||

@@ -35,7 +35,7 @@ export interface WorkspaceDbRead {
 
 /** Read every store and rebuild the workspace parts (core null when never written). */
 export async function readWorkspaceFromDb(): Promise<WorkspaceDbRead> {
-  const [projects, dailyActuals, reports, attendance, topics, appState, core, testerAssignments, reviews, rcsMembers, identityAuditLog, externalIdentities] =
+  const [projects, dailyActuals, reports, attendance, topics, appState, core, testerAssignments, reviews, rcsMembers, identityAuditLog, externalIdentities, cycles] =
     await Promise.all([
       getAllFromStore<WorkspaceParts['projects'][number]>(STORE_PROJECTS),
       getAllFromStore<WorkspaceParts['dailyActuals'][number]>(STORE_DAILY_ACTUALS),
@@ -49,6 +49,7 @@ export async function readWorkspaceFromDb(): Promise<WorkspaceDbRead> {
       getFromStore<WorkspaceParts['collections']['rcsMembers']>(STORE_METADATA, META_KEY_COLLECTION.rcsMembers),
       getFromStore<WorkspaceParts['collections']['identityAuditLog']>(STORE_METADATA, META_KEY_COLLECTION.identityAuditLog),
       getFromStore<WorkspaceParts['collections']['externalIdentities']>(STORE_METADATA, META_KEY_COLLECTION.externalIdentities),
+      getFromStore<WorkspaceParts['collections']['cycles']>(STORE_METADATA, META_KEY_COLLECTION.cycles),
     ]);
   return {
     appState,
@@ -65,6 +66,7 @@ export async function readWorkspaceFromDb(): Promise<WorkspaceDbRead> {
         rcsMembers: rcsMembers ?? [],
         identityAuditLog: identityAuditLog ?? [],
         externalIdentities: externalIdentities ?? [],
+        cycles: cycles ?? [],
       },
     },
   };
@@ -103,6 +105,7 @@ export function mirrorFromRead(read: WorkspaceDbRead): WorkspaceMirror {
       rcsMembers: JSON.stringify(read.parts.collections.rcsMembers),
       identityAuditLog: JSON.stringify(read.parts.collections.identityAuditLog),
       externalIdentities: JSON.stringify(read.parts.collections.externalIdentities),
+      cycles: JSON.stringify(read.parts.collections.cycles),
     },
   };
 }
@@ -225,6 +228,7 @@ export function planWorkspaceWrite(appState: unknown, reports: ReportsState, mir
   diffMetadata(plan, META_KEY_COLLECTION.rcsMembers, parts.collections.rcsMembers, mirror.collections.rcsMembers);
   diffMetadata(plan, META_KEY_COLLECTION.identityAuditLog, parts.collections.identityAuditLog, mirror.collections.identityAuditLog);
   diffMetadata(plan, META_KEY_COLLECTION.externalIdentities, parts.collections.externalIdentities, mirror.collections.externalIdentities);
+  diffMetadata(plan, META_KEY_COLLECTION.cycles, parts.collections.cycles, mirror.collections.cycles);
 
   return plan;
 }

@@ -51,6 +51,8 @@ export type Action =
   | 'storage.migrate'
   | 'users.manage'
   | 'audit.tenant'
+  | 'team.view'
+  | 'assignments.manage'
   // shared workspace data (web mode only)
   | 'data.read'
   | 'data.write'
@@ -88,6 +90,11 @@ export function can(principal: Principal | null, action: Action): boolean {
     case 'data.replace':
       return workspaceIsShared(p) && p.role === 'admin';
     case 'users.manage':
+      return p.role === 'admin' && p.storageMode === 'web' && p.tenantStatus === 'active';
+    case 'team.view':
+      // The Tester roster (names and status) is visible to everyone in a shared workspace, so people can see who is on what.
+      return workspaceIsShared(p);
+    case 'assignments.manage':
       return p.role === 'admin' && p.storageMode === 'web' && p.tenantStatus === 'active';
     case 'audit.tenant':
       // The Admin reads their OWN workspace's administrative history; a User never does.
