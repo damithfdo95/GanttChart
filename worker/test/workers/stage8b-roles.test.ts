@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { businessDate } from '../../../shared/businessTime';
 import type { PrincipalDto, UserDto } from '../../../shared/tenancy';
 import { CLOSE_CODES } from '../../../shared/tenancy';
 import { SUPER, activateWeb, call, createTenant, email, get, openSocket, patch, post, rec, whoami, type Tenant } from './tenancy-harness';
@@ -11,7 +12,7 @@ import type { TestSocket } from './helpers';
 
 let seq = 0;
 const rk = (label: string): string => `${label}-${++seq}-${crypto.randomUUID().slice(0, 6)}@rakuten.com`;
-const today = (): string => new Date().toISOString().slice(0, 10);
+const today = (): string => businessDate();
 
 const entry = (over: Record<string, unknown> = {}) => ({ id: crypto.randomUUID(), date: today(), testers: 2, pass: 5, fail: 1, notApplicable: 0, spo: 0, blocked: 0, retest: 0, questioned: 0, overtimeMinutes: 0, ...over });
 const ticket = (over: Record<string, unknown> = {}) => ({ id: crypto.randomUUID(), projectId: 'PRJ-001', title: 'Crash on launch', url: 'https://jira.example.com/browse/X-1', createdAt: today(), reportedBy: 'someone', ...over });

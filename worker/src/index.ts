@@ -14,6 +14,7 @@
  * Cloudflare Access token ITSELF — the Worker never assumes Access was in front.
  */
 
+import { businessDate } from '../../shared/businessTime';
 import { AuthError, DEV_IDENTITY_COOKIE, authenticate, type VerifiedIdentity } from './auth';
 import { isWorkerPath } from '../../shared/routes';
 import { can, toPrincipalDto, workspaceRoleOf, type Action, type MemberPrincipal, type Principal } from './permissions';
@@ -400,7 +401,7 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
         userId: result.value.id,
         name: result.value.displayName ?? result.value.email,
         role: result.value.role === 'admin' ? 'SV' : 'Tester',
-        today: new Date().toISOString().slice(0, 10),
+        today: businessDate(),
         actor: p.email,
       });
       if (made.ok) profile = made.created ? 'created' : 'existing';
@@ -440,7 +441,7 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
       userId: account.id,
       name: account.displayName ?? account.email,
       role: account.role === 'admin' ? 'SV' : 'Tester',
-      today: new Date().toISOString().slice(0, 10),
+      today: businessDate(),
       actor: p.email,
     });
     return made.ok ? json(made, made.created ? 201 : 200) : problem(409, made.error);
@@ -530,7 +531,7 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
       userId,
       testerName: tester.displayName ?? tester.email,
       actor: p.email,
-      today: new Date().toISOString().slice(0, 10),
+      today: businessDate(),
     });
     if (!result.ok) return problem(result.error === 'project_not_found' ? 404 : 409, result.error);
     return json(result, result.created ? 201 : 200);

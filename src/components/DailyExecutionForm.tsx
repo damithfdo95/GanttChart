@@ -16,6 +16,7 @@ import {
 } from '../lib/calculations/dailyExecuted';
 import { formatInteger, minutesToTimeInput, parseTimeToMinutes } from '../lib/formatting/format';
 import { Field } from './Field';
+import { businessDate } from '../../shared/businessTime';
 
 interface DailyExecutionFormProps {
   lang: Language;
@@ -54,7 +55,8 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
   const { state, saveDailyExecutionEntry } = useAppStateCtx();
   const today = formatDate(todayEpochDays());
   const [dateState, setDateState] = useState<string>(today);
-  const date = todayOnly ? today : (controlledDate ?? dateState);
+  // A Tester's day is the business day the server will accept (not the browser's own calendar day).
+  const date = todayOnly ? businessDate() : (controlledDate ?? dateState);
   const [mode, setMode] = useState<InputMode>('TOTAL');
 
   const setDate = (next: string): void => {

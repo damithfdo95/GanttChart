@@ -89,18 +89,12 @@ function diffById(prev: Obj[], next: Obj[]): ListDiff {
   return out;
 }
 
-function addDays(date: string, delta: number): string {
-  const d = new Date(`${date}T00:00:00.000Z`);
-  d.setUTCDate(d.getUTCDate() + delta);
-  return d.toISOString().slice(0, 10);
-}
-
 /**
- * "Today" for a Tester is the server's UTC date plus or minus one day, because the Tester's own calendar day can
- * differ from UTC (Japan is ahead of UTC). A Tester can therefore never rewrite last week.
+ * A Tester records TODAY only. `today` is the calendar date in the business time zone computed by the server from its own clock
+ * (shared/businessTime.ts); an entry dated yesterday, tomorrow or anything else is refused, whatever the browser's clock says.
  */
-export function isTodayish(date: unknown, today: string): boolean {
-  return isIsoDate(date) && date >= addDays(today, -1) && date <= addDays(today, 1);
+export function isToday(date: unknown, today: string): boolean {
+  return isIsoDate(date) && date === today;
 }
 
 /** The Team Member profile of this account (the link is set by the server only), or null. */
@@ -121,7 +115,7 @@ export function isAssignedIn(assignments: ReadonlyArray<Record<string, unknown>>
   for (const o of assignments) {
     if (o.userId !== userId || o.projectId !== projectStableId || o.active !== true) continue;
     if (typeof o.endDate === 'string' && o.endDate !== '' && o.endDate < today) continue;
-    if (typeof o.startDate === 'string' && o.startDate > addDays(today, 1)) continue;
+    if (typeof o.startDate === 'string' && o.startDate > today) continue;
     return true;
   }
   return false;
@@ -172,7 +166,7 @@ export function testerCommitError(input: TesterCommitInput): string | null {
     const exec = diffById(listOf(prevInputs.dailyExecuted), listOf(nextInputs.dailyExecuted));
     const touched = [...exec.added, ...exec.changed.flatMap((c) => [c.prev, c.next]), ...exec.removed];
     if (touched.length > 0) {
-      for (const e of touched) if (!isTodayish(e.date, today)) return 'tester_execution_not_today';
+      for (const e of touched) if (!isToday(e.date, today)) return 'tester_execution_not_today';
       if (!isAssignedNow(view, userId, stableId, today)) return 'tester_execution_not_assigned';
     }
     // The derived totals and snapshots follow the entries; they may not be edited on their own.

@@ -74,6 +74,11 @@ export function assignedTo(assignments: readonly TesterProjectAssignment[], user
   return isAssignedIn(assignments as unknown as ReadonlyArray<Record<string, unknown>>, userId, projectStableId, today);
 }
 
+/** What the Projects / Test Executions (Overall) screen offers. A Tester reads it; every change to projects is an SV's. */
+export function overallCapabilities(isTester: boolean): { canAddOrImport: boolean; canExport: boolean; canChangeStatus: boolean; canDelete: boolean } {
+  return { canAddOrImport: !isTester, canExport: !isTester, canChangeStatus: !isTester, canDelete: !isTester };
+}
+
 /** The member profile that belongs to this account (linked by the server, never guessed from names). */
 export function ownMemberOf(members: readonly RcsMember[], userId: string | null): RcsMember | null {
   if (userId === null) return null;

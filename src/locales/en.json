@@ -1849,5 +1849,7 @@
   "shared.reject.tester_ticket_wrong_project": "The ticket does not belong to this project.",
   "shared.reject.tester_performance_not_own": "You can change only your own performance rows.",
   "shared.reject.tester_not_linked": "Your account is not linked to a Team Member profile yet. Ask an SV to link it.",
-  "shared.reject.member_link_requires_api": "The link between a profile and an account can only be set from Team Members."
+  "shared.reject.member_link_requires_api": "The link between a profile and an account can only be set from Team Members.",
+  "tester.profileNotLinked.title": "Your Team Member profile has not been linked yet",
+  "tester.profileNotLinked.body": "Your account is active, but your Team Member profile has not been linked yet. Please ask an SV to complete the Team Member setup. Until then you can raise tickets, but you cannot enter performance rows."
 }

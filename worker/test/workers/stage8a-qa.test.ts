@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { businessDate } from '../../../shared/businessTime';
 import type { TesterDto, UserDto } from '../../../shared/tenancy';
 import type { CycleRecord } from '../../../shared/qaRules';
 import { SECRET_A, SUPER, activateWeb, call, createTenant, email, get, openSocket, patch, post, rec, whoami, type Tenant } from './tenancy-harness';
@@ -13,7 +14,7 @@ const NOW = '2026-10-07T00:00:00.000Z';
 let seq = 0;
 const rk = (label: string): string => `${label}-${++seq}-${crypto.randomUUID().slice(0, 6)}@rakuten.com`;
 const cid = (): string => `cyc_${crypto.randomUUID()}`;
-const today = (): string => new Date().toISOString().slice(0, 10);
+const today = (): string => businessDate();
 
 const cycle = (over: Partial<CycleRecord> = {}): CycleRecord => ({ id: cid(), name: 'Android 4.2.0 Release', status: 'planned', plannedStart: '2026-10-01', plannedEnd: '2026-10-31', completedAt: null, createdAt: NOW, updatedAt: NOW, ...over });
 const entry = (over: Record<string, unknown> = {}) => ({ id: crypto.randomUUID(), date: '2026-10-05', testers: 2, pass: 10, fail: 2, notApplicable: 0, spo: 0, blocked: 1, retest: 0, questioned: 0, overtimeMinutes: 0, ...over });

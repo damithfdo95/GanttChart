@@ -364,8 +364,10 @@ editing all day, a save every ~20 s each): 43,200 rows written (43%), ≈720 DO 
   accounts from *Team Members* when wanted. Existing Testers have no profile until an SV creates or links one; until then they can raise tickets but not
   write performance rows, and **they can record Today's Execution only on projects they are assigned to** (assign them first).
 * Roll out like any code deploy: `npm run build`, `cd worker && npm run validate`, then `npx wrangler deploy --env=""`.
-* **Do not roll back to a Stage 8A Worker once a workspace has more than one SV** (the old code would try to recreate the one-admin index and the registry
-  would not start). Roll forward instead.
+* **Rollback rules.** *Before any workspace has a second SV*, rolling back to the Stage 8A Worker is possible: the old code recreates its one-admin index
+  (still satisfied), ignores `owner_user_id`, and the extra triggers do not get in its way. *After any workspace has a second SV*, **do not roll back to Stage 8A**:
+  its start-up recreates `users_one_admin_per_tenant`, which fails for that workspace and can stop `RegistryRoom` from starting, locking everybody out. Fix forward
+  instead (deploy a corrected Stage 8B build). To be able to roll back during the first checks, do not create a second SV until the rest of the checks below have passed.
 * After deploying check: (1) as the Super Admin the console lists workspaces with their Owner SV; (2) as an existing workspace's SV, *Team Members* shows
   them as **SV ★ Owner**; (3) add a second SV and a Tester; (4) sign in as the Tester: the menu is Dashboard, Projects / Test Executions, Gantt, Tickets,
   Performance, Team Members; History and Settings are absent; (5) as an SV open *History* and page through it; (6) Settings shows Data & Backup.

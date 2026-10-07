@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SV_ONLY_KINDS, isAssignedNow, isTodayish, ownMemberId, sameJson, testerCommitError, type TesterView } from '../../shared/testerRules';
+import { SV_ONLY_KINDS, isAssignedNow, isToday, ownMemberId, sameJson, testerCommitError, type TesterView } from '../../shared/testerRules';
 import { qaCommitError } from '../../shared/qaRules';
 
 /** The Tester rules as pure functions: the matrix of what a Tester may and may not change inside a commit. */
@@ -47,10 +47,11 @@ describe('helpers', () => {
     expect(sameJson(null, {})).toBe(false);
   });
 
-  it('“today” is the server date plus or minus one day, and only a real calendar date', () => {
-    for (const d of ['2026-10-06', '2026-10-07', '2026-10-08']) expect(isTodayish(d, TODAY), d).toBe(true);
-    for (const d of ['2026-10-05', '2026-10-09', '2025-10-07', 'today', '2026-02-30', 5, null]) expect(isTodayish(d, TODAY), String(d)).toBe(false);
-    expect(isTodayish('2026-12-31', '2027-01-01')).toBe(true); // across a year boundary
+  it('“today” is exactly the business date, and only a real calendar date', () => {
+    expect(isToday('2026-10-07', TODAY)).toBe(true);
+    for (const d of ['2026-10-06', '2026-10-08', '2026-10-05', '2025-10-07', 'today', '2026-02-30', 5, null]) expect(isToday(d, TODAY), String(d)).toBe(false);
+    expect(isToday('2027-01-01', '2027-01-01')).toBe(true);
+    expect(isToday('2026-12-31', '2027-01-01')).toBe(false);
   });
 
   it('finds the Tester’s own profile only by the account link', () => {
@@ -116,12 +117,21 @@ describe('a Tester commit: Today’s Execution', () => {
     expect(change(world(), project({ dailyExecuted: [entry()], casesCompleted: 6, casesPassed: 5, casesFailed: 1, dailyActuals: [{ date: TODAY }] }))).toBeNull();
   });
 
-  it('yesterday and tomorrow are accepted (time zones); last week and next month are not', () => {
+  it('today is accepted; yesterday, tomorrow and any other date are refused', () => {
     const w = world();
-    expect(change(w, project({ dailyExecuted: [entry({ date: '2026-10-06' })] }))).toBeNull();
-    expect(change(w, project({ dailyExecuted: [entry({ date: '2026-10-08' })] }))).toBeNull();
-    expect(change(w, project({ dailyExecuted: [entry({ date: '2026-09-30' })] }))).toBe('tester_execution_not_today');
-    expect(change(w, project({ dailyExecuted: [entry({ date: '2026-11-07' })] }))).toBe('tester_execution_not_today');
+    expect(change(w, project({ dailyExecuted: [entry({ date: '2026-10-07' })] }))).toBeNull();
+    for (const date of ['2026-10-06', '2026-10-08', '2026-09-30', '2026-11-07']) {
+      expect(change(w, project({ dailyExecuted: [entry({ date })] })), date).toBe('tester_execution_not_today');
+    }
+  });
+
+  it('a forged date or actor inside the commit changes nothing: only the server date and the socket account count', () => {
+    const w = world();
+    const stamped = { actor: 'usr_ken', userId: 'usr_ken', today: '2026-10-06' };
+    expect(change(w, project({ dailyExecuted: [entry({ date: '2026-10-06', ...stamped })] }, { today: '2026-10-06' }))).toBe('tester_project_structure');
+    expect(change(w, project({ dailyExecuted: [entry({ date: '2026-10-06', ...stamped })] }))).toBe('tester_execution_not_today');
+    // Another account on the same socket rule: Ken is not assigned, so even today's entry is refused for him.
+    expect(testerCommitError({ userId: 'usr_ken', today: TODAY, view: view(w), puts: [{ kind: 'project', id: 'proj-1', json: project({ dailyExecuted: [entry()] }) }], deletes: [] })).toBe('tester_execution_not_assigned');
   });
 
   it('an unassigned Tester cannot, nor one whose assignment ended or is somebody else’s', () => {

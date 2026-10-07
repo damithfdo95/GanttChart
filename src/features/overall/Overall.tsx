@@ -5,7 +5,7 @@ import { useAppStateCtx, useReportsStateCtx, activateProject, activateProjectRec
 import { t, resolveBilingualName, type TranslationKey } from '../../i18n';
 import { formatDate, formatDateDisplay, parseDate, todayEpochDays } from '../../lib/dates/dates';
 import { NewProjectForm } from '../../components/NewProjectForm';
-import { useAccess } from '../../app/access';
+import { overallCapabilities, useAccess } from '../../app/access';
 import { PortfolioStatusCard, type StatusFact } from '../../components/StatusCard';
 import { useNow } from '../dashboard/hooks/useNow';
 import {
@@ -92,7 +92,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
   const lang = app.state.language;
   const settings = reportsApi.state.settings;
   // A Tester reads this screen; every change to projects is an SV's (the server enforces the same).
-  const readOnly = useAccess().isTester;
+  const readOnly = !overallCapabilities(useAccess().isTester).canChangeStatus;
 
   const [filters, setFilters] = useState({ ...DEFAULT_PORTFOLIO_FILTERS });
   const [sortKey, setSortKey] = useState<ProjectSortKey>('default');

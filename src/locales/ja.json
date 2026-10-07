@@ -1849,5 +1849,7 @@
   "shared.reject.tester_ticket_wrong_project": "このチケットはこのプロジェクトのものではありません。",
   "shared.reject.tester_performance_not_own": "変更できるのは自分の実績行のみです。",
   "shared.reject.tester_not_linked": "アカウントがまだチームメンバープロフィールに紐付いていません。SVに紐付けを依頼してください。",
-  "shared.reject.member_link_requires_api": "プロフィールとアカウントの紐付けは「チームメンバー」画面からのみ設定できます。"
+  "shared.reject.member_link_requires_api": "プロフィールとアカウントの紐付けは「チームメンバー」画面からのみ設定できます。",
+  "tester.profileNotLinked.title": "チームメンバープロフィールがまだ紐付いていません",
+  "tester.profileNotLinked.body": "アカウントは有効ですが、チームメンバープロフィールがまだ紐付いていません。SVにチームメンバーの設定を完了するよう依頼してください。それまでは、チケットの登録はできますが、実績行は入力できません。"
 }

@@ -2,7 +2,9 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { NAV_ITEMS, navItems } from '../app/navigation';
-import { SCREEN_ACCESS, accessTo, ownMemberOf, uiRoleOf, type ScreenId } from '../app/access';
+import { SCREEN_ACCESS, accessTo, overallCapabilities, ownMemberOf, uiRoleOf, type ScreenId } from '../app/access';
+import { businessDate } from '../../shared/businessTime';
+import { TesterProfileNotice } from '../features/tenancy/TesterProfileNotice';
 import { memberCounts, memberRows, nameSuggestions, ownershipCandidates, rosterOnly } from '../domain/teamMembers';
 import { upsertRcsMember } from '../domain/members';
 import { TOOL_NAME_MAX, cleanToolName, toolNameOf } from '../domain/branding';
@@ -220,7 +222,7 @@ describe('My Team Member Profile (what a Tester sees on Team Members)', () => {
   });
 
   it('says so when the account has no profile yet', () => {
-    expect(render(createElement(MyProfile, { lang: 'en', principal, members: [], projects: [], assignments: [] }))).toContain('not linked to a Team Member profile');
+    expect(render(createElement(MyProfile, { lang: 'en', principal, members: [], projects: [], assignments: [] }))).toContain('has not been linked yet');
   });
 
   it('renders in Japanese', () => {
@@ -342,5 +344,27 @@ describe('Workspace Appearance: the tool name', () => {
     expect(toolNameOf({}, 'en')).toBe(en['app.title']);
     expect(toolNameOf(undefined, 'ja')).toBe(ja['app.title']);
     expect(toolNameOf({ toolName: '<script>' }, 'en')).toBe(en['app.title']);
+  });
+});
+
+describe('Stage 8B.1: Overall for a Tester, business date, unlinked Tester', () => {
+  it('a Tester sees Overall in the menu (labelled Projects / Test Executions) and it is read-only', () => {
+    const items = navItems('user');
+    expect(items.map((i) => i.id)).toContain('overall');
+    expect(en[items.find((i) => i.id === 'overall')!.key]).toBe('Projects / Test Executions');
+    expect(accessTo('user', 'overall')).toBe('view');
+    expect(overallCapabilities(true)).toEqual({ canAddOrImport: false, canExport: false, canChangeStatus: false, canDelete: false });
+    expect(overallCapabilities(false)).toEqual({ canAddOrImport: true, canExport: true, canChangeStatus: true, canDelete: true }); // an SV is unchanged
+    expect(accessTo('admin', 'overall')).toBe('manage');
+  });
+
+  it('the Tester date in the browser is the business date, the same one the server uses', () => {
+    expect(businessDate(Date.parse('2026-10-07T15:30:00Z'))).toBe('2026-10-08');
+  });
+
+  it('a Tester without a profile gets one clear, actionable message in both languages', () => {
+    expect(render(createElement(TesterProfileNotice, { lang: 'en' }))).toContain('Your account is active, but your Team Member profile has not been linked yet. Please ask an SV to complete the Team Member setup.');
+    expect(render(createElement(TesterProfileNotice, { lang: 'ja' }))).toContain('SVにチームメンバーの設定を完了するよう依頼してください');
+    expect(render(createElement(TesterProfileNotice, { lang: 'en' }))).toContain('role="alert"');
   });
 });

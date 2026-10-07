@@ -58,6 +58,8 @@ import { MilestonePanel } from '../../components/MilestonePanel';
 import { RecoveryPanel } from '../../components/RecoveryPanel';
 import { useTenant } from '../../app/tenant-context';
 import { useAccess } from '../../app/access';
+import { businessDate } from '../../../shared/businessTime';
+import { TesterProfileNotice } from '../tenancy/TesterProfileNotice';
 import { WorkspaceEmptyNotice } from './WorkspaceEmptyNotice';
 import { ManagerPanel } from './ManagerPanel';
 import { toolNameOf } from '../../domain/branding';
@@ -109,7 +111,7 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
   const today = formatDate(todayEpoch);
   // A Tester records today's results on the executions they are assigned to; say so instead of letting the server refuse it.
   const activeProjectRecord = reportsApi.state.projects.find((p) => p.id === reportsApi.state.activeProjectId);
-  const blockedReason = access.canRecordFor(activeProjectRecord?.projectId, today) ? undefined : t(lang, 'exec.notAssigned');
+  const blockedReason = access.canRecordFor(activeProjectRecord?.projectId, businessDate()) ? undefined : t(lang, 'exec.notAssigned');
 
   const projectName = resolveBilingualName(lang, { nameEn: state.projectNameEn, nameJa: state.projectNameJa });
   const portfolio = useMemo(
@@ -413,6 +415,7 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
   // ---- render (§8, §26) ------------------------------------------------------
   return (
     <div className="app">
+      {tester && access.ownMemberId === null ? <TesterProfileNotice lang={lang} /> : null}
       <WorkspaceEmptyNotice lang={lang} principal={principal} projectCount={reportsApi.state.projects.length} />
       <header className="app-header">
         <div className="app-title-group">

@@ -19,6 +19,7 @@
  * headers. This object is only reachable through the Worker's binding.
  */
 
+import { businessDate } from '../../shared/businessTime';
 import { DurableObject } from 'cloudflare:workers';
 import {
   PROTOCOL_VERSION,
@@ -277,7 +278,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
         reason: msg.reason ?? 'edit',
         now: new Date().toISOString(),
         // Who may change what, and what may refer to what (shared/qaRules.ts).
-        rules: ({ puts, deletes, get, list }) => qaCommitError({ role: attachment.role, userId: attachment.userId, today: new Date().toISOString().slice(0, 10), puts, deletes, view: { get, list } }),
+        rules: ({ puts, deletes, get, list }) => qaCommitError({ role: attachment.role, userId: attachment.userId, today: businessDate(), puts, deletes, view: { get, list } }),
       });
     } catch (error) {
       // transactionSync rolled back: nothing was applied.

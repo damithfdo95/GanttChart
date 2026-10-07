@@ -144,7 +144,7 @@ One table decides it (`SCREEN_ACCESS` in `src/app/access.ts`); the same table dr
 
 * **SV:** Dashboard · Cycles / Releases · Projects / Test Executions · Gantt · Daily Report · Tickets · Performance · Review · Reports &
   Export · **Team Members** · History · Settings.
-* **Tester:** Dashboard · Projects / Test Executions · Gantt · Tickets · Performance · Team Members (their own profile).
+* **Tester:** Dashboard · Projects / Test Executions (the Overall screen, read-only) · Gantt (read-only) · Tickets · Performance · Team Members (their own profile).
 * **Super Admin:** the platform console only (Overview, Workspaces, Deletion requests, Audit log), never QA screens.
 
 Gone from the menu: **RCS Members** (now part of Team Members) and **Team / Testers**. Backup controls moved out of the Dashboard
@@ -194,8 +194,8 @@ new Wrangler migration tag. Super Admin sees no QA data.
 | Area | SV | Tester |
 |---|---|---|
 | Dashboard | everything (manager panels, cycles, portfolio, control center) | **Operator section only**, plus **Today's Execution** for projects they are assigned to; the manager data is not shown (and the server does not send them the SV-only records) |
-| Today's Execution | any project, any day | **today only** (the server allows yesterday/tomorrow only for time zones), **only on a project they are assigned to by account**, nothing else in the project may change |
-| Projects / Test Executions (Overall) | create, edit, status, delete, export | **read-only** (no add, import, export, status change, delete) |
+| Today's Execution | any project, any day | **today only** (the business date, see below; yesterday and tomorrow are refused), **only on a project they are assigned to by account**, nothing else in the project may change |
+| Projects / Test Executions (Overall) | create, edit, status, delete, export | **in the menu and read-only**: they can open it and filter, sort and open the Gantt, but there is no add, import, export, status change or delete (the server refuses structural changes too) |
 | Gantt | edit the plan | **read-only** |
 | Cycles / Releases | manage | not offered; the server refuses any cycle change |
 | Tickets | every ticket, all actions | **sees every ticket**; raises tickets **as themself**; changes or removes **only their own** (a ticket's reporter and project cannot be changed) |
@@ -223,6 +223,25 @@ Every row is enforced **on the server**, not by hiding buttons:
   profile (the screen says so).
 * Superseded by this stage: Testers could previously read History and the Tester roster and write anything. Existing Tester logins keep
   working unchanged; a Tester must now be **assigned** (Admin API / Cycles screen) before they can record Today's Execution.
+
+### The business date (what "today" means)
+
+Authorization never uses the browser's clock or the UTC date. `shared/businessTime.ts` holds the single business time zone, **`Asia/Tokyo`**
+(UTC+9, no daylight saving), and `businessDate()`, which converts the server's own clock into the calendar date there. Every rule that
+needs "today" (a Tester's Today's Execution; whether an assignment has started or ended) receives that date from the Worker. The earlier
+"server date ±1 day" tolerance was introduced only because the server compared with the UTC date while the team works in Japan; with a
+proper business date it is not needed and was removed: a Tester can record **today only**, yesterday and tomorrow are refused. The Tester's
+own form also uses the business date, so a browser in another time zone offers the same day the server will accept. SVs keep the ability to
+record or correct any day. A tenant-configurable time zone is future work (it would replace the constant by a per-workspace setting read in
+the same one place).
+
+### A Tester whose account has no Team Member profile yet
+
+Every Tester created before Stage 8B has no profile. They keep signing in and can raise tickets; the Dashboard, Tickets, Performance and
+My Team Member Profile show a clear message: *"Your account is active, but your Team Member profile has not been linked yet. Please ask an
+SV to complete the Team Member setup."* Their performance form is disabled until then, and Today's Execution is disabled with its own reason
+when they are not assigned to the project (the server's reason is also shown if a change is ever refused). Nothing is linked by guessing from
+a display name; an SV links or creates the profile in Team Members.
 
 ### Roles in the registry
 

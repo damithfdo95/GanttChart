@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { BugTicket } from '../../types';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
 import { useAccess } from '../../app/access';
+import { TesterProfileNotice } from '../tenancy/TesterProfileNotice';
 import { t } from '../../i18n';
 import { formatDate, todayEpochDays } from '../../lib/dates/dates';
 import { resolveBilingualName } from '../../i18n';
@@ -158,6 +159,7 @@ export function TicketTab() {
         </div>
       </header>
 
+      {tester && access.ownMemberId === null ? <TesterProfileNotice lang={lang} /> : null}
       <TicketSummaryCards lang={lang} summary={summary} />
 
       <section className="dr-section">

@@ -709,8 +709,10 @@ See [QA_EXECUTION.md](QA_EXECUTION.md).
   the profile links after a restore. They are single ordinary revisions in `record_history`.
 * **Free plan.** Member and role changes are rare administrative writes. A new member costs one registry insert and audit row plus one revision;
   nothing is written on reads, sign-in beyond the existing 12-hour bucket, or heartbeat.
-* **Rollback caution.** The Stage 8A Worker recreates `users_one_admin_per_tenant` at start. Once a workspace has a second SV, rolling back to a
-  Stage 8A Worker would make the registry fail to start; roll forward (or disable and delete the extra SV rows first, which is a manual data change).
+* **Rollback caution.** The Stage 8A Worker recreates `users_one_admin_per_tenant` at start. Once ANY workspace has a second SV, rolling back to a
+  Stage 8A Worker would make the registry fail to start; roll forward (deleting the extra SV rows first is a manual data change and is not recommended).
+* **Business date.** `shared/businessTime.ts` (`Asia/Tokyo`) is the only definition of "today" for rules; the Worker passes it to the commit rules and to the
+  assignment/profile endpoints. See ADMINISTRATION.md §9.
 * Tests: `worker/test/registry-stage8b.test.ts`, `worker/test/tester-rules.test.ts`, `worker/test/workers/stage8b-roles.test.ts`, `src/test/stage8bRoles.test.ts`.
 
 See [ADMINISTRATION.md](ADMINISTRATION.md) §9 for the permission matrix.

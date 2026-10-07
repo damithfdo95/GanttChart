@@ -26,6 +26,7 @@ import { TesterDetail, type TesterDetailSummary } from './TesterDetail';
 import { DailyExecutionForm, type ParsedDailyExecution } from './DailyExecutionForm';
 import { SyncSection } from './SyncSection';
 import { useAccess } from '../../app/access';
+import { TesterProfileNotice } from '../tenancy/TesterProfileNotice';
 import { TablePager } from '../../components/TablePager';
 import { usePagedRows } from '../../lib/pagination/usePagedRows';
 
@@ -459,11 +460,7 @@ export function PerformanceTab() {
           onSubmit={handleDailySubmit}
           onCancelEdit={() => setEditingRecord(undefined)}
         />
-        {tester && ownMember === null ? (
-          <p className="dr-empty" role="note">
-            {t(lang, 'performance.testerNoProfile')}
-          </p>
-        ) : null}
+        {tester && ownMember === null ? <TesterProfileNotice lang={lang} /> : null}
         <h3>{t(lang, 'performance.dailyRecords')}</h3>
         {sortedActiveRecords.length === 0 ? (
           <p className="dr-empty">{t(lang, 'performance.noDailyRecords')}</p>

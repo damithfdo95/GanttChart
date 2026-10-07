@@ -4,6 +4,7 @@ import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
 import { ownMemberOf } from '../../app/access';
 import { resolveBilingualName } from '../../i18n';
 import { RcsMembersTab } from '../members/RcsMembersTab';
+import { TesterProfileNotice } from './TesterProfileNotice';
 import { t } from '../../i18n';
 import type { PrincipalDto, StorageMode } from '../../../shared/tenancy';
 import type { TenancyApi } from '../../lib/tenancy/api';
@@ -103,7 +104,7 @@ export function MyProfile({
             <dd>{own?.id ?? t(lang, 'tenancy.members.noProfile')}</dd>
           </div>
         </dl>
-        {own === null ? <p role="note">{t(lang, 'team.myProfile.notLinked')}</p> : null}
+        {own === null ? <TesterProfileNotice lang={lang} /> : null}
         <h2>{t(lang, 'team.myProfile.assigned')}</h2>
         {mine.length === 0 ? (
           <p>{t(lang, 'team.myProfile.assignedNone')}</p>
