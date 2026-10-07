@@ -18,7 +18,10 @@
 
 import type {
   AttendanceRecord,
+  CaseResult,
   Cycle,
+  TestCase,
+  TestScope,
   DailyReport,
   DailyTopic,
   ExternalIdentity,
@@ -64,6 +67,9 @@ const ORDER: Record<Exclude<RecordKind, 'settings'>, (record: never) => string> 
   identityAudit: (r: IdentityAuditEntry) => r.timestamp ?? '',
   externalIdentity: (r: ExternalIdentity) => r.id,
   cycle: (r: Cycle) => r.plannedStart ?? r.createdAt ?? '',
+  scope: (r: TestScope) => String(r.order).padStart(9, '0'),
+  testCase: (r: TestCase) => String(r.order).padStart(9, '0'),
+  caseResult: (r: CaseResult) => r.updatedAt ?? '',
 };
 
 function sortKind<T extends Identified>(kind: Exclude<RecordKind, 'settings'>, items: T[]): T[] {
@@ -99,6 +105,9 @@ const ARRAY_FIELDS: ArrayField[] = [
   { kind: 'identityAudit', read: (s) => s.identityAuditLog ?? [], write: (s, v) => ({ ...s, identityAuditLog: v as IdentityAuditEntry[] }) },
   { kind: 'externalIdentity', read: (s) => s.externalIdentities ?? [], write: (s, v) => ({ ...s, externalIdentities: v as ExternalIdentity[] }) },
   { kind: 'cycle', read: (s) => s.cycles ?? [], write: (s, v) => ({ ...s, cycles: v as Cycle[] }) },
+  { kind: 'scope', read: (s) => s.scopes ?? [], write: (s, v) => ({ ...s, scopes: v as TestScope[] }) },
+  { kind: 'testCase', read: (s) => s.testCases ?? [], write: (s, v) => ({ ...s, testCases: v as TestCase[] }) },
+  { kind: 'caseResult', read: (s) => s.caseResults ?? [], write: (s, v) => ({ ...s, caseResults: v as CaseResult[] }) },
 ];
 
 const FIELD_BY_KIND = new Map(ARRAY_FIELDS.map((f) => [f.kind, f]));
@@ -227,6 +236,9 @@ export function reportsFromRecords(records: readonly RecordPut[], local: Reports
     identityAuditLog: [],
     externalIdentities: [],
     cycles: [],
+    scopes: [],
+    testCases: [],
+    caseResults: [],
   };
   const built = applyRecordChanges(empty, records, []);
   // The device's own project selection survives if that project still exists.
@@ -268,6 +280,7 @@ export function hasMeaningfulLocalData(state: ReportsState): boolean {
   if ((state.testerAssignments ?? []).length > 0 || (state.reviews ?? []).length > 0) return true;
   if ((state.identityAuditLog ?? []).length > 0 || (state.externalIdentities ?? []).length > 0) return true;
   if ((state.cycles ?? []).length > 0) return true;
+  if ((state.scopes ?? []).length > 0 || (state.testCases ?? []).length > 0) return true;
   if (state.projects.length >= 2) return true;
   // The seeded project is only bumped (updatedAt) by a real data change.
   return state.projects.some((p) => p.updatedAt !== p.createdAt);

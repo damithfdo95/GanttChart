@@ -11,6 +11,7 @@
 
 import type { Role } from './protocol';
 import { testerCommitError } from './testerRules';
+import { testManagementCommitError } from './testManagement';
 
 // ---- cycles ------------------------------------------------------------------
 
@@ -217,6 +218,10 @@ export function qaCommitError(input: QaCommitInput): string | null {
     if (next !== null && next.toolName !== undefined && cleanToolName(next.toolName) !== next.toolName) return 'settings_invalid_tool_name';
   }
 
+  // Scopes, test cases and their results: references, uniqueness, who may change what.
+  const testManagement = testManagementCommitError({ puts, deletes, view, isSv: isAdmin, userId: input.userId, today: input.today ?? '' });
+  if (testManagement !== null) return testManagement;
+
   // A Team Member's link to a registry account is set by the server only (the assignment endpoint's twin).
   for (const p of puts) {
     if (p.kind !== 'member') continue;
@@ -282,7 +287,7 @@ export function qaCommitError(input: QaCommitInput): string | null {
       if (nextUser !== undefined || prevUser !== undefined) {
         if (!isAdmin) return 'assignment_admin_only';
         if (prev === null) return 'assignment_requires_api'; // new account assignments are created by the server only
-        if (nextUser !== prevUser || next.projectId !== prev.projectId) return 'assignment_immutable_fields';
+        if (nextUser !== prevUser || next.projectId !== prev.projectId || next.scopeId !== prev.scopeId) return 'assignment_immutable_fields';
       }
     }
   }

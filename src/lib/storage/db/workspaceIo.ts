@@ -35,7 +35,7 @@ export interface WorkspaceDbRead {
 
 /** Read every store and rebuild the workspace parts (core null when never written). */
 export async function readWorkspaceFromDb(): Promise<WorkspaceDbRead> {
-  const [projects, dailyActuals, reports, attendance, topics, appState, core, testerAssignments, reviews, rcsMembers, identityAuditLog, externalIdentities, cycles] =
+  const [projects, dailyActuals, reports, attendance, topics, appState, core, testerAssignments, reviews, rcsMembers, identityAuditLog, externalIdentities, cycles, scopes, testCases, caseResults] =
     await Promise.all([
       getAllFromStore<WorkspaceParts['projects'][number]>(STORE_PROJECTS),
       getAllFromStore<WorkspaceParts['dailyActuals'][number]>(STORE_DAILY_ACTUALS),
@@ -50,6 +50,9 @@ export async function readWorkspaceFromDb(): Promise<WorkspaceDbRead> {
       getFromStore<WorkspaceParts['collections']['identityAuditLog']>(STORE_METADATA, META_KEY_COLLECTION.identityAuditLog),
       getFromStore<WorkspaceParts['collections']['externalIdentities']>(STORE_METADATA, META_KEY_COLLECTION.externalIdentities),
       getFromStore<WorkspaceParts['collections']['cycles']>(STORE_METADATA, META_KEY_COLLECTION.cycles),
+      getFromStore<WorkspaceParts['collections']['scopes']>(STORE_METADATA, META_KEY_COLLECTION.scopes),
+      getFromStore<WorkspaceParts['collections']['testCases']>(STORE_METADATA, META_KEY_COLLECTION.testCases),
+      getFromStore<WorkspaceParts['collections']['caseResults']>(STORE_METADATA, META_KEY_COLLECTION.caseResults),
     ]);
   return {
     appState,
@@ -67,6 +70,9 @@ export async function readWorkspaceFromDb(): Promise<WorkspaceDbRead> {
         identityAuditLog: identityAuditLog ?? [],
         externalIdentities: externalIdentities ?? [],
         cycles: cycles ?? [],
+        scopes: scopes ?? [],
+        testCases: testCases ?? [],
+        caseResults: caseResults ?? [],
       },
     },
   };
@@ -106,6 +112,9 @@ export function mirrorFromRead(read: WorkspaceDbRead): WorkspaceMirror {
       identityAuditLog: JSON.stringify(read.parts.collections.identityAuditLog),
       externalIdentities: JSON.stringify(read.parts.collections.externalIdentities),
       cycles: JSON.stringify(read.parts.collections.cycles),
+      scopes: JSON.stringify(read.parts.collections.scopes),
+      testCases: JSON.stringify(read.parts.collections.testCases),
+      caseResults: JSON.stringify(read.parts.collections.caseResults),
     },
   };
 }
@@ -229,6 +238,9 @@ export function planWorkspaceWrite(appState: unknown, reports: ReportsState, mir
   diffMetadata(plan, META_KEY_COLLECTION.identityAuditLog, parts.collections.identityAuditLog, mirror.collections.identityAuditLog);
   diffMetadata(plan, META_KEY_COLLECTION.externalIdentities, parts.collections.externalIdentities, mirror.collections.externalIdentities);
   diffMetadata(plan, META_KEY_COLLECTION.cycles, parts.collections.cycles, mirror.collections.cycles);
+  diffMetadata(plan, META_KEY_COLLECTION.scopes, parts.collections.scopes, mirror.collections.scopes);
+  diffMetadata(plan, META_KEY_COLLECTION.testCases, parts.collections.testCases, mirror.collections.testCases);
+  diffMetadata(plan, META_KEY_COLLECTION.caseResults, parts.collections.caseResults, mirror.collections.caseResults);
 
   return plan;
 }

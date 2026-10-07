@@ -277,7 +277,7 @@ export function SyncSection({
               <option value="">{t(lang, 'performance.testerName')}</option>
               {selectableMembers.map((member) => (
                 <option key={member.id} value={member.id}>
-                  {member.id} — {member.name} ({member.role})
+                  {member.name} ({member.role})
                 </option>
               ))}
             </select>
@@ -337,7 +337,7 @@ export function SyncSection({
                     <tr key={assignment.id}>
                       <td>
                         {member !== undefined
-                          ? `${member.id} — ${member.name}`
+                          ? member.name
                           : `${assignment.testerName ?? '—'} (${t(lang, 'performance.legacyAssignment')})`}
                       </td>
                       <td>{assignment.startDate}</td>

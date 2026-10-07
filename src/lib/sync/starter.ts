@@ -48,6 +48,9 @@ export function emptySharedState(local: ReportsState): ReportsState {
     identityAuditLog: [],
     externalIdentities: [],
     cycles: [],
+    scopes: [],
+    testCases: [],
+    caseResults: [],
     activeProjectId: null,
   };
 }

@@ -134,11 +134,13 @@ export function isAssignedNow(view: TesterView, userId: string, projectStableId:
 export function testerCommitError(input: TesterCommitInput): string | null {
   const { userId, puts, deletes, view, today } = input;
   if (deletes.length > 0) return 'tester_cannot_delete';
-  for (const p of puts) if (p.kind !== 'project') return 'tester_cannot_change_kind';
+  // A Tester changes projects (their own inputs) and the results of cases assigned to them; the case rules live in testManagement.ts.
+  for (const p of puts) if (p.kind !== 'project' && p.kind !== 'caseResult') return 'tester_cannot_change_kind';
 
   const memberId = ownMemberId(view, userId);
 
   for (const p of puts) {
+    if (p.kind !== 'project') continue;
     const prevJson = view.get('project', p.id);
     const prev = parse(prevJson);
     const next = parse(p.json);

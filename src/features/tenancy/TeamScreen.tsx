@@ -4,6 +4,7 @@ import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
 import { ownMemberOf } from '../../app/access';
 import { resolveBilingualName } from '../../i18n';
 import { RcsMembersTab } from '../members/RcsMembersTab';
+import { LegacyPlaceholderNotice } from './LegacyPlaceholderNotice';
 import { TesterProfileNotice } from './TesterProfileNotice';
 import { t } from '../../i18n';
 import type { PrincipalDto, StorageMode } from '../../../shared/tenancy';
@@ -45,6 +46,7 @@ export function TeamScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
   return (
     <>
       <TeamView lang={lang} principal={principal} api={api} members={members} onOpenSettings={onOpenSettings} />
+      {principal.role === 'admin' ? <LegacyPlaceholderNotice lang={lang} /> : null}
       {principal.role === 'admin' && principal.tenant?.storageMode === 'web' ? <TesterWorkload lang={lang} /> : null}
       {principal.role === 'admin' ? <RcsMembersTab /> : null}
     </>
@@ -100,8 +102,8 @@ export function MyProfile({
             <dd>{principal.tenant?.name ?? '—'}</dd>
           </div>
           <div>
-            <dt>{t(lang, 'team.myProfile.profileId')}</dt>
-            <dd>{own?.id ?? t(lang, 'tenancy.members.noProfile')}</dd>
+            <dt>{t(lang, 'team.myProfile.profileStatus')}</dt>
+            <dd>{own === null ? t(lang, 'tenancy.members.noProfile') : t(lang, 'tenancy.members.hasProfile')}</dd>
           </div>
         </dl>
         {own === null ? <TesterProfileNotice lang={lang} /> : null}

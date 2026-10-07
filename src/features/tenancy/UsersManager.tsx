@@ -142,7 +142,7 @@ export function UsersManager({
     run(async () => {
       await api.linkMember(memberId, user.id);
       setLinking((prev) => ({ ...prev, [user.id]: '' }));
-      return t(lang, 'tenancy.members.linked', { email: user.email, id: memberId });
+      return t(lang, 'tenancy.members.linked', { email: user.email, name: roster.find((m) => m.id === memberId)?.name ?? t(lang, 'people.former') });
     });
 
   const everyone = users ?? [];
@@ -303,9 +303,7 @@ export function UsersManager({
                         </td>
                         <td>
                           {profile !== null ? (
-                            <span title={profile.id}>
-                              {profile.id}
-                            </span>
+                            <span>{t(lang, 'tenancy.members.hasProfile')}</span>
                           ) : (
                             <div className="tenancy-profile-actions">
                               <span>{t(lang, 'tenancy.members.noProfile')}</span>
@@ -323,7 +321,7 @@ export function UsersManager({
                                     <option value="">{t(lang, 'tenancy.members.linkTo')}</option>
                                     {roster.map((m) => (
                                       <option key={m.id} value={m.id}>
-                                        {m.id} — {m.name}
+                                        {m.name}
                                         {suggestions.some((s) => s.id === m.id) ? ` (${t(lang, 'tenancy.members.sameName')})` : ''}
                                       </option>
                                     ))}

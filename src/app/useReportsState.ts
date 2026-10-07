@@ -16,6 +16,7 @@ import type {
 } from '../types';
 import { loadReportsState } from '../lib/storage/reports';
 import { removeProjectFromRegistry } from '../domain/projects/lifecycle';
+import type { TestManagementState } from '../domain/testManagement';
 import { setProjectLifecycleStatus as setProjectLifecycleStatusImpl } from '../domain/projects/lifecycle';
 import { seedInitialProjectRecord } from '../domain/projects/migrations';
 import { applyRecordChanges } from '../lib/sync/records';
@@ -60,6 +61,10 @@ export interface ReportsStateApi {
   removeTesterAssignment: (id: string) => void;
   /** Test cycles (Stage 8A): add or replace one cycle by id. */
   upsertCycle: (cycle: Cycle) => void;
+  /** Replace the whole roster (used by the legacy-placeholder clean-up only). */
+  setRcsMembers: (members: RcsMember[]) => void;
+  /** Test Management (Stage 8C): transform scopes, cases and results in ONE state update (one commit, however many records change). */
+  updateTestManagement: (fn: (tm: TestManagementState) => TestManagementState) => void;
   /** Review records (V6.7): save one review (same tester+period updates in place). */
   upsertReview: (review: TesterReview) => void;
   /** Review records (V6.7): remove one by id. */
@@ -162,8 +167,13 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
       const target = prev.projects.find((p) => p.id === id);
       if (target === undefined) return prev;
       const removal = removeProjectFromRegistry(prev.projects, prev.reports, prev.activeProjectId, id);
+      // The project's scopes, test cases and results go with it (they have no meaning without it).
+      const gone = (r: { projectId: string }): boolean => r.projectId !== target.projectId;
       return {
         ...prev,
+        scopes: (prev.scopes ?? []).filter(gone),
+        testCases: (prev.testCases ?? []).filter(gone),
+        caseResults: (prev.caseResults ?? []).filter(gone),
         projects: removal.projects,
         reports: removal.reports,
         activeProjectId: removal.nextActiveProjectId,
@@ -198,6 +208,19 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
 
   const removeTesterAssignmentAction = useCallback((id: string): void => {
     setState((prev) => ({ ...prev, testerAssignments: (prev.testerAssignments ?? []).filter((a) => a.id !== id) }));
+  }, []);
+
+  const updateTestManagementAction = useCallback((fn: (tm: TestManagementState) => TestManagementState): void => {
+    setState((prev) => {
+      const before: TestManagementState = { scopes: prev.scopes ?? [], testCases: prev.testCases ?? [], caseResults: prev.caseResults ?? [] };
+      const after = fn(before);
+      if (after.scopes === before.scopes && after.testCases === before.testCases && after.caseResults === before.caseResults) return prev;
+      return { ...prev, scopes: after.scopes, testCases: after.testCases, caseResults: after.caseResults };
+    });
+  }, []);
+
+  const setRcsMembersAction = useCallback((members: RcsMember[]): void => {
+    setState((prev) => ({ ...prev, rcsMembers: members }));
   }, []);
 
   const upsertCycleAction = useCallback((cycle: Cycle): void => {
@@ -253,6 +276,8 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
     upsertTesterAssignment: upsertTesterAssignmentAction,
     removeTesterAssignment: removeTesterAssignmentAction,
     upsertCycle: upsertCycleAction,
+    setRcsMembers: setRcsMembersAction,
+    updateTestManagement: updateTestManagementAction,
     upsertReview: upsertReviewAction,
     removeReview: removeReviewAction,
     upsertMember: upsertMemberAction,

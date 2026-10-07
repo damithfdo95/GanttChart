@@ -1,5 +1,5 @@
 import type { AttendanceRecord, RcsMember, RcsMemberNameHistory, TesterProjectAssignment, TesterReview } from '../../types';
-import { SEED_RCS_MEMBERS } from '../../types';
+import { LEGACY_PLACEHOLDER_MEMBERS } from './legacyPlaceholders';
 
 /**
  * RCS member master operations (V6.8) and the centralized identity resolver
@@ -16,9 +16,12 @@ import { SEED_RCS_MEMBERS } from '../../types';
  *   candidates.
  */
 
-/** The initial seed set (stable ids, seeded exactly once per workspace). */
+/**
+ * TEST FIXTURE ONLY: a ready-made roster for unit tests. The application never creates a roster (an empty roster is valid, and real
+ * people are added through Team Members); a test in stage8cCleanup.test.ts fails if application code starts using this again.
+ */
 export function seedRcsMembers(): RcsMember[] {
-  return SEED_RCS_MEMBERS.map((member) => ({ ...member }));
+  return LEGACY_PLACEHOLDER_MEMBERS.map((member) => ({ ...member }));
 }
 
 /** Add or replace a member by id (the id is the identity — it is never changed here). */

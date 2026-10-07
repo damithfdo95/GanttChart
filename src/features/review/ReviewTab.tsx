@@ -81,7 +81,7 @@ export function ReviewTab() {
   const testerOptions = useMemo<TesterOption[]>(
     () =>
       [...members]
-        .map((member) => ({ key: member.id, label: `${member.id} — ${member.name}`, member }))
+        .map((member) => ({ key: member.id, label: member.name, member }))
         .sort((a, b) => a.label.localeCompare(b.label)),
     [members],
   );

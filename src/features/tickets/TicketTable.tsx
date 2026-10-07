@@ -73,13 +73,13 @@ export function TicketTable({ lang, tickets, members = [], onEdit, onDelete, can
                   {ticket.reportedBy}
                   {linkedMember !== undefined ? (
                     <div className="attendance-identity-hint">
-                      {linkedMember.id} — {linkedMember.name}
+                      {linkedMember.name}
                     </div>
                   ) : nameResolution !== null && nameResolution.status === 'resolved' ? (
                     <div className="attendance-identity-hint">
                       {t(lang, 'attendance.resolvedAs', {
                         id: nameResolution.memberId,
-                        name: findMemberById(members, nameResolution.memberId)?.name ?? nameResolution.memberId,
+                        name: findMemberById(members, nameResolution.memberId)?.name ?? t(lang, 'people.former'),
                       })}
                     </div>
                   ) : null}

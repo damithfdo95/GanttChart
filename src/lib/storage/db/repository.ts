@@ -48,6 +48,9 @@ export const META_KEY_COLLECTION = {
   identityAuditLog: 'identityAuditLog',
   externalIdentities: 'externalIdentities',
   cycles: 'cycles',
+  scopes: 'scopes',
+  testCases: 'testCases',
+  caseResults: 'caseResults',
 } as const;
 export const META_KEY_PERSISTENCE_META = 'persistenceMeta';
 export const META_KEY_STORAGE_MIGRATION = 'storageMigration';

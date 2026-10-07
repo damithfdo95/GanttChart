@@ -19,11 +19,14 @@ export type UiRole = 'sv' | 'tester';
 /** manage = change anything there; input = enter their own data only; view = read only; none = not offered. */
 export type ScreenAccess = 'manage' | 'input' | 'view' | 'none';
 
-export type ScreenId = 'dashboard' | 'cycles' | 'overall' | 'gantt' | 'dailyReport' | 'tickets' | 'performance' | 'review' | 'reports' | 'team' | 'history' | 'settings';
+export type ScreenId = 'dashboard' | 'testManagement' | 'myTesting' | 'cycles' | 'overall' | 'gantt' | 'dailyReport' | 'tickets' | 'performance' | 'review' | 'reports' | 'team' | 'history' | 'settings';
 
 export const SCREEN_ACCESS: Readonly<Record<ScreenId, Readonly<Record<UiRole, ScreenAccess>>>> = {
   // A Tester sees the Operator section (and enters Today's Execution); the manager panels are the SV's.
   dashboard: { sv: 'manage', tester: 'input' },
+  // Stage 8C: Test Management is the SV's workspace for scopes, cases and execution; My Testing is the Tester's focused view.
+  testManagement: { sv: 'manage', tester: 'none' },
+  myTesting: { sv: 'none', tester: 'input' },
   cycles: { sv: 'manage', tester: 'none' },
   overall: { sv: 'manage', tester: 'view' },
   gantt: { sv: 'manage', tester: 'view' },
@@ -50,7 +53,7 @@ export function uiRoleOf(role: AppRole | null): UiRole | null {
 export function accessTo(role: AppRole | null, screen: ScreenId): ScreenAccess {
   if (role === 'super_admin') return 'none';
   const ui = uiRoleOf(role);
-  if (ui === null) return screen === 'team' ? 'none' : 'manage';
+  if (ui === null) return screen === 'team' || screen === 'myTesting' ? 'none' : 'manage';
   return SCREEN_ACCESS[screen][ui];
 }
 

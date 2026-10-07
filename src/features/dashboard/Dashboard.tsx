@@ -421,7 +421,6 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
         <div className="app-title-group">
           <h1>{toolNameOf(reportsApi.state.settings, lang)}</h1>
           {projectName === '' ? null : <span className="app-project-name">{projectName}</span>}
-          <span className="app-subtitle">{t(lang, 'app.subtitle')}</span>
         </div>
         <div className="app-header-actions">
           {selectableProjects.length > 0 ? (

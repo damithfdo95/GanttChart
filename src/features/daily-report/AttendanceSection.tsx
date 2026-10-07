@@ -1,4 +1,5 @@
 import type { AttendanceRecord, AttendanceStatus, Language, RcsMember } from '../../types';
+import { memberLabel as personNameOf } from '../../domain/people';
 import { NON_ATTENDING_STATUSES } from '../../types';
 import { t, type TranslationKey } from '../../i18n';
 import { resolveMemberIdentity } from '../../domain/members';
@@ -112,13 +113,13 @@ export function AttendanceSection({ records, members = [], lang, summary, readOn
                         <option value="">{t(lang, 'attendance.memberOther')}</option>
                         {selectableMembers.map((member) => (
                           <option key={member.id} value={member.id}>
-                            {member.id} — {member.name}
+                            {personNameOf(lang, member)}
                             {member.active ? '' : ` (${t(lang, 'members.inactive')})`}
                           </option>
                         ))}
                         {/* Keep an edited record selectable when its member is not in the master. */}
                         {record.memberId !== undefined && !memberById.has(record.memberId) ? (
-                          <option value={record.memberId}>{record.memberId}</option>
+                          <option value={record.memberId}>{t(lang, 'people.former')}</option>
                         ) : null}
                       </select>
                       {record.memberId === undefined ? (

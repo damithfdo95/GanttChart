@@ -126,8 +126,8 @@ describe('language switching helpers', () => {
   });
 
   it('dictionaries are reachable per language', () => {
-    expect(dictionaries.en['app.title']).toBe('GanttChart');
-    expect(dictionaries.ja['app.subtitle']).toBe('QAテスト実行スケジュール管理');
+    expect(dictionaries.en['app.title']).toBe('QA Management'); // the neutral fallback; a workspace's own Tool Name replaces it
+    expect(dictionaries.ja['app.title']).toBe('QA管理');
   });
 });
 

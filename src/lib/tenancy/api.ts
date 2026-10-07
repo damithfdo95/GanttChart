@@ -74,7 +74,7 @@ export interface TenancyApi {
   /** The Testers of this workspace (SVs only: assigning and workload). */
   team(): Promise<TesterDto[]>;
   /** Assign a Tester account to a project (Admin; the server checks the account and the project). */
-  assignTester(projectId: string, userId: string): Promise<{ created: boolean; assignment: { id: string; projectId: string; userId: string } }>;
+  assignTester(projectId: string, userId: string, scopeId?: string): Promise<{ created: boolean; assignment: { id: string; projectId: string; userId: string } }>;
   /** This workspace's administrative history (Admin only). */
   tenantAudit(limit?: number): Promise<AdminAuditDto[]>;
   // Super Admin
@@ -139,7 +139,7 @@ export function createTenancyApi(fetchFn: FetchLike = (i, init) => fetch(i, init
     updateUser: (userId, patch) => call('PATCH', `/api/tenant/users/${encodeURIComponent(userId)}`, patch),
     requestDeletion: async () => (await call<{ tenant: TenantDto }>('POST', '/api/tenant/deletion-request', { confirm: REQUEST_DELETION_CONFIRMATION })).tenant,
     team: async () => (await call<{ testers: TesterDto[] }>('GET', '/api/tenant/team')).testers,
-    assignTester: (projectId, userId) => call('POST', '/api/tenant/assignments', { projectId, userId }),
+    assignTester: (projectId, userId, scopeId) => call('POST', '/api/tenant/assignments', { projectId, userId, ...(scopeId === undefined ? {} : { scopeId }) }),
     tenantAudit: async (limit = 100) => (await call<{ audit: AdminAuditDto[] }>('GET', `/api/tenant/audit?limit=${limit}`)).audit,
     cancelDeletion: async () => (await call<{ tenant: TenantDto }>('POST', '/api/tenant/deletion-request/cancel', {})).tenant,
     listTenants: (query = {}) => {

@@ -883,7 +883,7 @@ describe('§30 end-to-end V6.7 acceptance lifecycle', () => {
     expect(counts.qaTested).toBe(70);
     expect(counts.qaCompleted).toBe(90);
     expect(counts.remaining).toBe(10);
-    expect(finalBoot.workspace.reports.rcsMembers).toHaveLength(8); // identity data preserved
+    expect(finalBoot.workspace.reports.rcsMembers).toEqual([]); // a fresh workspace has no default people; nothing was invented
     expect(finalBoot.health).toBe('healthy');
     expect(finalBoot.revision).toBeGreaterThanOrEqual(1); // monotonic
   });

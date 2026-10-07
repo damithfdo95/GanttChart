@@ -7,10 +7,12 @@ export type Language = 'en' | 'ja';
  * either language (see resolveBilingualName).
  */
 import type { CycleRecord, CycleStatus } from '../../shared/qaRules';
+import type { CaseResult, TestCase, TestScope } from '../../shared/testManagement';
 
 /** A QA test cycle / release grouping test executions (projects). See shared/qaRules.ts. */
 export type Cycle = CycleRecord;
 export type { CycleStatus };
+export type { CaseResult, TestCase, TestScope };
 
 export interface BilingualName {
   nameEn?: string;
@@ -221,18 +223,6 @@ export interface RcsMember {
    */
   userId?: string;
 }
-
-/** Initial RCS member master seed (V6.8 §3) — stable ids, seeded once. */
-export const SEED_RCS_MEMBERS: readonly RcsMember[] = [
-  { id: 'USER0001', name: 'Tokunaga Hiroshi', team: 'RCS', role: 'SV', startDate: '2026-07-01', active: true },
-  { id: 'USER0002', name: 'Damith Fernando', team: 'RCS', role: 'SV', startDate: '2026-07-01', active: true },
-  { id: 'USER0003', name: 'Yamauchi Kentaro', team: 'RCS', role: 'Tester', startDate: '2026-07-01', active: true },
-  { id: 'USER0004', name: 'Kobayashi Masashi', team: 'RCS', role: 'Tester', startDate: '2026-07-01', active: true },
-  { id: 'USER0005', name: 'Osaki Kazuki', team: 'RCS', role: 'Tester', startDate: '2026-07-01', active: true },
-  { id: 'USER0006', name: 'Iwabuchi Mika', team: 'RCS', role: 'Tester', startDate: '2026-07-01', active: true },
-  { id: 'USER0007', name: 'Niizeki Keitaro', team: 'RCS', role: 'Tester', startDate: '2026-07-01', active: true },
-  { id: 'USER0008', name: 'Anno Masahiro', team: 'RCS', role: 'Tester', startDate: '2026-07-01', active: true },
-];
 
 // ---- Bug tracking & tester performance (V6.6) ----
 
@@ -773,6 +763,11 @@ export interface ReportsState {
    * earlier payload stays valid; normalized to [] on load/import.
    */
   cycles?: Cycle[];
+  /** Test Management (Stage 8C): scopes of a project, their test cases and the current result of each case. All optional: a workspace
+   *  without them (everything before Stage 8C) works exactly as before. */
+  scopes?: TestScope[];
+  testCases?: TestCase[];
+  caseResults?: CaseResult[];
 }
 
 // ---- Tester assignments & QA review workspace (V6.7) ----
@@ -804,6 +799,11 @@ export interface TesterProjectAssignment {
    * if the account is later disabled.
    */
   userId?: string;
+  /**
+   * Stage 8C: limits the assignment to ONE scope of the project. Absent = the whole project (every scope), which is exactly what every
+   * assignment before Stage 8C meant. Set only by the server's assignment endpoint.
+   */
+  scopeId?: string;
   team?: string;
   /** "YYYY-MM-DD" (required, inclusive). */
   startDate: string;

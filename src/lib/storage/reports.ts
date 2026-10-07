@@ -17,13 +17,13 @@ import type {
 } from '../../types';
 import { ATTENDANCE_STATUSES, REVIEW_PERIOD_TYPES, REVIEW_STATUSES } from '../../types';
 import { checkCycle } from '../../../shared/qaRules';
+import { checkCaseResult, checkScope, checkTestCase } from '../../../shared/testManagement';
 import { DEFAULT_REPORT_TEMPLATES } from '../reporting/template';
 import { DEFAULT_PROGRESS_RULES } from '../reporting/progress';
 import { hasRecoveryPayload, stashCorruptedRaw } from './corruption';
 import { isBlockingEvent, isBugTicket, isDailyActualSnapshot, isDailyTargetOverride, isIdentityResolutionAudit, isMilestone, isPlanningRow, isTesterDailyPerformance, normalizeQaInputs } from './storage';
 import { ensureProjectIds } from '../../domain/projects/migrations';
 import { migrateAssignmentsToMembers } from '../../domain/assignments';
-import { seedRcsMembers } from '../../domain/members';
 import { migrateAttendanceIdentity, migrateProjectBugTickets } from '../../domain/identityResolution';
 
 /** Versioned localStorage key for the daily-report module (V3). */
@@ -70,10 +70,14 @@ export function defaultReportsState(): ReportsState {
     activeProjectId: null,
     testerAssignments: [],
     reviews: [],
-    rcsMembers: seedRcsMembers(),
+    // No default people: an empty roster is valid, and real people are added by an SV (Team Members -> Add Member).
+    rcsMembers: [],
     identityAuditLog: [],
     externalIdentities: [],
     cycles: [],
+    scopes: [],
+    testCases: [],
+    caseResults: [],
   };
 }
 
@@ -359,6 +363,7 @@ export function isTesterProjectAssignment(v: unknown): v is TesterProjectAssignm
     (r.memberId === undefined || typeof r.memberId === 'string') &&
     (r.testerName === undefined || typeof r.testerName === 'string') &&
     (r.userId === undefined || typeof r.userId === 'string') &&
+    (r.scopeId === undefined || typeof r.scopeId === 'string') &&
     (r.memberId !== undefined || r.testerName !== undefined) &&
     (r.team === undefined || typeof r.team === 'string') &&
     typeof r.startDate === 'string' &&
@@ -467,7 +472,11 @@ export function isReportsState(v: unknown): v is ReportsState {
     // V6.9-B external-identity mappings are optional so pre-V6.9-B data stays valid.
     (s.externalIdentities === undefined || (Array.isArray(s.externalIdentities) && s.externalIdentities.every(isExternalIdentity))) &&
     // Stage 8A test cycles are optional so every earlier payload and backup stays valid.
-    (s.cycles === undefined || (Array.isArray(s.cycles) && s.cycles.every((c) => checkCycle(c).ok)))
+    (s.cycles === undefined || (Array.isArray(s.cycles) && s.cycles.every((c) => checkCycle(c).ok))) &&
+    // Stage 8C test management is optional too: older payloads and backups simply have none.
+    (s.scopes === undefined || (Array.isArray(s.scopes) && s.scopes.every((c) => checkScope(c).ok))) &&
+    (s.testCases === undefined || (Array.isArray(s.testCases) && s.testCases.every((c) => checkTestCase(c).ok))) &&
+    (s.caseResults === undefined || (Array.isArray(s.caseResults) && s.caseResults.every((c) => checkCaseResult(c).ok)))
   );
 }
 
@@ -490,7 +499,7 @@ export function isReportsState(v: unknown): v is ReportsState {
  *    never overwritten. Idempotent: already-migrated records are skipped.
  */
 export function normalizeReportsState(state: ReportsState): ReportsState {
-  const rcsMembers = state.rcsMembers ?? seedRcsMembers();
+  const rcsMembers = state.rcsMembers ?? [];
   const migration = migrateAssignmentsToMembers((state.testerAssignments ?? []).filter(isTesterProjectAssignment), rcsMembers);
   const attendanceMigration = migrateAttendanceIdentity(state.attendance, rcsMembers);
   const projectsMigration = migrateProjectBugTickets(
@@ -520,6 +529,10 @@ export function normalizeReportsState(state: ReportsState): ReportsState {
     externalIdentities: (state.externalIdentities ?? []).filter(isExternalIdentity),
     // Stage 8A: malformed cycles are filtered (never repaired); valid ones pass through unchanged.
     cycles: (state.cycles ?? []).filter((c) => checkCycle(c).ok),
+    // Stage 8C: malformed scopes, cases and results are filtered (never repaired); valid ones pass through unchanged.
+    scopes: (state.scopes ?? []).filter((c) => checkScope(c).ok),
+    testCases: (state.testCases ?? []).filter((c) => checkTestCase(c).ok),
+    caseResults: (state.caseResults ?? []).filter((c) => checkCaseResult(c).ok),
   };
 }
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RcsMember, ReportsState } from '../types';
-import { SEED_RCS_MEMBERS } from '../types';
+import { LEGACY_PLACEHOLDER_MEMBERS as SEED_RCS_MEMBERS } from '../domain/members/legacyPlaceholders';
 import {
   activeMembers,
   findMemberById,
@@ -72,11 +72,10 @@ describe('V6.8 seed members', () => {
     expect(SEED_RCS_MEMBERS).toHaveLength(8);
   });
 
-  it('seeds exactly once: an absent field is seeded, an emptied roster stays empty', () => {
+  it('never seeds people: an absent roster and an emptied roster both stay empty', () => {
     const state = { ...defaultReportsState(), rcsMembers: undefined } as ReportsState;
     saveReportsState(state);
-    expect(loadReportsState().rcsMembers).toHaveLength(8);
-    // The user deliberately deleted every member — never re-seeded.
+    expect(loadReportsState().rcsMembers).toEqual([]);
     const emptied = { ...defaultReportsState(), rcsMembers: [] } as ReportsState;
     saveReportsState(emptied);
     expect(loadReportsState().rcsMembers).toEqual([]);
@@ -195,15 +194,13 @@ describe('V6.8 member persistence', () => {
     expect(restored[0].name).toBe('Yamauchi K. (renamed)');
   });
 
-  it('seeds members for a legacy V6.7 backup (rcsMembers absent)', () => {
+  it('does not invent members for a legacy V6.7 backup (rcsMembers absent)', () => {
     const legacy: ReportsState = { ...defaultReportsState(), rcsMembers: undefined };
     const parsed = parseBackupPayload(JSON.stringify(createBackupPayload(DEMO_STATE, legacy)));
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    // Export-path normalization fills the seed set exactly once for legacy data.
-    expect(parsed.data.reportsState.rcsMembers).toHaveLength(8);
-    expect(parsed.data.reportsState.rcsMembers!.find((m) => m.id === 'USER0003')!.name).toBe('Yamauchi Kentaro');
+    expect(parsed.data.reportsState.rcsMembers ?? []).toEqual([]);
     saveReportsState(parsed.data.reportsState);
-    expect(loadReportsState().rcsMembers).toHaveLength(8); // still 8 — never duplicated on load
+    expect(loadReportsState().rcsMembers).toEqual([]);
   });
 });

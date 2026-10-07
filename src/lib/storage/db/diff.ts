@@ -170,6 +170,8 @@ export function diffWorkspaces(prev: CanonicalWorkspace | null, next: CanonicalW
     }
     if (
       !jsonEquals(prevParts?.collections.cycles ?? [], nextParts.collections.cycles) ||
+      !jsonEquals(prevParts?.collections.scopes ?? [], nextParts.collections.scopes) ||
+      !jsonEquals(prevParts?.collections.testCases ?? [], nextParts.collections.testCases) ||
       prev.app.language !== next.app.language ||
       prev.app.projectNameEn !== next.app.projectNameEn ||
       prev.app.projectNameJa !== next.app.projectNameJa ||

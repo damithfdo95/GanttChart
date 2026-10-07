@@ -202,12 +202,12 @@ export function DailyExecutionForm({ lang, members, memberNames, existing, locke
             <option value="">{t(lang, 'performance.testerName')}</option>
             {members.map((member) => (
               <option key={member.id} value={member.id}>
-                {member.id} — {member.name} ({member.role})
+                {member.name} ({member.role})
               </option>
             ))}
             {/* Keep the edited legacy record selectable when it is not in the active roster. */}
             {form.memberId !== '' && !members.some((m) => m.id === form.memberId) ? (
-              <option value={form.memberId}>{form.memberId} — {form.testerName}</option>
+              <option value={form.memberId}>{form.testerName}</option>
             ) : null}
           </select>
         ) : (

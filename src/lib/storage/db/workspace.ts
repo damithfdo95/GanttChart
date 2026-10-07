@@ -11,6 +11,9 @@
 import type {
   AttendanceRecord,
   Cycle,
+  CaseResult,
+  TestCase,
+  TestScope,
   DailyActualSnapshot,
   DailyReport,
   DailyTopic,
@@ -56,6 +59,9 @@ export interface WorkspaceCollections {
   identityAuditLog: IdentityAuditEntry[];
   externalIdentities: ExternalIdentity[];
   cycles: Cycle[];
+  scopes: TestScope[];
+  testCases: TestCase[];
+  caseResults: CaseResult[];
 }
 
 /** The complete split of a workspace into IndexedDB-shaped records. */
@@ -108,6 +114,9 @@ export function splitWorkspace(appState: unknown, reports: ReportsState): { appS
         identityAuditLog: reports.identityAuditLog ?? [],
         externalIdentities: reports.externalIdentities ?? [],
         cycles: reports.cycles ?? [],
+        scopes: reports.scopes ?? [],
+        testCases: reports.testCases ?? [],
+        caseResults: reports.caseResults ?? [],
       },
     },
   };
@@ -140,6 +149,9 @@ export function assembleReportsState(parts: WorkspaceParts): ReportsState {
     identityAuditLog: parts.collections.identityAuditLog,
     externalIdentities: parts.collections.externalIdentities,
     cycles: parts.collections.cycles,
+    scopes: parts.collections.scopes,
+    testCases: parts.collections.testCases,
+    caseResults: parts.collections.caseResults,
   };
 }
 

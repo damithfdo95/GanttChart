@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { memberLabel } from '../../domain/people';
 import type { Language, RcsMember, RcsMemberNameHistory } from '../../types';
 import { t } from '../../i18n';
 import { formatDate, todayEpochDays } from '../../lib/dates/dates';
@@ -146,7 +147,7 @@ export function RcsMembersTab() {
     );
     if (referenced) {
       const proceed = window.confirm(
-        t(lang, 'members.referencedCannotDelete', { id: member.id }),
+        t(lang, 'members.referencedCannotDelete', { name: memberLabel(lang, member) }),
       );
       if (!proceed) return;
       if (member.active) {
@@ -214,14 +215,7 @@ export function RcsMembersTab() {
             handleSubmit();
           }}
         >
-          <Field label={t(lang, 'members.memberId')} error={errors.id !== undefined ? t(lang, errors.id) : undefined}>
-            <input
-              className="input"
-              type="text"
-              value={draft.id}
-              onChange={(e) => setDraft((prev) => ({ ...prev, id: e.target.value }))}
-            />
-          </Field>
+          {/* The profile id is internal plumbing: generated, never typed and never shown. */}
           <Field label={t(lang, 'members.name')} error={errors.name !== undefined ? t(lang, errors.name) : undefined}>
             <input
               className="input"
@@ -318,7 +312,6 @@ export function RcsMembersTab() {
             ) : null}
           </div>
         </form>
-        {editingId === null ? <p className="dr-empty">{t(lang, 'members.nextId', { id: suggestedId })}</p> : null}
       </section>
 
       <section className="dr-section">
@@ -330,7 +323,6 @@ export function RcsMembersTab() {
             <table className="dr-table">
               <thead>
                 <tr>
-                  <th scope="col">{t(lang, 'members.memberId')}</th>
                   <th scope="col">{t(lang, 'members.name')}</th>
                   <th scope="col">{t(lang, 'members.role')}</th>
                   <th scope="col">{t(lang, 'members.startDate')}</th>
@@ -343,7 +335,6 @@ export function RcsMembersTab() {
               <tbody>
                 {sorted.map((member) => (
                   <tr key={member.id} className={editingId === member.id ? 'row-selected' : undefined}>
-                    <td>{member.id}</td>
                     <td>{member.name}</td>
                     <td>{member.role}</td>
                     <td>{member.startDate}</td>

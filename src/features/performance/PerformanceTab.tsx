@@ -487,7 +487,7 @@ export function PerformanceTab() {
                 {pager.pagedRows.map((record) => (
                   <tr key={record.id}>
                     <td>{record.date}</td>
-                    <td>{record.memberId !== undefined ? `${record.memberId} — ` : ''}{record.testerName}</td>
+                    <td>{record.testerName}</td>
                     <td className="num">{formatInteger(record.casesTested, lang)}</td>
                     <td className="num">{record.casesPassed ?? '—'}</td>
                     <td className="num">{record.casesFailed ?? '—'}</td>

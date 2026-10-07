@@ -26,6 +26,8 @@ import { NAV_ITEMS, navItems, type Screen } from './navigation';
 import { AccountBadge } from '../features/tenancy/AccountBadge';
 import { TeamScreen } from '../features/tenancy/TeamScreen';
 import { CyclesScreen } from '../features/cycles/CyclesScreen';
+import { TestManagementScreen } from '../features/testManagement/TestManagementScreen';
+import { MyTestingScreen } from '../features/testManagement/MyTestingScreen';
 import { RevisionHistory } from '../features/settings/RevisionHistory';
 import { SharedHistory } from '../features/settings/SharedHistory';
 
@@ -266,6 +268,10 @@ function Shell() {
         <Dashboard onOpenOverall={openOverall} />
       ) : screen === 'cycles' ? (
         <CyclesScreen />
+      ) : screen === 'testManagement' ? (
+        <TestManagementScreen />
+      ) : screen === 'myTesting' ? (
+        <MyTestingScreen />
       ) : screen === 'overall' ? (
         <Overall focus={overallFocus} onOpenGantt={openGantt} onProjectCreated={() => setScreen('dashboard')} />
       ) : screen === 'gantt' ? (

@@ -163,13 +163,13 @@ export function TicketForm({ lang, values, errors, memberNames, members = [], re
           <option value="">{t(lang, 'tickets.reporterExternal')}</option>
           {selectableMembers.map((member) => (
             <option key={member.id} value={member.id}>
-              {member.id} — {member.name}
+              {member.name}
               {member.active ? '' : ` (${t(lang, 'members.inactive')})`}
             </option>
           ))}
           {/* Keep an edited record selectable when its reporter is not in the master. */}
           {values.reporterMemberId !== '' && !members.some((m) => m.id === values.reporterMemberId) ? (
-            <option value={values.reporterMemberId}>{values.reporterMemberId}</option>
+            <option value={values.reporterMemberId}>{t(lang, 'people.former')}</option>
           ) : null}
         </select>
         {externalReporter ? (

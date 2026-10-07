@@ -46,13 +46,13 @@ describe('navigation by role', () => {
   it('everyone with a workspace gets the QA screens, History and Settings, in a sensible order', () => {
     for (const role of ['admin', null] as const) {
       const list = ids(role);
-      expect(list.slice(0, 5), String(role)).toEqual(['dashboard', 'cycles', 'overall', 'gantt', 'dailyReport']);
+      expect(list.slice(0, 5), String(role)).toEqual(['dashboard', 'cycles', 'overall', 'gantt', 'testManagement']);
       expect(list).toEqual(expect.arrayContaining(['history', 'settings', 'reports', 'review']));
       expect(list[list.length - 1]).toBe('settings');
       expect(list).not.toContain('members'); // "RCS Members" is part of Team Members now
     }
     // A Tester gets only the screens they work with.
-    expect(ids('user')).toEqual(['dashboard', 'overall', 'gantt', 'tickets', 'performance', 'team']);
+    expect(ids('user')).toEqual(['dashboard', 'overall', 'gantt', 'myTesting', 'tickets', 'performance', 'team']);
   });
 
   it('the Super Admin has NO QA navigation at all', () => {

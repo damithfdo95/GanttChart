@@ -8,6 +8,7 @@ import type {
   QaInputs,
   ReportsState,
 } from '../types';
+import { seedRcsMembers } from '../domain/members';
 import { DEMO_STATE, STORAGE_KEY, LEGACY_STORAGE_KEY, normalizeAppState, normalizeQaInputs } from '../lib/storage/storage';
 import {
   defaultReportsState,
@@ -417,6 +418,7 @@ describe('migration correctness (§9/§14)', () => {
     const workspace = seedLegacyLocalStorage();
     const workspaceWithCollections: ReportsState = {
       ...workspace.reports,
+      rcsMembers: seedRcsMembers(),
       testerAssignments: [
         {
           id: 'asg-1',

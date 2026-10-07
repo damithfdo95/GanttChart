@@ -33,7 +33,7 @@ describe('planLink — the four situations', () => {
   });
 
   it('a server that holds even just a member roster counts as having data (never overwritten)', () => {
-    const rosterOnly = serverRecords(defaultReportsState());
+    const rosterOnly = serverRecords({ ...defaultReportsState(), rcsMembers: [{ id: 'USER0100', name: 'Real Person', team: 'RCS', role: 'Tester', startDate: '2026-10-01', active: true }] });
     expect(rosterOnly.some((r) => r.kind === 'member')).toBe(true);
     expect(planLink({ local: withData(), serverRecords: rosterOnly, role: 'admin' }).kind).toBe('choose');
     expect(planLink({ local: fresh(), serverRecords: rosterOnly, role: 'admin' }).kind).toBe('adopt');

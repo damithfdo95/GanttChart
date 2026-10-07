@@ -520,7 +520,9 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     if (!body.ok) return body.response;
     const projectId = body.body.projectId;
     const userId = body.body.userId;
+    const scopeId = body.body.scopeId;
     if (typeof projectId !== 'string' || projectId.length === 0 || projectId.length > 100) return problem(400, 'invalid_project_id');
+    if (scopeId !== undefined && (typeof scopeId !== 'string' || !/^[A-Za-z0-9_.:-]{1,200}$/.test(scopeId))) return problem(400, 'invalid_scope_id');
     if (!isUserId(userId)) return problem(400, 'invalid_user_id');
     // The account must be a Tester of THIS workspace (the tenant is the principal's, never the request's) and must be enabled.
     const tester = await ctx.registry.getTester(p.tenantId, userId);
@@ -531,9 +533,10 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
       userId,
       testerName: tester.displayName ?? tester.email,
       actor: p.email,
+      ...(typeof scopeId === 'string' ? { scopeId } : {}),
       today: businessDate(),
     });
-    if (!result.ok) return problem(result.error === 'project_not_found' ? 404 : 409, result.error);
+    if (!result.ok) return problem(result.error === 'project_not_found' || result.error === 'scope_not_found' ? 404 : 409, result.error);
     return json(result, result.created ? 201 : 200);
   }
 

@@ -22,6 +22,9 @@ export const RECORD_KINDS = [
   'identityAudit',
   'externalIdentity',
   'cycle',
+  'scope',
+  'testCase',
+  'caseResult',
   'settings',
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];

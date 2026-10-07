@@ -3588,3 +3588,25 @@ textarea:focus-visible,
 .status-owner { background: var(--info-bg); color: var(--info-fg); border-color: var(--info-border); }
 .tenancy-profile-actions { display: grid; gap: 4px; justify-items: start; }
 .tenancy-link-row { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+
+/* ---- Stage 8C: Test Management ---- */
+.tm-screen { display: grid; gap: 12px; }
+.tm-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px 12px; margin: 8px 0; }
+.tm-summary > div { border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; background: var(--surface); }
+.tm-summary dt { color: var(--text-muted); font-size: 0.8em; }
+.tm-summary dd { margin: 0; font-weight: 600; font-size: 1.1em; }
+.tm-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.tm-card { text-align: left; }
+.tm-grid-wrap { max-height: 70vh; overflow: auto; }
+.tm-grid th[scope='col'] { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.tm-key { white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.tm-input { min-width: 90px; width: 100%; }
+.tm-input.tm-wide { min-width: 220px; }
+.tm-status-select { min-width: 150px; }
+.tm-updated { white-space: nowrap; font-size: 0.85em; color: var(--text-muted); }
+.tm-archived { opacity: 0.6; }
+.tm-check { display: inline-flex; align-items: center; gap: 4px; }
+.tm-paste { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.tm-row.tm-status-fail th.tm-key { color: var(--bad-fg); }
+.tm-row.tm-status-pass th.tm-key { color: var(--good-fg); }
+.tm-row.tm-status-blocked th.tm-key { color: var(--bad-fg); }

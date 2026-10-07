@@ -23,6 +23,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'cycles', key: 'nav.cycles' },
   { id: 'overall', key: 'nav.overall' },
   { id: 'gantt', key: 'nav.gantt' },
+  { id: 'testManagement', key: 'nav.testManagement' },
+  { id: 'myTesting', key: 'nav.myTesting' },
   { id: 'dailyReport', key: 'nav.dailyReport' },
   { id: 'tickets', key: 'nav.tickets' },
   { id: 'performance', key: 'nav.performance' },

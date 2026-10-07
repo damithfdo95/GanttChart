@@ -163,6 +163,9 @@ function collectionEntries(parts: WorkspaceParts): Array<[string, unknown]> {
     [META_KEY_COLLECTION.identityAuditLog, parts.collections.identityAuditLog],
     [META_KEY_COLLECTION.externalIdentities, parts.collections.externalIdentities],
     [META_KEY_COLLECTION.cycles, parts.collections.cycles],
+    [META_KEY_COLLECTION.scopes, parts.collections.scopes],
+    [META_KEY_COLLECTION.testCases, parts.collections.testCases],
+    [META_KEY_COLLECTION.caseResults, parts.collections.caseResults],
   ];
 }
 
@@ -261,6 +264,9 @@ export async function verifyMigration(
     return fail('externalIdentities collection differs');
   }
   if (!jsonEquals(read.parts.collections.cycles, parts.collections.cycles)) return fail('cycles collection differs');
+  if (!jsonEquals(read.parts.collections.scopes, parts.collections.scopes)) return fail('scopes collection differs');
+  if (!jsonEquals(read.parts.collections.testCases, parts.collections.testCases)) return fail('testCases collection differs');
+  if (!jsonEquals(read.parts.collections.caseResults, parts.collections.caseResults)) return fail('caseResults collection differs');
   if (!jsonEquals(assembleReportsState(read.parts), assembleReportsState(parts))) {
     return fail('reassembled workspace differs from the migrated workspace');
   }

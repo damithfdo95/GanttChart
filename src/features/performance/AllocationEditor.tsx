@@ -287,7 +287,6 @@ export function AllocationEditor({ lang, activeProjectId, projects, assignments,
                   <tr key={`${date}-${allocation.key}`}>
                     <td />
                     <td>
-                      {allocation.memberId !== undefined ? `${allocation.memberId} — ` : ''}
                       {allocation.testerName}
                     </td>
                     <td className="note-cell">

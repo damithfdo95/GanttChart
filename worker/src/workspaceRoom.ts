@@ -315,20 +315,25 @@ export class WorkspaceRoom extends DurableObject<Env> {
    */
   async assignTester(
     tenantId: string,
-    input: { projectId: string; userId: string; testerName: string; actor: string; today: string },
-  ): Promise<{ ok: true; assignment: { id: string; projectId: string; userId: string }; revision: number; created: boolean } | { ok: false; error: 'project_not_found' | 'archived' | 'failed' }> {
+    input: { projectId: string; userId: string; testerName: string; actor: string; today: string; scopeId?: string },
+  ): Promise<{ ok: true; assignment: { id: string; projectId: string; userId: string; scopeId?: string }; revision: number; created: boolean } | { ok: false; error: 'project_not_found' | 'scope_not_found' | 'scope_archived' | 'archived' | 'failed' }> {
     this.assertTenant(tenantId);
     if (this.frozen) return { ok: false, error: 'archived' };
     if (this.store.findProjectByStableId(input.projectId) === null) return { ok: false, error: 'project_not_found' };
+    // A scope-level assignment names a scope of THIS project that can still receive work.
+    if (input.scopeId !== undefined) {
+      const scope = this.store.recordsOfKind('scope').map((r) => JSON.parse(r.json) as { id?: string; projectId?: string; status?: string }).find((s) => s.id === input.scopeId);
+      if (scope === undefined || scope.projectId !== input.projectId) return { ok: false, error: 'scope_not_found' };
+      if (scope.status === 'archived') return { ok: false, error: 'scope_archived' };
+    }
     const existing = this.store
-      .snapshot()
-      .records.filter((r) => r.kind === 'assignment')
-      .map((r) => ({ id: r.id, ...(JSON.parse(r.json) as { projectId?: string; userId?: string; active?: boolean; endDate?: string; startDate?: string }) }))
-      .find((a) => a.projectId === input.projectId && a.userId === input.userId && a.active === true && (a.endDate === undefined || a.endDate >= input.today));
-    if (existing !== undefined) return { ok: true, assignment: { id: existing.id, projectId: input.projectId, userId: input.userId }, revision: this.store.revision(), created: false };
+      .recordsOfKind('assignment')
+      .map((r) => ({ id: r.id, ...(JSON.parse(r.json) as { projectId?: string; userId?: string; scopeId?: string; active?: boolean; endDate?: string; startDate?: string }) }))
+      .find((a) => a.projectId === input.projectId && a.userId === input.userId && (a.scopeId ?? null) === (input.scopeId ?? null) && a.active === true && (a.endDate === undefined || a.endDate === '' || a.endDate >= input.today));
+    if (existing !== undefined) return { ok: true, assignment: { id: existing.id, projectId: input.projectId, userId: input.userId, ...(input.scopeId === undefined ? {} : { scopeId: input.scopeId }) }, revision: this.store.revision(), created: false };
 
     const id = crypto.randomUUID();
-    const json = JSON.stringify({ id, projectId: input.projectId, userId: input.userId, testerName: input.testerName, startDate: input.today, active: true });
+    const json = JSON.stringify({ id, projectId: input.projectId, userId: input.userId, testerName: input.testerName, startDate: input.today, active: true, ...(input.scopeId === undefined ? {} : { scopeId: input.scopeId }) });
     const now = new Date().toISOString();
     let result: CommitResult;
     try {
@@ -346,7 +351,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
     }
     if (!result.ok) return { ok: false, error: 'failed' };
     if (result.changed && !result.duplicate) this.broadcast({ t: 'changes', revision: result.revision, actor: input.actor, at: result.at, puts: result.puts, deletes: result.deletes });
-    return { ok: true, assignment: { id, projectId: input.projectId, userId: input.userId }, revision: result.revision, created: true };
+    return { ok: true, assignment: { id, projectId: input.projectId, userId: input.userId, ...(input.scopeId === undefined ? {} : { scopeId: input.scopeId }) }, revision: result.revision, created: true };
   }
 
   // ---- RPC: Team Member profiles -------------------------------------------------

@@ -110,6 +110,7 @@ describe('V6.8 assignment migration', () => {
   it('runs on load through the workspace normalization', () => {
     const state: ReportsState = {
       ...defaultReportsState(),
+      rcsMembers: seedRcsMembers(),
       testerAssignments: [
         legacyAssignment({ testerName: 'Yamauchi Kentaro' }),
         legacyAssignment({ testerName: 'Unmatched Person' }),
@@ -190,6 +191,6 @@ describe('V6.8 member master type stability (compile-level)', () => {
   it('exposes the RCS member type through the workspace state', () => {
     const state: ReportsState = { ...defaultReportsState() };
     const members: readonly RcsMember[] = state.rcsMembers ?? [];
-    expect(members.length).toBe(8);
+    expect(members.length).toBe(0); // no default people: an empty roster is valid
   });
 });

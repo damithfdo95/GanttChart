@@ -57,7 +57,6 @@ export function TesterPerformanceTable({ lang, rows, projects, selectedTester, o
         <thead>
           <tr>
             <th scope="col">{t(lang, 'performance.tester')}</th>
-            <th scope="col">{t(lang, 'members.memberId')}</th>
             <th scope="col">{t(lang, 'performance.projectsCount')}</th>
             <th scope="col" className="num">{t(lang, 'performance.activeDays')}</th>
             <th scope="col" className="num">{t(lang, 'performance.cases')}</th>
@@ -78,7 +77,6 @@ export function TesterPerformanceTable({ lang, rows, projects, selectedTester, o
               className={(row.memberId ?? row.testerName) === selectedTester ? 'row-selected' : undefined}
             >
               <td>{row.testerName}</td>
-              <td>{row.memberId ?? '—'}</td>
               <td>
                 {row.projectIds.length === 0 ? '—' : row.projectIds.map((id) => nameOf(id)).join(' / ')}
               </td>

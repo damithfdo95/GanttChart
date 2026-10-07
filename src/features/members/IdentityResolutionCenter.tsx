@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { rosterLabel } from '../../domain/people';
 import type {
   AttendanceRecord,
   ExternalIdentity,
@@ -44,7 +45,7 @@ interface IdentityResolutionCenterProps {
 }
 
 function candidateLabel(candidate: IdentityIssueCandidate, lang: Language): string {
-  return `${candidate.memberId} — ${candidate.name} — ${candidate.role}${
+  return `${candidate.name} — ${candidate.role}${
     candidate.active ? '' : ` (${t(lang, 'members.inactive')})`
   }`;
 }
@@ -377,7 +378,7 @@ export function IdentityResolutionCenter({
                 <div className="identity-suggestion">
                   <strong>
                     {t(lang, 'identityResolution.suggested')}:{' '}
-                    {issue.suggestion.memberId} — {issue.suggestion.name}
+                    {issue.suggestion.name}
                   </strong>
                   <div className="attendance-identity-hint">
                     {t(lang, suggestionReasonKey(issue.suggestion), {
@@ -415,7 +416,7 @@ export function IdentityResolutionCenter({
                     className="btn"
                     onClick={() => resolveAttendance(issue, issue.suggestion!.memberId)}
                   >
-                    {t(lang, 'identityResolution.resolveTo')} {issue.suggestion.memberId} — {issue.suggestion.name}
+                    {t(lang, 'identityResolution.resolveTo')} {issue.suggestion.name}
                   </button>
                 ) : null}
                 <select
@@ -427,7 +428,7 @@ export function IdentityResolutionCenter({
                   <option value="">{t(lang, 'identityResolution.selectMember')}</option>
                   {members.map((member) => (
                     <option key={member.id} value={member.id}>
-                      {member.id} — {member.name} ({member.role})
+                      {member.name} ({member.role})
                     </option>
                   ))}
                 </select>
@@ -461,7 +462,7 @@ export function IdentityResolutionCenter({
                 <div className="identity-suggestion">
                   <strong>
                     {t(lang, 'identityResolution.suggested')}:{' '}
-                    {issue.suggestion.memberId} — {issue.suggestion.name}
+                    {issue.suggestion.name}
                   </strong>
                   <div className="attendance-identity-hint">
                     {t(lang, suggestionReasonKey(issue.suggestion), {
@@ -499,7 +500,7 @@ export function IdentityResolutionCenter({
                     className="btn"
                     onClick={() => resolveTicket(issue, issue.suggestion!.memberId)}
                   >
-                    {t(lang, 'identityResolution.resolveTo')} {issue.suggestion.memberId} — {issue.suggestion.name}
+                    {t(lang, 'identityResolution.resolveTo')} {issue.suggestion.name}
                   </button>
                 ) : null}
                 <select
@@ -511,7 +512,7 @@ export function IdentityResolutionCenter({
                   <option value="">{t(lang, 'identityResolution.selectMember')}</option>
                   {members.map((member) => (
                     <option key={member.id} value={member.id}>
-                      {member.id} — {member.name} ({member.role})
+                      {member.name} ({member.role})
                     </option>
                   ))}
                 </select>
@@ -538,7 +539,7 @@ export function IdentityResolutionCenter({
                   <li key={`ra-${entry.recordId}`}>
                     {t(lang, 'identityResolution.attendance')} — {entry.date} — {entry.recordedName} →{' '}
                     {entry.audit.memberId !== undefined
-                      ? `${entry.audit.memberId} (${t(lang, 'identityResolution.manuallyResolved')})`
+                      ? `${rosterLabel(lang, entry.audit.memberId, members)} (${t(lang, 'identityResolution.manuallyResolved')})`
                       : t(lang, 'identityResolution.keptUnresolved')}
                     <span className="gantt-project-meta"> · {entry.audit.resolvedAt}</span>
                   </li>
@@ -547,7 +548,7 @@ export function IdentityResolutionCenter({
                   <li key={`rt-${entry.ticketId}`}>
                     {t(lang, 'identityResolution.ticket')} — {entry.title} — {entry.recordedName} →{' '}
                     {entry.audit.memberId !== undefined
-                      ? `${entry.audit.memberId} (${t(lang, 'identityResolution.manuallyResolved')})`
+                      ? `${rosterLabel(lang, entry.audit.memberId, members)} (${t(lang, 'identityResolution.manuallyResolved')})`
                       : t(lang, 'identityResolution.keptUnresolved')}
                     <span className="gantt-project-meta"> · {entry.audit.resolvedAt}</span>
                   </li>

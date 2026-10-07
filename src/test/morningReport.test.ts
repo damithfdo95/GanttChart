@@ -8,7 +8,8 @@ import {
 import { ABSENCE_REASON_PRESETS, absenceReasonLabel, isPresetReason } from '../lib/reporting/absenceReasons';
 import { createRevision, finalizeReport, newDraft } from '../lib/reporting/drafts';
 import { isDailyReportGuard } from '../lib/storage/reports';
-import { SEED_RCS_MEMBERS, type AttendanceRecord, type DailyReport, type RcsMember } from '../types';
+import { LEGACY_PLACEHOLDER_MEMBERS as SEED_RCS_MEMBERS } from '../domain/members/legacyPlaceholders';
+import type { AttendanceRecord, DailyReport, RcsMember } from '../types';
 
 function attendance(overrides: Partial<AttendanceRecord> = {}): AttendanceRecord {
   return {

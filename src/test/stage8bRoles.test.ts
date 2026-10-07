@@ -36,7 +36,8 @@ describe('the role and screen matrix (one table for the navigation and the scree
   });
 
   it('an SV manages every screen', () => {
-    for (const screen of Object.keys(SCREEN_ACCESS) as ScreenId[]) expect(accessTo('admin', screen), screen).toBe('manage');
+    // (My Testing is the Tester's focused view; an SV works in Test Management instead.)
+    for (const screen of (Object.keys(SCREEN_ACCESS) as ScreenId[]).filter((x) => x !== 'myTesting')) expect(accessTo('admin', screen), screen).toBe('manage');
   });
 
   it('a Tester: inputs only on Dashboard (Today’s Execution), Tickets and Performance; reads Overall and Gantt; has their own profile; nothing else', () => {
@@ -48,6 +49,8 @@ describe('the role and screen matrix (one table for the navigation and the scree
       performance: 'input',
       team: 'view',
       cycles: 'none',
+      testManagement: 'none',
+      myTesting: 'input',
       dailyReport: 'none',
       review: 'none',
       reports: 'none',
@@ -63,12 +66,12 @@ describe('the role and screen matrix (one table for the navigation and the scree
   });
 
   it('plain local use (no accounts) keeps every screen except Team Members', () => {
-    for (const screen of Object.keys(SCREEN_ACCESS) as ScreenId[]) expect(accessTo(null, screen), screen).toBe(screen === 'team' ? 'none' : 'manage');
+    for (const screen of Object.keys(SCREEN_ACCESS) as ScreenId[]) expect(accessTo(null, screen), screen).toBe(screen === 'team' || screen === 'myTesting' ? 'none' : 'manage');
   });
 
-  it('navigation for a Tester offers no History, Settings, Cycles, Daily Report, Review or Reports, and no member management', () => {
+  it('navigation for a Tester offers no History, Settings, Cycles, Daily Report, Review, Reports or Test Management administration, and no member management', () => {
     const ids = navItems('user').map((i) => i.id);
-    expect(ids).toEqual(['dashboard', 'overall', 'gantt', 'tickets', 'performance', 'team']);
+    expect(ids).toEqual(['dashboard', 'overall', 'gantt', 'myTesting', 'tickets', 'performance', 'team']);
     for (const hidden of ['history', 'settings', 'cycles', 'dailyReport', 'review', 'reports']) expect(ids).not.toContain(hidden);
   });
 
@@ -199,7 +202,8 @@ describe('My Team Member Profile (what a Tester sees on Team Members)', () => {
   it('shows their own name, email, role, status, workspace and profile — and nobody else', () => {
     const html = render(createElement(MyProfile, { lang: 'en', principal, members, projects: [], assignments: [] }));
     expect(html).toContain('My Team Member Profile');
-    for (const s of ['Hana Sato', 'hana@rakuten.com', 'Tester', 'Active', 'Rakuten QA', 'USER0001']) expect(html).toContain(s);
+    for (const s of ['Hana Sato', 'hana@rakuten.com', 'Tester', 'Active', 'Rakuten QA', 'Linked']) expect(html).toContain(s);
+    expect(html).not.toMatch(/USER0|usr_/); // no internal id is shown as anything
     expect(html).not.toContain('Secret Colleague');
     expect(html).not.toContain('USER0002');
     expect(html).not.toContain('type="email"'); // nothing to edit, nothing to add
