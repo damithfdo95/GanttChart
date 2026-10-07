@@ -21,6 +21,8 @@ import type { QaInputs } from '../types';
 const tenant = (mode: 'local' | 'web' = 'web') => ({ id: 'ten_x', name: 'Rakuten QA', storageMode: mode, status: 'active' as const, createdAt: 't', deletionRequestedAt: null });
 const principal = (role: PrincipalDto['role'], over: Partial<PrincipalDto> = {}): PrincipalDto => ({
   email: 'taro.yamada@rakuten.com',
+  userId: role === 'super_admin' ? null : 'usr_taro',
+  isOwner: role === 'admin',
   displayName: null,
   role,
   tenant: role === 'super_admin' ? null : tenant(),
@@ -35,19 +37,22 @@ const render = (el: Parameters<typeof renderToStaticMarkup>[0]): string => rende
 describe('navigation by role', () => {
   const ids = (role: Parameters<typeof navItems>[0]) => navItems(role).map((i) => i.id);
 
-  it('the Admin sees Team / Users; a User and plain local use do not', () => {
+  it('Team Members: an SV manages them, a Tester sees only their own profile there; plain local use has no accounts', () => {
     expect(ids('admin')).toContain('team');
-    expect(ids('user')).not.toContain('team');
+    expect(ids('user')).toContain('team');
     expect(ids(null)).not.toContain('team');
   });
 
   it('everyone with a workspace gets the QA screens, History and Settings, in a sensible order', () => {
-    for (const role of ['admin', 'user', null] as const) {
+    for (const role of ['admin', null] as const) {
       const list = ids(role);
       expect(list.slice(0, 5), String(role)).toEqual(['dashboard', 'cycles', 'overall', 'gantt', 'dailyReport']);
-      expect(list).toEqual(expect.arrayContaining(['history', 'settings', 'reports']));
+      expect(list).toEqual(expect.arrayContaining(['history', 'settings', 'reports', 'review']));
       expect(list[list.length - 1]).toBe('settings');
+      expect(list).not.toContain('members'); // "RCS Members" is part of Team Members now
     }
+    // A Tester gets only the screens they work with.
+    expect(ids('user')).toEqual(['dashboard', 'overall', 'gantt', 'tickets', 'performance', 'team']);
   });
 
   it('the Super Admin has NO QA navigation at all', () => {
@@ -66,7 +71,7 @@ describe('who is signed in (header)', () => {
     const html = render(createElement(AccountBadge, { lang: 'en', principal: principal('admin', { displayName: 'Taro Yamada' }) }));
     expect(html).toContain('Taro Yamada');
     expect(html).toContain('taro.yamada@rakuten.com');
-    expect(html).toContain('>Admin<');
+    expect(html).toContain('>SV<');
     expect(html).toContain('Rakuten QA');
     expect(html).toContain('Web');
     expect(html).not.toMatch(/ten_|usr_/);
@@ -76,7 +81,7 @@ describe('who is signed in (header)', () => {
     const user = render(createElement(AccountBadge, { lang: 'en', principal: principal('user') }));
     expect(user).toContain('>Tester<');
     expect(user.match(/taro\.yamada@rakuten\.com/g)?.length).toBe(2); // tooltip + name
-    expect(render(createElement(AccountBadge, { lang: 'ja', principal: principal('admin') }))).toContain('管理者');
+    expect(render(createElement(AccountBadge, { lang: 'ja', principal: principal('admin') }))).toContain('>SV<');
   });
 });
 
@@ -126,7 +131,7 @@ describe('storage modes are explained in plain words', () => {
     const html = render(createElement(StorageModeExplainer, { lang: 'en', mode: 'local' }));
     expect(html).toContain('stays on this device');
     expect(html).toContain('cannot collaborate');
-    expect(html).toContain('Adding Testers is not available');
+    expect(html).toContain('Adding Team Members is not available');
     expect(html).toContain('no shared live sync');
   });
 
@@ -146,28 +151,31 @@ describe('storage modes are explained in plain words', () => {
 describe('Team / Users', () => {
   it('Local mode explains why there is nothing to manage — it does not show a dead form', () => {
     const html = render(createElement(TeamView, { lang: 'en', principal: principal('admin', { tenant: tenant('local') }), api: fakeApi, onOpenSettings: () => undefined }));
-    expect(html).toContain('Adding Testers is available when this workspace uses Web storage.');
-    expect(html).toContain('collaboration with Testers requires Web storage');
+    expect(html).toContain('Adding Team Members is available when this workspace uses Web storage.');
+    expect(html).toContain('collaboration with other people is not possible');
     expect(html).toContain('Open storage settings');
-    expect(html).not.toContain('Add a tester');
+    expect(html).not.toContain('Add Member');
     expect(html).not.toContain('type="email"');
   });
 
   it('Web mode shows the Users manager (add form) and the administration history', () => {
     const html = render(createElement(TeamView, { lang: 'en', principal: principal('admin'), api: fakeApi, onOpenSettings: () => undefined }));
-    expect(html).toContain('Add a tester');
+    expect(html).toContain('Add Member');
     expect(html).toContain('type="email"');
     expect(html).toContain('Administration history');
     expect(html).not.toContain('role-selector');
   });
 
-  it('shows nothing to a User (the server refuses them too)', () => {
+  it('the management view shows nothing to a Tester (the server refuses them too); they get their own profile instead', () => {
     expect(render(createElement(TeamView, { lang: 'en', principal: principal('user'), api: fakeApi, onOpenSettings: () => undefined }))).toBe('');
   });
 
-  it('the create-user form has no tenant selector and no role selector: only email, name and access level', () => {
+  it('the add form has no tenant selector and offers only the two product roles: email, name, SV or Tester, access level', () => {
     const html = render(createElement(TeamView, { lang: 'en', principal: principal('admin'), api: fakeApi, onOpenSettings: () => undefined }));
-    expect((html.match(/<select/g) ?? []).length).toBe(1); // the access level
+    expect((html.match(/<select/g) ?? []).length).toBe(2); // role and access level
+    expect(html).toContain('value="sv"');
+    expect(html).toContain('value="tester"');
+    expect(html).not.toMatch(/value="(admin|user|super_admin)"/);
     expect(html).not.toMatch(/tenant/i);
     expect(html).not.toMatch(/Super Admin/);
   });
@@ -177,7 +185,7 @@ describe('Platform administration', () => {
   it('has the four sections, the role, and Logout; and no QA navigation', () => {
     const html = render(createElement(SuperAdminConsole, { initialLang: 'en', principal: principal('super_admin', { email: 'boss@example.org' }), api: fakeApi }));
     expect(CONSOLE_TABS).toEqual(['overview', 'workspaces', 'deletions', 'audit']);
-    for (const label of ['Overview', 'Admin workspaces', 'Deletion requests', 'Audit log']) expect(html).toContain(label);
+    for (const label of ['Overview', 'Workspaces', 'Deletion requests', 'Audit log']) expect(html).toContain(label);
     expect(html).toContain('role="tablist"');
     expect(html.match(/role="tab"/g)?.length).toBe(4);
     expect(html).toContain('Super Admin');
@@ -234,6 +242,7 @@ describe('the user table view', () => {
     email: 'a@rakuten.com',
     displayName: null,
     role: 'user',
+    isOwner: false,
     access: 'editor',
     status: 'active',
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -245,12 +254,15 @@ describe('the user table view', () => {
     user({ id: 'usr_a', email: 'zoe@rakuten.com', displayName: 'Zoe Adams', createdAt: '2026-03-01T00:00:00.000Z', lastLoginAt: '2026-04-01T00:00:00.000Z' }),
     user({ id: 'usr_b', email: 'bob@rakuten.com', displayName: null, status: 'disabled', createdAt: '2026-02-01T00:00:00.000Z' }),
     user({ id: 'usr_c', email: 'mika@rakuten.com', displayName: '田中 美香', createdAt: '2026-01-01T00:00:00.000Z', lastLoginAt: '2026-05-01T00:00:00.000Z' }),
-    user({ id: 'usr_admin', email: 'boss@rakuten.com', role: 'admin' }),
+    user({ id: 'usr_admin', email: 'boss@rakuten.com', role: 'admin', isOwner: true, createdAt: '2025-12-01T00:00:00.000Z' }),
   ];
   const names = (v: Partial<typeof DEFAULT_USER_VIEW>) => viewUsers(people, { ...DEFAULT_USER_VIEW, ...v }).map((u) => u.id);
 
-  it('never lists the Admin account as something to manage', () => {
-    expect(names({})).not.toContain('usr_admin');
+  it('lists SVs and Testers alike (the Owner SV included), and filters by role', () => {
+    expect(names({})).toContain('usr_admin');
+    expect(names({ role: 'sv' })).toEqual(['usr_admin']);
+    expect(names({ role: 'tester' })).not.toContain('usr_admin');
+    expect(names({ role: 'tester' })).toHaveLength(3);
   });
 
   it('searches name and email (case-insensitive, Japanese too) and filters by status', () => {
@@ -259,17 +271,17 @@ describe('the user table view', () => {
     expect(names({ q: '美香' })).toEqual(['usr_c']);
     expect(names({ q: 'nobody' })).toEqual([]);
     expect(names({ status: 'disabled' })).toEqual(['usr_b']);
-    expect(names({ status: 'active', sort: 'email' })).toEqual(['usr_c', 'usr_a']);
+    expect(names({ status: 'active', sort: 'email' })).toEqual(['usr_admin', 'usr_c', 'usr_a']);
   });
 
   it('sorts by name, email, created, status and last activity in both directions', () => {
-    expect(names({ sort: 'email' })).toEqual(['usr_b', 'usr_c', 'usr_a']);
-    expect(names({ sort: 'email', dir: 'desc' })).toEqual(['usr_a', 'usr_c', 'usr_b']);
-    expect(names({ sort: 'created' })).toEqual(['usr_c', 'usr_b', 'usr_a']);
+    expect(names({ sort: 'email' })).toEqual(['usr_b', 'usr_admin', 'usr_c', 'usr_a']);
+    expect(names({ sort: 'email', dir: 'desc' })).toEqual(['usr_a', 'usr_c', 'usr_admin', 'usr_b']);
+    expect(names({ sort: 'created' })).toEqual(['usr_admin', 'usr_c', 'usr_b', 'usr_a']);
     expect(names({ sort: 'activity' })[0]).toBe('usr_b'); // never signed in = oldest
     expect(names({ sort: 'activity', dir: 'desc' })[0]).toBe('usr_c');
-    expect(names({ sort: 'status' })).toEqual(['usr_a', 'usr_c', 'usr_b']); // active (by name) before disabled
-    expect(names({ sort: 'name' })).toHaveLength(3);
+    expect(names({ sort: 'status' })).toEqual(['usr_admin', 'usr_a', 'usr_c', 'usr_b']); // active (by name) before disabled
+    expect(names({ sort: 'name' })).toHaveLength(4);
   });
 });
 
@@ -358,8 +370,11 @@ describe('Testers (the QA-facing name of the User role)', () => {
   it('subordinate accounts are called Testers in English and Japanese; the Admin and Super Admin keep their names', () => {
     expect(en['tenancy.role.user']).toBe('Tester');
     expect(ja['tenancy.role.user']).toBe('テスター');
-    expect(en['nav.team']).toBe('Team / Testers');
-    expect(en['tenancy.role.admin']).toBe('Admin');
+    expect(en['nav.team']).toBe('Team Members');
+    expect(en['tenancy.role.admin']).toBe('SV');
+    expect(en['tenancy.role.sv']).toBe('SV');
+    expect(en['tenancy.role.tester']).toBe('Tester');
+    expect(ja['tenancy.role.admin']).toBe('SV');
     expect(en['tenancy.role.super_admin']).toBe('Super Admin');
   });
 
@@ -373,10 +388,10 @@ describe('Testers (the QA-facing name of the User role)', () => {
 
   it('the add form explains the flow: organization email, optional name, signs in later with that address, no code, no password, no selector', () => {
     const html = render(createElement(TeamView, { lang: 'en', principal: principal('admin'), api: fakeApi, onOpenSettings: () => undefined }));
-    expect(html).toContain('Add a tester');
+    expect(html).toContain('Add Member');
     expect(html).toContain('Display name (optional)');
-    expect(html).toContain('no invitation code and no password');
-    expect(html).toContain('there is no workspace selector');
+    expect(html).toContain('there is no invitation code, password or workspace chooser');
+    expect(html).toContain('there is no workspace selection');
     expect(html).not.toMatch(/<select[^>]*tenant/i);
   });
 

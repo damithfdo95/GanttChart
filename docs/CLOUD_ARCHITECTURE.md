@@ -376,11 +376,13 @@ role and action.
 ```
 tenants(id PK 'ten_...', name, storage_mode 'local'|'web',
         status 'active'|'deactivated'|'deletion_requested'|'deleting',
-        created_at, updated_at, deletion_requested_at, deletion_requested_by)
+        created_at, updated_at, deletion_requested_at, deletion_requested_by,
+        owner_user_id  -- Stage 8B: the Owner SV (nullable only for a legacy tenant without any admin))
 users  (id PK 'usr_...', email UNIQUE (normalised), tenant_id -> tenants, role 'admin'|'user',
         access 'editor'|'viewer', status 'invited'|'active'|'disabled',
         created_at, updated_at, created_by, last_login_at)
-        UNIQUE INDEX: one admin per tenant (WHERE role = 'admin')
+        (Stage 8B: the unique index 'one admin per tenant' was dropped; a tenant has several SVs and exactly one OWNER,
+         enforced by tenants.owner_user_id and the triggers described in section 17)
 deletion_audit(id, tenant_id, requested_by_email, requested_at, approved_by_email,
                approved_at, deleted_at, users_deleted)
         identities and timestamps only; never workspace content
@@ -656,7 +658,7 @@ test (rows preserved, repeatable). Older Workers/clients: `displayName` is optio
 ### 15.6 Interface changes
 
 Public page unchanged. Authenticated shell: account badge (name, role, workspace, mode) + Logout; navigation adds **History** (moved
-out of Settings) and **Team / Users** (Admin only); Platform Administration has Overview, Admin workspaces, Deletion requests and Audit
+out of Settings) and **Team / Users** (Admin only; replaced by Team Members in Stage 8B); Platform Administration has Overview, Admin workspaces, Deletion requests and Audit
 log. The dashboard gains an execution summary (needs attention, overdue, executing today, planned/remaining cases, progress) computed only from
 existing project data.
 
@@ -687,3 +689,28 @@ the (small) registry with indexed filters. No new Cloudflare product.
 * Tests: `worker/test/qa-rules.test.ts`, `worker/test/workers/stage8a-qa.test.ts`.
 
 See [QA_EXECUTION.md](QA_EXECUTION.md).
+
+## 17. Stage 8B: SVs, Testers, Owner SV and Team Members
+
+* **Roles.** The product says SV and Tester. The stored roles stay `admin` and `user`; a workspace role on the WebSocket is derived from them
+  (`admin` -> `admin`, `user` + `editor`/`viewer` -> `editor`/`viewer`). An SV is any `admin`, not only the Owner.
+* **Registry schema (additive, idempotent, run by `RegistryStore.init()`).** `ALTER TABLE tenants ADD COLUMN owner_user_id`; `DROP INDEX IF EXISTS
+  users_one_admin_per_tenant`; backfill the owner of every tenant that has none (its oldest non-disabled admin); three triggers
+  (`users_owner_guard`, `tenants_owner_valid`, `tenants_owner_not_cleared`). Existing rows, deletion audit and admin audit are untouched; no new
+  Durable Object class; **no migration tag**.
+* **Authorization.** `can()` gained `history.read` (SV), `tenant.transferOwnership` (Owner SV); `team.view` is SV-only; `tenant.requestDeletion` is
+  Owner-SV-only. The principal carries `isOwner`, derived from `tenants.owner_user_id`.
+* **Commit rules.** `qaCommitError` runs `testerCommitError` first for every non-SV sender (kind whitelist, field-level project diff, own tickets,
+  own performance, assigned + today for Today's Execution) with the actor from the socket attachment and the server's UTC date; it also refuses any
+  change of a profile's `userId` over sync. `WorkspaceStore.commit({rules})` now also gives the rules a `list(kind)` read.
+* **Read filtering.** `WorkspaceRoom` removes `review`, `report`, `topic`, `identityAudit` and `externalIdentity` from the snapshot, catch-up,
+  broadcast and `/api/export` for non-SV sockets (one pre-serialized frame per audience, so broadcast cost is unchanged).
+* **Server-originated revisions.** `ensureMemberProfile` and `linkMember` (RPC) create or link a profile and broadcast it; `restoreRevision` re-applies
+  the profile links after a restore. They are single ordinary revisions in `record_history`.
+* **Free plan.** Member and role changes are rare administrative writes. A new member costs one registry insert and audit row plus one revision;
+  nothing is written on reads, sign-in beyond the existing 12-hour bucket, or heartbeat.
+* **Rollback caution.** The Stage 8A Worker recreates `users_one_admin_per_tenant` at start. Once a workspace has a second SV, rolling back to a
+  Stage 8A Worker would make the registry fail to start; roll forward (or disable and delete the extra SV rows first, which is a manual data change).
+* Tests: `worker/test/registry-stage8b.test.ts`, `worker/test/tester-rules.test.ts`, `worker/test/workers/stage8b-roles.test.ts`, `src/test/stage8bRoles.test.ts`.
+
+See [ADMINISTRATION.md](ADMINISTRATION.md) §9 for the permission matrix.

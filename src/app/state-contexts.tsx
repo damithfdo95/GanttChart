@@ -9,7 +9,8 @@ import {
 } from 'react';
 import { useAppState, type AppStateApi } from '../features/dashboard/hooks/useAppState';
 import { useReportsState, type ReportsStateApi } from './useReportsState';
-import { applyActiveProjectSync, qaInputsFromAppState } from '../domain/projects';
+import { applyActiveProjectSync, applyActiveProjectSyncRestricted, qaInputsFromAppState } from '../domain/projects';
+import { useTenant } from './tenant-context';
 import { normalizeQaInputsForLoad } from '../lib/storage/storage';
 import { consumeCorruptionEvents, type CorruptionEvent } from '../lib/storage/corruption';
 import { persistWorkspaceAsync } from '../lib/storage/db/persistenceBackend';
@@ -262,18 +263,20 @@ function useWorkspacePersistence(app: AppStateApi, reports: ReportsStateApi, boo
 }
 
 /** Sync the app state into the active project record when data actually changed. */
-function useProjectWriteBack(app: AppStateApi, reports: ReportsStateApi): void {
+function useProjectWriteBack(app: AppStateApi, reports: ReportsStateApi, testerOnly: boolean): void {
   useEffect(() => {
-    const nextProjects = applyActiveProjectSync(
-      reports.state.projects,
-      reports.state.activeProjectId,
-      app.state.projectNameEn,
-      app.state.projectNameJa,
-      qaInputsFromAppState(app.state),
-      new Date().toISOString(),
-    );
+    const nextProjects = testerOnly
+      ? applyActiveProjectSyncRestricted(reports.state.projects, reports.state.activeProjectId, qaInputsFromAppState(app.state), new Date().toISOString())
+      : applyActiveProjectSync(
+          reports.state.projects,
+          reports.state.activeProjectId,
+          app.state.projectNameEn,
+          app.state.projectNameJa,
+          qaInputsFromAppState(app.state),
+          new Date().toISOString(),
+        );
     if (nextProjects !== reports.state.projects) reports.setProjects(nextProjects);
-  }, [app.state, reports]);
+  }, [app.state, reports, testerOnly]);
 }
 
 /**
@@ -293,7 +296,9 @@ export function AppProviders({ boot, shared = null, children }: { boot: Persiste
   const reports = useReportsState(boot.workspace.reports);
   const autoBackup = useAutoDailyBackup(app, reports);
   usePortfolioSeed(app, reports, shared === null);
-  useProjectWriteBack(app, reports);
+  // A Tester's changes reach the shared project only where a Tester may change it (see shared/testerRules.ts).
+  const testerOnly = useTenant().principal?.role === 'user';
+  useProjectWriteBack(app, reports, testerOnly);
   const persistence = useWorkspacePersistence(app, reports, boot);
   const sharedSync = useSharedSyncEngine(app, reports, shared);
   return (

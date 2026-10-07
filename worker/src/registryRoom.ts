@@ -9,7 +9,7 @@
 
 import { DurableObject } from 'cloudflare:workers';
 import { isManagedEmail, parseManagedDomains, type AdminAuditDto, type AuditAction, type AuditActor, type StorageMode, type TenantDto, type TenantListQuery, type TenantListResult, type TesterDto, type UserAccess, type UserDto } from '../../shared/tenancy';
-import { RegistryStore, toTenantDto, toUserDto, type AuthResult, type DeletionAuditRow, type Reg } from './registry';
+import { RegistryStore, toTenantDto, toUserDto, type AuthResult, type DeletionAuditRow, type Reg, type UserRow } from './registry';
 
 const mapReg = <A, B>(r: Reg<A>, f: (a: A) => B): Reg<B> => (r.ok ? { ok: true, value: f(r.value) } : r);
 
@@ -80,7 +80,7 @@ export class RegistryRoom extends DurableObject<Env> {
   }
 
   async createTenant(input: { name: string; adminEmail: string; displayName?: unknown; reserved: string[]; actorEmail: string }): Promise<Reg<{ tenant: TenantDto; admin: UserDto }>> {
-    return mapReg(this.store.createTenantWithAdmin({ ...input, managedDomains: this.managedDomains(), now: this.now() }), (v) => ({ tenant: toTenantDto(v.tenant), admin: toUserDto(v.admin) }));
+    return mapReg(this.store.createTenantWithAdmin({ ...input, managedDomains: this.managedDomains(), now: this.now() }), (v) => ({ tenant: toTenantDto(v.tenant), admin: toUserDto(v.admin, v.tenant.owner_user_id) }));
   }
 
   async setTenantStatus(tenantId: string, status: 'active' | 'deactivated', actorEmail: string): Promise<Reg<TenantDto>> {
@@ -105,16 +105,31 @@ export class RegistryRoom extends DurableObject<Env> {
 
   // ---- a tenant's own Admin (the tenant id always comes from the verified principal) ----
 
-  async listUsers(tenantId: string): Promise<UserDto[]> {
-    return this.store.listUsers(tenantId).map(toUserDto);
+  private dto(u: UserRow): UserDto {
+    return toUserDto(u, this.store.ownerIdOf(u.tenant_id));
   }
 
-  async createUser(input: { tenantId: string; email: string; displayName?: unknown; access: UserAccess; reserved: string[]; actor: AuditActor }): Promise<Reg<UserDto>> {
-    return mapReg(this.store.createUser({ ...input, managedDomains: this.managedDomains(), now: this.now() }), toUserDto);
+  async listUsers(tenantId: string): Promise<UserDto[]> {
+    const owner = this.store.ownerIdOf(tenantId);
+    return this.store.listUsers(tenantId).map((u) => toUserDto(u, owner));
+  }
+
+  async getUser(tenantId: string, userId: string): Promise<UserDto | null> {
+    const u = this.store.getUserInTenant(tenantId, userId);
+    return u === null ? null : this.dto(u);
+  }
+
+  async createUser(input: { tenantId: string; email: string; displayName?: unknown; role?: 'admin' | 'user'; access: UserAccess; reserved: string[]; actor: AuditActor }): Promise<Reg<UserDto>> {
+    return mapReg(this.store.createUser({ ...input, managedDomains: this.managedDomains(), now: this.now() }), (u) => this.dto(u));
   }
 
   async updateUser(input: { tenantId: string; userId: string; status?: 'enabled' | 'disabled'; access?: UserAccess; actor: AuditActor }): Promise<Reg<UserDto>> {
-    return mapReg(this.store.updateUser({ ...input, now: this.now() }), toUserDto);
+    return mapReg(this.store.updateUser({ ...input, now: this.now() }), (u) => this.dto(u));
+  }
+
+  /** The Owner SV hands ownership to another enabled SV of the same workspace (one atomic statement). */
+  async transferOwnership(input: { tenantId: string; actor: AuditActor; toUserId: string }): Promise<Reg<{ owner: UserDto; previous: UserDto }>> {
+    return mapReg(this.store.transferOwnership({ ...input, now: this.now() }), (v) => ({ owner: this.dto(v.owner), previous: this.dto(v.previous) }));
   }
 
   async setStorageMode(tenantId: string, mode: StorageMode, actor: AuditActor): Promise<Reg<TenantDto>> {

@@ -10,6 +10,7 @@
  */
 
 import type { Role } from './protocol';
+import { testerCommitError } from './testerRules';
 
 // ---- cycles ------------------------------------------------------------------
 
@@ -71,6 +72,22 @@ export function checkCycle(raw: unknown): CycleCheck {
   if (c.completedAt !== null && !isTimestamp(c.completedAt)) return { ok: false, error: 'cycle_invalid_completed_at' };
   if (!isTimestamp(c.createdAt) || !isTimestamp(c.updatedAt)) return { ok: false, error: 'cycle_invalid_timestamp' };
   return { ok: true, cycle: c as unknown as CycleRecord };
+}
+
+// ---- workspace appearance ----------------------------------------------------
+
+export const TOOL_NAME_MAX = 40;
+
+/**
+ * A workspace's own name for the tool (shown after sign-in; the public landing page keeps the platform name): 1–40
+ * characters of plain text, no control characters and no angle brackets. Returns the cleaned name, or null when it is not valid.
+ */
+export function cleanToolName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const n = raw.normalize('NFKC').replace(/\s+/g, ' ').trim();
+  // eslint-disable-next-line no-control-regex
+  if (n.length < 1 || n.length > TOOL_NAME_MAX || /[\u0000-\u001f\u007f<>]/.test(n)) return null;
+  return n;
 }
 
 // ---- execution entries -------------------------------------------------------
@@ -155,6 +172,8 @@ export function projectExecutionError(prevJson: string | null, nextJson: string)
 export interface QaCommitView {
   /** The JSON of the record as it is NOW (before this commit), or null. */
   get(kind: string, id: string): string | null;
+  /** Every current record of one kind. */
+  list?(kind: string): Array<{ id: string; json: string }>;
 }
 
 export interface QaCommitInput {
@@ -163,6 +182,10 @@ export interface QaCommitInput {
   puts: ReadonlyArray<{ kind: string; id: string; json: string }>;
   deletes: ReadonlyArray<{ kind: string; id: string }>;
   view: QaCommitView;
+  /** The sender's registry user id (from the verified socket attachment). Needed for the Tester rules. */
+  userId?: string;
+  /** The server's UTC date (YYYY-MM-DD). Needed for the Tester rules. */
+  today?: string;
 }
 
 /**
@@ -179,6 +202,28 @@ export interface QaCommitInput {
 export function qaCommitError(input: QaCommitInput): string | null {
   const { role, puts, deletes, view } = input;
   const isAdmin = role === 'admin';
+
+  // A Tester (anyone who is not an SV) may change only their own tickets, performance and today's execution.
+  if (!isAdmin) {
+    if (input.userId === undefined || input.today === undefined || view.list === undefined) return 'tester_rules_unavailable';
+    const refused = testerCommitError({ userId: input.userId, puts, deletes, view: { get: view.get, list: view.list }, today: input.today });
+    if (refused !== null) return refused;
+  }
+
+  // The workspace's own tool name, when set, must be plain, short text (only an SV can write the settings record at all).
+  for (const p of puts) {
+    if (p.kind !== 'settings') continue;
+    const next = asObject(p.json);
+    if (next !== null && next.toolName !== undefined && cleanToolName(next.toolName) !== next.toolName) return 'settings_invalid_tool_name';
+  }
+
+  // A Team Member's link to a registry account is set by the server only (the assignment endpoint's twin).
+  for (const p of puts) {
+    if (p.kind !== 'member') continue;
+    const next = asObject(p.json);
+    const prev = asObject(view.get('member', p.id));
+    if (next !== null && next.userId !== prev?.userId) return 'member_link_requires_api';
+  }
   const putCycles = new Map<string, Record<string, unknown>>();
   for (const p of puts) {
     if (p.kind !== 'cycle') continue;

@@ -5,6 +5,7 @@ import { useAppStateCtx, useReportsStateCtx, activateProject, activateProjectRec
 import { t, resolveBilingualName, type TranslationKey } from '../../i18n';
 import { formatDate, formatDateDisplay, parseDate, todayEpochDays } from '../../lib/dates/dates';
 import { NewProjectForm } from '../../components/NewProjectForm';
+import { useAccess } from '../../app/access';
 import { PortfolioStatusCard, type StatusFact } from '../../components/StatusCard';
 import { useNow } from '../dashboard/hooks/useNow';
 import {
@@ -90,6 +91,8 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
   const guard = useSharedGuard();
   const lang = app.state.language;
   const settings = reportsApi.state.settings;
+  // A Tester reads this screen; every change to projects is an SV's (the server enforces the same).
+  const readOnly = useAccess().isTester;
 
   const [filters, setFilters] = useState({ ...DEFAULT_PORTFOLIO_FILTERS });
   const [sortKey, setSortKey] = useState<ProjectSortKey>('default');
@@ -466,15 +469,19 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
             value={filters.search}
             onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
           />
-          <button type="button" className="btn" onClick={handleAddProject}>
-            {t(lang, 'overall.addProject')}
-          </button>
-          <button type="button" className="btn" onClick={handleExportAll}>
-            {t(lang, 'overall.exportAll')}
-          </button>
-          <button type="button" className="btn" onClick={() => importFileRef.current?.click()}>
-            {t(lang, 'overall.importData')}
-          </button>
+          {readOnly ? null : (
+            <>
+              <button type="button" className="btn" onClick={handleAddProject}>
+                {t(lang, 'overall.addProject')}
+              </button>
+              <button type="button" className="btn" onClick={handleExportAll}>
+                {t(lang, 'overall.exportAll')}
+              </button>
+              <button type="button" className="btn" onClick={() => importFileRef.current?.click()}>
+                {t(lang, 'overall.importData')}
+              </button>
+            </>
+          )}
           <input
             ref={importFileRef}
             type="file"
@@ -650,6 +657,8 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
                           {t(lang, 'overall.onHold')}
                         </button>
                       </span>
+                    ) : readOnly ? (
+                      <span>{t(lang, LIFECYCLE_KEY[project.status])}</span>
                     ) : (
                       <select
                         className="table-input"
@@ -663,7 +672,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
                         ))}
                       </select>
                     )}
-                    {project.status === 'done' && reopenFor !== project.id ? (
+                    {!readOnly && project.status === 'done' && reopenFor !== project.id ? (
                       <button type="button" className="btn btn-ghost" onClick={() => setReopenFor(project.id)}>
                         {t(lang, 'overall.reopen')}
                       </button>
@@ -687,6 +696,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
                     <button type="button" className="btn" onClick={() => handleOpenGantt(project)}>
                       {t(lang, 'overall.openGantt')}
                     </button>
+                    {readOnly ? null : (
                     <button
                       type="button"
                       className="btn btn-ghost"
@@ -696,6 +706,8 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
                     >
                       ⭳
                     </button>
+                    )}
+                    {readOnly ? null : (
                     <button
                       type="button"
                       className="btn btn-danger"
@@ -705,6 +717,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
                     >
                       ×
                     </button>
+                    )}
                   </td>
                 </tr>
               );
@@ -714,6 +727,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
         </div>
       </section>
 
+      {readOnly ? null : (
       <NewProjectForm
         open={newProjectOpen}
         onClose={() => setNewProjectOpen(false)}
@@ -722,6 +736,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
           onProjectCreated();
         }}
       />
+      )}
     </div>
   );
 }

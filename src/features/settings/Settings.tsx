@@ -8,6 +8,8 @@ import { isFolderAccessSupported, pickBackupDirectory, readAutoBackupRecord } fr
 import { clearAllLocalDataAsync, getStorageDiagnostics, type StorageDiagnostics } from '../../lib/storage/db/persistenceBackend';
 import { MIGRATION_FAILURE_LABEL_KEY, readMigrationFailureRecord } from '../../lib/storage/db/recovery';
 import { WorkspacePanel } from '../tenancy/WorkspacePanel';
+import { DataBackup } from './DataBackup';
+import { WorkspaceAppearance } from './WorkspaceAppearance';
 import { useSharedSync } from '../../app/shared-sync';
 import { unlinkDevice } from '../../lib/sync/device';
 import { createBackupPayload } from '../../lib/backup/backup';
@@ -304,6 +306,10 @@ export function Settings() {
           </>
         ) : null}
       </section>
+
+      <WorkspaceAppearance />
+
+      <DataBackup />
 
       <WorkspacePanel />
 

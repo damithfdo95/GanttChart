@@ -11,6 +11,8 @@ const tenant = (id: string, mode: 'local' | 'web' = 'web'): TenantDto => ({ id, 
 function member(over: Partial<PrincipalDto> & { tenantId?: string } = {}): Extract<ServerDetection, { mode: 'server' }> {
   const principal: PrincipalDto = {
     email: 'u@x.co',
+    userId: 'usr_u',
+    isOwner: false,
     displayName: null,
     role: 'user',
     tenant: tenant(over.tenantId ?? 'ten_a'),
@@ -36,7 +38,7 @@ describe('decideStartup', () => {
   });
 
   it('a super admin gets the console, never a workspace', () => {
-    const principal: PrincipalDto = { email: 's@x.co', displayName: null, role: 'super_admin', tenant: null, access: null, workspaceRole: null, sharedWorkspace: false };
+    const principal: PrincipalDto = { email: 's@x.co', userId: null, isOwner: false, displayName: null, role: 'super_admin', tenant: null, access: null, workspaceRole: null, sharedWorkspace: false };
     expect(decideStartup({ mode: 'server', principal, identity: null }, linked('s@x.co', 'ten_a')).kind).toBe('super-admin');
   });
 
@@ -128,8 +130,10 @@ describe('workspace panel capabilities', () => {
     expect(panelCapabilities({ role: 'user', tenant: web })).toEqual({ showPanel: true, canChooseStorage: false, canManageUsers: false, canRequestDeletion: false });
   });
   it('an admin manages users only in web mode', () => {
-    expect(panelCapabilities({ role: 'admin', tenant: web })).toMatchObject({ canChooseStorage: true, canManageUsers: true, canRequestDeletion: true });
-    expect(panelCapabilities({ role: 'admin', tenant: local })).toMatchObject({ canChooseStorage: true, canManageUsers: false, canRequestDeletion: true });
+    expect(panelCapabilities({ role: 'admin', isOwner: true, tenant: web })).toMatchObject({ canChooseStorage: true, canManageUsers: true, canRequestDeletion: true });
+    // Any SV manages the workspace; only the Owner SV can ask for it to be deleted.
+    expect(panelCapabilities({ role: 'admin', isOwner: false, tenant: web })).toMatchObject({ canChooseStorage: true, canManageUsers: true, canRequestDeletion: false });
+    expect(panelCapabilities({ role: 'admin', isOwner: true, tenant: local })).toMatchObject({ canChooseStorage: true, canManageUsers: false, canRequestDeletion: true });
   });
   it('a super admin or no backend gets no workspace panel', () => {
     expect(panelCapabilities({ role: 'super_admin', tenant: null }).showPanel).toBe(false);

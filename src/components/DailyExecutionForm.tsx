@@ -22,6 +22,10 @@ interface DailyExecutionFormProps {
   /** Controlled selected date (optional; uncontrolled = today by default). */
   date?: string;
   onDateChange?: (date: string) => void;
+  /** A Tester records today's entry only; earlier days are the SV's to correct (the server enforces it as well). */
+  todayOnly?: boolean;
+  /** Why recording is not possible right now (e.g. a Tester not assigned to this execution). Shown instead of a save that would be refused. */
+  blockedReason?: string;
 }
 
 /**
@@ -46,11 +50,11 @@ const DELTA_KEYS = ['pass', 'fail', 'notApplicable', 'spo', 'blocked', 'retest',
 const STATUS_KEYS = [...DELTA_KEYS, 'uncategorizedCompleted'] as const;
 type StatusKey = (typeof STATUS_KEYS)[number];
 
-export function DailyExecutionForm({ lang, date: controlledDate, onDateChange }: DailyExecutionFormProps) {
+export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, todayOnly = false, blockedReason }: DailyExecutionFormProps) {
   const { state, saveDailyExecutionEntry } = useAppStateCtx();
   const today = formatDate(todayEpochDays());
   const [dateState, setDateState] = useState<string>(today);
-  const date = controlledDate ?? dateState;
+  const date = todayOnly ? today : (controlledDate ?? dateState);
   const [mode, setMode] = useState<InputMode>('TOTAL');
 
   const setDate = (next: string): void => {
@@ -110,12 +114,14 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange }:
             className="input"
             type="date"
             max={today}
+            disabled={todayOnly}
             value={date}
             onChange={(e) => {
               if (e.target.value !== '') setDate(e.target.value);
             }}
           />
         </Field>
+        {todayOnly ? null : (
         <Field label={t(lang, 'exec.pickRecordedDay')}>
           <select
             className="input"
@@ -132,6 +138,7 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange }:
             ))}
           </select>
         </Field>
+        )}
         <Field label={t(lang, 'exec.actualStart')}>
           <input
             className="input"
@@ -237,9 +244,14 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange }:
       </div>
 
       <div className="exec-form-actions">
-        <button type="button" className="btn" onClick={handleSave}>
+        <button type="button" className="btn" onClick={handleSave} disabled={blockedReason !== undefined}>
           {t(lang, 'exec.saveEntry')}
         </button>
+        {blockedReason === undefined ? null : (
+          <span className="exec-help exec-clamped" role="note">
+            {blockedReason}
+          </span>
+        )}
         {mode === 'TOTAL' ? (
           <span className="exec-help">
             {t(lang, 'exec.derivedDayLabel')}: P+{formatInteger(derived.pass, lang)} F+{formatInteger(derived.fail, lang)} N+{' '}

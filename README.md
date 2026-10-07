@@ -705,3 +705,10 @@ The architecture is deliberately wrapper-friendly:
 Test cycles/releases, Tester assignment by user id, execution metrics (Executed, Passed, Failed, Blocked, Remaining,
 Pass rate = Passed / Executed), deterministic risk indicators, a manager dashboard, project control center, Tester
 workload view and a Daily Report Execution Summary. Details and definitions: [docs/QA_EXECUTION.md](docs/QA_EXECUTION.md).
+
+## Stage 8B: SVs, Testers, Team Members
+
+Two workspace roles: **SV** (manages the workspace; there can be several, one of them the **Owner SV**) and **Tester** (enters their own Today's Execution,
+tickets and performance; reads Overall and Gantt). Team Members replaces RCS Members and Team / Testers; History is SV-only and paged; Export / Import /
+Reset moved to Settings → Data & Backup; a workspace can have its own tool name. Roles, the permission matrix, the Owner SV rules and the schema upgrade are
+in [docs/ADMINISTRATION.md](docs/ADMINISTRATION.md) §1 and §9 and [docs/CLOUD_ARCHITECTURE.md](docs/CLOUD_ARCHITECTURE.md) §17.

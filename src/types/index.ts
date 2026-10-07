@@ -215,6 +215,11 @@ export interface RcsMember {
   active: boolean;
   /** Previous names (V6.9-A); absent on pre-V6.9 data. */
   nameHistory?: RcsMemberNameHistory[];
+  /**
+   * The registry account this profile belongs to (Stage 8B). Set by the SERVER only (when a Team Member is added, or when an SV
+   * links an older roster entry to an account); absent for roster-only members. Never typed, edited or guessed from names.
+   */
+  userId?: string;
 }
 
 /** Initial RCS member master seed (V6.8 §3) — stable ids, seeded once. */
@@ -718,6 +723,8 @@ export interface ReportSettings {
   progressRules: ProgressRules;
   /** Automatic daily backup (optional — normalized with defaults on load). */
   autoBackup?: AutoBackupSettings;
+  /** This workspace's own name for the tool, shown after sign-in (Stage 8B). Absent = the platform name. */
+  toolName?: string;
 }
 
 export interface ReportsState {

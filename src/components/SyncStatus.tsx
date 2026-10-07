@@ -3,6 +3,7 @@ import { downloadTextFile } from '../lib/export/download';
 import { useSharedSync } from '../app/shared-sync';
 import { useAppStateCtx } from '../app/state-contexts';
 import { t, type TranslationKey } from '../i18n';
+import { dictionaries } from '../i18n/dictionaries';
 import type { SyncStatus as Status } from '../lib/sync/client';
 
 const STATUS: Record<Status, { key: TranslationKey; symbol: string; tone: string }> = {
@@ -53,6 +54,11 @@ export function SyncBanners() {
     downloadTextFile('ganttchart-my-versions.json', 'application/json', JSON.stringify({ app: 'ganttchart', kind: 'conflict-stash', exportedAt: new Date().toISOString(), edits: readStash() }, null, 2));
   };
 
+  // The server says WHY it refused a change (a short code). Known codes get a plain explanation; anything else stays generic.
+  const lastError = [...shared.notices].reverse().find((n) => n.kind === 'error');
+  const reasonKey = lastError?.kind === 'error' ? (`shared.reject.${lastError.message}` as TranslationKey) : null;
+  const reasonText = reasonKey !== null && reasonKey in dictionaries.en ? t(lang, 'shared.banner.errorWhy', { reason: t(lang, reasonKey) }) : null;
+
   return (
     <>
       {status === 'session-expired' ? (
@@ -93,6 +99,7 @@ export function SyncBanners() {
         <div className="app-banner" role="alert">
           <div className="app-banner-body">
             <strong>{t(lang, 'shared.banner.errorTitle')}</strong>
+            {reasonText === null ? null : <span>{reasonText}</span>}
           </div>
           <div className="app-banner-actions">
             <button type="button" className="btn" onClick={shared.retryNow}>

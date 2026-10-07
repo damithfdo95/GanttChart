@@ -155,7 +155,7 @@ it never allows access.
 * Roll out like any code deploy: `npm run build`, then `cd worker && npm run validate`, then `npx wrangler deploy --env=""` (the guard runs
   automatically). Rollback is `npx wrangler rollback`; the extra column and table are ignored by the previous code.
 * After deploying, check: (1) sign in as the Super Admin: the console shows four tabs; (2) create/disable/reactivate a test workspace
-  and see the entries in *Audit log*; (3) as an Admin in Web storage open *Team / Users*, add and disable a user; (4) the user's
+  and see the entries in *Audit log*; (3) as an SV in Web storage open *Team Members*, add and disable a Tester; (4) the user's
   open session ends within seconds.
 
 ## 4. Free-plan resources (unchanged by Stage 6)
@@ -354,3 +354,18 @@ editing all day, a save every ~20 s each): 43,200 rows written (43%), ≈720 DO 
 * The Access cookie reaching `/api` and `/ws` when only those paths are protected (step 8 verifies it).
 * The Cloudflare Zero Trust Free user limit.
 * A second Access application per path would create separate AUDs (handled by a comma-separated `ACCESS_AUD`).
+
+## Stage 8B rollout notes (SV / Tester roles, Owner SV, Team Members)
+
+* **No Cloudflare change** (Access, secrets, variables, DNS, bindings) and **no Wrangler migration tag**. The registry Durable Object upgrades its
+  own SQLite on the first start of the new code: one new nullable column, the old one-admin index dropped, each workspace's existing Admin recorded as
+  its Owner SV, three guard triggers.
+* **No manual data migration.** Existing Testers keep signing in unchanged. Existing roster ("RCS") members stay as they are; an SV links them to
+  accounts from *Team Members* when wanted. Existing Testers have no profile until an SV creates or links one; until then they can raise tickets but not
+  write performance rows, and **they can record Today's Execution only on projects they are assigned to** (assign them first).
+* Roll out like any code deploy: `npm run build`, `cd worker && npm run validate`, then `npx wrangler deploy --env=""`.
+* **Do not roll back to a Stage 8A Worker once a workspace has more than one SV** (the old code would try to recreate the one-admin index and the registry
+  would not start). Roll forward instead.
+* After deploying check: (1) as the Super Admin the console lists workspaces with their Owner SV; (2) as an existing workspace's SV, *Team Members* shows
+  them as **SV ★ Owner**; (3) add a second SV and a Tester; (4) sign in as the Tester: the menu is Dashboard, Projects / Test Executions, Gantt, Tickets,
+  Performance, Team Members; History and Settings are absent; (5) as an SV open *History* and page through it; (6) Settings shows Data & Backup.

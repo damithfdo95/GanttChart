@@ -41,7 +41,7 @@ describe('the public page', () => {
   });
 
   it('explains that accounts come from an administrator, and reports a failed sign-in without detail', () => {
-    expect(html('en')).toContain('Accounts are created by your organization');
+    expect(html('en')).toContain('Accounts are added by an SV of your workspace');
     const failed = html('en', true);
     expect(failed).toContain('Sign-in could not be completed');
     expect(html('en', false)).not.toContain('Sign-in could not be completed');
@@ -68,7 +68,7 @@ describe('the "no account" screen for an authenticated but unregistered identity
   it('says the identity was verified but there is no account, and who creates accounts', () => {
     const en = markup('en');
     expect(en).toContain('Your identity was verified, but you do not have a GanttChart account.');
-    expect(en).toContain('Accounts are created by your organization');
+    expect(en).toContain('Accounts are added by an SV of your workspace');
     expect(markup('ja')).toContain('アカウントがありません');
   });
 

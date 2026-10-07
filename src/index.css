@@ -3581,3 +3581,10 @@ textarea:focus-visible,
 .status-cycle-active { background: var(--info-bg); color: var(--info-fg); border-color: var(--info-border); }
 .status-cycle-completed { background: var(--done-bg); color: var(--done-fg); border-color: var(--done-border); }
 .status-cycle-archived { background: var(--neutral-bg); color: var(--text-muted); border-color: var(--border); }
+
+/* ---- Stage 8B: SV / Tester, Team Members ---- */
+.plain-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.plain-fieldset:disabled { opacity: 0.85; }
+.status-owner { background: var(--info-bg); color: var(--info-fg); border-color: var(--info-border); }
+.tenancy-profile-actions { display: grid; gap: 4px; justify-items: start; }
+.tenancy-link-row { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }

@@ -25,6 +25,7 @@ import { TesterPerformanceTable, sourceLabel } from './TesterPerformanceTable';
 import { TesterDetail, type TesterDetailSummary } from './TesterDetail';
 import { DailyExecutionForm, type ParsedDailyExecution } from './DailyExecutionForm';
 import { SyncSection } from './SyncSection';
+import { useAccess } from '../../app/access';
 import { TablePager } from '../../components/TablePager';
 import { usePagedRows } from '../../lib/pagination/usePagedRows';
 
@@ -75,6 +76,11 @@ export function PerformanceTab() {
 
   const projects = reportsApi.state.projects;
   const members = reportsApi.state.rcsMembers ?? [];
+  const access = useAccess();
+  const tester = access.isTester;
+  const ownMember = members.find((m) => m.id === access.ownMemberId) ?? null;
+  /** A Tester changes only their own rows (the server enforces the same). */
+  const isOwnRow = (record: TesterDailyPerformance): boolean => !tester || (access.ownMemberId !== null && record.memberId === access.ownMemberId);
   const activeMembers = useMemo(() => members.filter((member) => member.active), [members]);
 
   // Full evidence across ALL projects (Done included — §22).
@@ -447,11 +453,17 @@ export function PerformanceTab() {
           lang={lang}
           members={activeMembers}
           memberNames={memberNames}
+          {...(tester ? { lockedMember: ownMember } : {})}
           existing={editingRecord}
           disabled={activeProjectId === ''}
           onSubmit={handleDailySubmit}
           onCancelEdit={() => setEditingRecord(undefined)}
         />
+        {tester && ownMember === null ? (
+          <p className="dr-empty" role="note">
+            {t(lang, 'performance.testerNoProfile')}
+          </p>
+        ) : null}
         <h3>{t(lang, 'performance.dailyRecords')}</h3>
         {sortedActiveRecords.length === 0 ? (
           <p className="dr-empty">{t(lang, 'performance.noDailyRecords')}</p>
@@ -489,12 +501,16 @@ export function PerformanceTab() {
                     <td className="num">{record.casesSpoAssigned ?? '—'}</td>
                     <td>{sourceLabel(lang, record.source)}</td>
                     <td className="dr-row-actions">
-                      <button type="button" className="btn" onClick={() => handleEditRecord(record)}>
-                        {t(lang, 'buttons.edit')}
-                      </button>
-                      <button type="button" className="btn btn-danger" onClick={() => handleRemoveRecord(record)}>
-                        {t(lang, 'buttons.remove')}
-                      </button>
+                      {isOwnRow(record) ? (
+                        <>
+                          <button type="button" className="btn" onClick={() => handleEditRecord(record)}>
+                            {t(lang, 'buttons.edit')}
+                          </button>
+                          <button type="button" className="btn btn-danger" onClick={() => handleRemoveRecord(record)}>
+                            {t(lang, 'buttons.remove')}
+                          </button>
+                        </>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -505,6 +521,7 @@ export function PerformanceTab() {
         <TablePager lang={lang} pager={pager} />
       </section>
 
+      {tester ? null : (
       <SyncSection
         lang={lang}
         activeProjectId={activeProjectId}
@@ -518,6 +535,7 @@ export function PerformanceTab() {
         onUpsertAssignment={reportsApi.upsertTesterAssignment}
         onRemoveAssignment={reportsApi.removeTesterAssignment}
       />
+      )}
     </div>
   );
 }

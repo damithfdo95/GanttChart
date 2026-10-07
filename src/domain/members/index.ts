@@ -26,7 +26,9 @@ export function upsertRcsMember(members: readonly RcsMember[], member: RcsMember
   const index = members.findIndex((m) => m.id === member.id);
   if (index === -1) return [...members, member];
   const copy = [...members];
-  copy[index] = member;
+  // The link to the person's account (Stage 8B) belongs to the server: an edit of the profile can never drop or change it.
+  const userId = members[index].userId;
+  copy[index] = userId === undefined ? member : { ...member, userId };
   return copy;
 }
 

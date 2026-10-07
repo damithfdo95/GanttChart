@@ -19,6 +19,15 @@ const KNOWN_ERRORS: ReadonlySet<string> = new Set([
   'forbidden_target',
   'same_person',
   'forbidden',
+  'owner_protected',
+  'invalid_role',
+  'confirmation_required',
+  'user_not_found',
+  'member_not_found',
+  'member_already_linked',
+  'account_already_linked',
+  'invalid_user_id',
+  'invalid_member_id',
 ]);
 
 /** A server error code -> a translated message. Unknown codes get the generic message (and never the raw server text). */
@@ -65,10 +74,10 @@ export interface PanelCapabilities {
 }
 
 /** What the workspace panel offers this person. The server enforces the same rules; this only decides what to show. */
-export function panelCapabilities(principal: { role: 'super_admin' | 'admin' | 'user'; tenant: { storageMode: 'local' | 'web' } | null } | null): PanelCapabilities {
+export function panelCapabilities(principal: { role: 'super_admin' | 'admin' | 'user'; isOwner?: boolean; tenant: { storageMode: 'local' | 'web' } | null } | null): PanelCapabilities {
   if (principal === null || principal.tenant === null || principal.role === 'super_admin') {
     return { showPanel: false, canChooseStorage: false, canManageUsers: false, canRequestDeletion: false };
   }
   const admin = principal.role === 'admin';
-  return { showPanel: true, canChooseStorage: admin, canManageUsers: admin && principal.tenant.storageMode === 'web', canRequestDeletion: admin };
+  return { showPanel: true, canChooseStorage: admin, canManageUsers: admin && principal.tenant.storageMode === 'web', canRequestDeletion: admin && principal.isOwner === true };
 }

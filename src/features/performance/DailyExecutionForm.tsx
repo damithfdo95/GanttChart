@@ -87,6 +87,11 @@ interface DailyExecutionFormProps {
   memberNames: string[];
   /** Existing record being edited (same date + tester). */
   existing: TesterDailyPerformance | undefined;
+  /**
+   * A Tester enters their OWN rows only: the person is fixed to their linked Team Member profile (the server refuses any
+   * other). null with `locked` set means the Tester has no profile yet, so the form cannot be used.
+   */
+  lockedMember?: RcsMember | null;
   /** True when no active project exists — the form cannot submit anywhere. */
   disabled?: boolean;
   onSubmit: (values: ParsedDailyExecution) => void;
@@ -100,9 +105,12 @@ interface DailyExecutionFormProps {
  * master exists. Totals stay authoritative and the status tallies optional
  * overlays.
  */
-export function DailyExecutionForm({ lang, members, memberNames, existing, disabled = false, onSubmit, onCancelEdit }: DailyExecutionFormProps) {
+export function DailyExecutionForm({ lang, members, memberNames, existing, lockedMember, disabled: disabledProp = false, onSubmit, onCancelEdit }: DailyExecutionFormProps) {
+  const locked = lockedMember !== undefined;
+  const disabled = disabledProp || (locked && lockedMember === null);
   const today = formatDate(todayEpochDays());
-  const [form, setForm] = useState<DailyExecutionFormValues>(() => (existing === undefined ? emptyForm(today) : fromRecord(existing)));
+  const own = (): DailyExecutionFormValues => (lockedMember ? { ...emptyForm(today), memberId: lockedMember.id, testerName: lockedMember.name, team: lockedMember.team } : emptyForm(today));
+  const [form, setForm] = useState<DailyExecutionFormValues>(() => (existing === undefined ? own() : fromRecord(existing)));
   const [errors, setErrors] = useState<Partial<Record<keyof DailyExecutionFormValues, string>>>({});
 
   const handleChange = (patch: Partial<DailyExecutionFormValues>): void => {
@@ -147,7 +155,7 @@ export function DailyExecutionForm({ lang, members, memberNames, existing, disab
       casesQuestioned: parseCount(form.casesQuestioned),
       casesSpoAssigned: parseCount(form.casesSpoAssigned),
     });
-    setForm(emptyForm(today));
+    setForm(own());
   };
 
   const numericFields: { key: keyof DailyExecutionFormValues; label: string }[] = [
@@ -180,6 +188,7 @@ export function DailyExecutionForm({ lang, members, memberNames, existing, disab
         {members.length > 0 ? (
           <select
             className="input"
+            disabled={locked}
             value={form.memberId}
             onChange={(e) => {
               const memberId = e.target.value;

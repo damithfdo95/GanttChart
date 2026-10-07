@@ -193,9 +193,9 @@ describe('WebSockets cannot cross tenants', () => {
     if (!a1.ok || !a2.ok || !b1.ok || !b2.ok) throw new Error('connect');
     await Promise.all([a1.sock.next('snapshot'), a2.sock.next('snapshot'), b1.sock.next('snapshot'), b2.sock.next('snapshot')]);
     const snap = await get<{ revision: number }>(w.a.adminEmail, '/api/export');
-    a1.sock.send(commitMsg(snap.json.revision, [rec('project', 'new-in-a', { name: 'ALPHA-LIVE-CHANGE' })]));
-    await a1.sock.next('ack');
-    expect(JSON.stringify(await a2.sock.next('changes'))).toContain('ALPHA-LIVE-CHANGE');
+    a2.sock.send(commitMsg(snap.json.revision, [rec('project', 'new-in-a', { name: 'ALPHA-LIVE-CHANGE' })]));
+    await a2.sock.next('ack');
+    expect(JSON.stringify(await a1.sock.next('changes'))).toContain('ALPHA-LIVE-CHANGE');
     await b1.sock.expectNone('changes', 400);
     await b2.sock.expectNone('changes', 100);
   });
@@ -216,15 +216,17 @@ describe('WebSockets cannot cross tenants', () => {
 
   it('the same two tenants keep independent revision numbers and conflict spaces', async () => {
     const w = await twoTenants();
-    const a = await openSocket(w.userA);
-    const b = await openSocket(w.userB);
+    const a = await openSocket(w.a.adminEmail);
+    const b = await openSocket(w.b.adminEmail);
     if (!a.ok || !b.ok) throw new Error('connect');
     await Promise.all([a.sock.next('snapshot'), b.sock.next('snapshot')]);
     // Both edit the record that has the SAME id in both tenants, on base revision 1.
-    a.sock.send(commitMsg(1, [rec('project', 'shared-id', { name: 'A edit' })]));
-    b.sock.send(commitMsg(1, [rec('project', 'shared-id', { name: 'B edit' })]));
-    expect(await a.sock.next('ack')).toMatchObject({ revision: 2 });
-    expect(await b.sock.next('ack')).toMatchObject({ revision: 2 }); // no conflict: different tenants
+    const headA = (await get<{ revision: number }>(w.a.adminEmail, '/api/export')).json.revision;
+    const headB = (await get<{ revision: number }>(w.b.adminEmail, '/api/export')).json.revision;
+    a.sock.send(commitMsg(headA, [rec('project', 'shared-id', { name: 'A edit' })]));
+    b.sock.send(commitMsg(headB, [rec('project', 'shared-id', { name: 'B edit' })]));
+    expect(await a.sock.next('ack')).toMatchObject({ revision: headA + 1 });
+    expect(await b.sock.next('ack')).toMatchObject({ revision: headB + 1 }); // no conflict: different tenants
     expect((await get(w.a.adminEmail, '/api/export')).text).toContain('A edit');
     expect((await get(w.a.adminEmail, '/api/export')).text).not.toContain('B edit');
   });
@@ -237,22 +239,24 @@ describe('history and restore cannot cross tenants', () => {
     const a = await openSocket(w.a.adminEmail);
     if (!a.ok) throw new Error('connect');
     await a.sock.next('snapshot');
-    a.sock.send(commitMsg(1, [rec('project', 'proj-a', { name: `${SECRET_A}-v2` })]));
+    const headA = (await get<{ revision: number }>(w.a.adminEmail, '/api/export')).json.revision;
+    const headB = (await get<{ revision: number }>(w.b.adminEmail, '/api/export')).json.revision;
+    a.sock.send(commitMsg(headA, [rec('project', 'proj-a', { name: `${SECRET_A}-v2` })]));
     await a.sock.next('ack');
 
     const revsA = await get<Array<{ revision: number; actor: string }>>(w.a.adminEmail, '/api/revisions');
-    expect(revsA.json.map((r) => r.revision)).toEqual([2, 1]);
+    expect(revsA.json.map((r) => r.revision)).toEqual(Array.from({ length: headA + 1 }, (_, i) => headA + 1 - i));
     expect(revsA.text).not.toContain(w.b.adminEmail);
 
     const revsB = await get<Array<{ revision: number }>>(w.b.adminEmail, '/api/revisions');
-    expect(revsB.json.map((r) => r.revision)).toEqual([1]); // B's history is B's own
+    expect(revsB.json.map((r) => r.revision)).toEqual(Array.from({ length: headB }, (_, i) => headB - i)); // B's history is B's own
 
     // A restores revision 1: only A changes.
     expect((await post(w.a.adminEmail, '/api/revisions/1/restore')).status).toBe(200);
     expect((await get(w.a.adminEmail, '/api/export')).text).not.toContain(`${SECRET_A}-v2`);
     expect((await get(w.b.adminEmail, '/api/export')).text).toContain(SECRET_B);
     // Revision 2 exists for A only.
-    expect((await get(w.b.adminEmail, '/api/revisions/2')).status).toBe(404);
+    expect((await get(w.b.adminEmail, `/api/revisions/${headA + 1}`)).status).toBe(404);
   });
 
   it('a user (not admin) cannot restore, and an admin cannot restore another tenant’s revision by number', async () => {

@@ -5,6 +5,7 @@ import { countRecords } from '../../lib/sync/records';
 import { SHARED_HISTORY_DAYS } from '../../lib/sync/guards';
 import { RECORD_KINDS, type RecordPut } from '../../../shared/protocol';
 import { t } from '../../i18n';
+import { DEFAULT_HISTORY_PAGE_SIZE, HISTORY_PAGE_SIZES, pageUrl, toPage, type HistoryPage, type HistoryPageSize } from '../../lib/history/pagination';
 
 interface RevisionRow {
   revision: number;
@@ -31,23 +32,27 @@ function when(iso: string, lang: 'en' | 'ja'): string {
 export function SharedHistory() {
   const lang = useAppStateCtx().state.language;
   const shared = useSharedSync();
-  const role = shared.sync?.you?.role ?? shared.identity?.role ?? null;
-  const [rows, setRows] = useState<RevisionRow[] | null>(null);
+  const [page, setPage] = useState<HistoryPage<RevisionRow> | null>(null);
+  const [pageSize, setPageSize] = useState<HistoryPageSize>(DEFAULT_HISTORY_PAGE_SIZE);
+  /** One `before` cursor per page we are past; empty = the newest page. */
+  const [cursors, setCursors] = useState<number[]>([]);
+  const rows = page === null ? null : page.rows;
   const [failed, setFailed] = useState(false);
   const [preview, setPreview] = useState<{ revision: number; text: string } | null>(null);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const before = cursors.length === 0 ? undefined : cursors[cursors.length - 1];
   const load = useCallback(async (): Promise<void> => {
     setFailed(false);
     try {
-      const res = await fetch('/api/revisions?limit=50', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } });
+      const res = await fetch(pageUrl(pageSize, before), { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } });
       if (!res.ok) throw new Error(String(res.status));
-      setRows((await res.json()) as RevisionRow[]);
+      setPage(toPage((await res.json()) as RevisionRow[], pageSize));
     } catch {
       setFailed(true);
     }
-  }, []);
+  }, [pageSize, before]);
 
   useEffect(() => {
     void load();
@@ -107,7 +112,6 @@ export function SharedHistory() {
         </button>
       </div>
       <p className="dr-summary">{t(lang, 'shared.history.help', { days: SHARED_HISTORY_DAYS })}</p>
-      {role !== 'admin' ? <p className="dr-summary">{t(lang, 'shared.history.adminOnly')}</p> : null}
       {message === null ? null : (
         <p className={`data-controls-message ${message.kind}`} role={message.kind === 'error' ? 'alert' : 'status'}>
           {message.text}
@@ -150,7 +154,7 @@ export function SharedHistory() {
                   <button type="button" className="btn btn-ghost" onClick={() => void showPreview(row.revision)}>
                     {t(lang, 'shared.history.preview')}
                   </button>{' '}
-                  <button type="button" className="btn" disabled={role !== 'admin' || busy} onClick={() => void restore(row)}>
+                  <button type="button" className="btn" disabled={busy} onClick={() => void restore(row)}>
                     {t(lang, 'shared.history.restore')}
                   </button>
                 </td>
@@ -158,6 +162,36 @@ export function SharedHistory() {
             ))}
           </tbody>
         </table>
+      )}
+      {page === null || failed ? null : (
+        <nav className="table-pager" aria-label={t(lang, 'shared.history.pager')}>
+          <button type="button" className="btn btn-ghost" disabled={cursors.length === 0} onClick={() => setCursors((c) => c.slice(0, -1))}>
+            {t(lang, 'shared.history.previous')}
+          </button>
+          <span role="status">
+            {page.newest === null ? t(lang, 'shared.history.empty') : t(lang, 'shared.history.range', { newest: page.newest, oldest: page.oldest ?? page.newest, page: cursors.length + 1 })}
+          </span>
+          <button type="button" className="btn btn-ghost" disabled={!page.hasMore || page.oldest === null} onClick={() => page.oldest !== null && setCursors((c) => [...c, page.oldest as number])}>
+            {t(lang, 'shared.history.next')}
+          </button>
+          <label>
+            {t(lang, 'shared.history.pageSize')}
+            <select
+              className="input"
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value) as HistoryPageSize);
+                setCursors([]);
+              }}
+            >
+              {HISTORY_PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+        </nav>
       )}
     </section>
   );

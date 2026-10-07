@@ -105,7 +105,7 @@ describe('user management (Admin of a WEB workspace)', () => {
   it('the admin account itself cannot be changed through user management', async () => {
     const w = await twoTenants();
     const admin = (await listUsers(w.a.adminEmail)).find((u) => u.role === 'admin')!;
-    expect((await patch(w.a.adminEmail, `/api/tenant/users/${admin.id}`, { status: 'disabled' })).status).toBe(403);
+    expect((await patch(w.a.adminEmail, `/api/tenant/users/${admin.id}`, { status: 'disabled' })).status).toBe(409);
     expect((await whoami(w.a.adminEmail)).status).toBe(200);
   });
 

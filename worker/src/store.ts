@@ -53,7 +53,7 @@ export interface CommitInput {
    * Rules beyond "well-formed": references between records and who may change what. Called with the commit's
    * effective changes (no-ops already dropped) before anything is written; a string refuses the whole commit.
    */
-  rules?: (view: { puts: RecordPut[]; deletes: RecordDelete[]; get: (kind: string, id: string) => string | null }) => string | null;
+  rules?: (view: { puts: RecordPut[]; deletes: RecordDelete[]; get: (kind: string, id: string) => string | null; list: (kind: string) => Array<{ id: string; json: string }> }) => string | null;
 }
 
 export type CommitResult =
@@ -169,6 +169,11 @@ export class WorkspaceStore {
   }
 
   /** Every current record. */
+  /** Every current record of one kind (a small, indexed read; cheaper than a whole snapshot). */
+  recordsOfKind(kind: RecordKind): RecordPut[] {
+    return this.storage.sql.exec<{ kind: RecordKind; id: string; json: string }>(`SELECT kind, id, json FROM records WHERE kind = ? ORDER BY id`, kind).toArray().map((r) => ({ kind: r.kind, id: r.id, json: r.json }));
+  }
+
   snapshot(): { revision: number; records: RecordPut[] } {
     const rows = this.storage.sql.exec<{ kind: RecordKind; id: string; json: string }>(`SELECT kind, id, json FROM records ORDER BY kind, id`).toArray();
     return { revision: this.revision(), records: rows.map((r) => ({ kind: r.kind, id: r.id, json: r.json })) };
@@ -269,7 +274,12 @@ export class WorkspaceStore {
       }
 
       if (input.rules !== undefined) {
-        const problem = input.rules({ puts, deletes, get: (kind, id) => this.currentJson(kind, id) });
+        const problem = input.rules({
+          puts,
+          deletes,
+          get: (kind, id) => this.currentJson(kind, id),
+          list: (kind) => this.storage.sql.exec<{ id: string; json: string }>(`SELECT id, json FROM records WHERE kind = ?`, kind).toArray(),
+        });
         if (problem !== null) return { ok: false as const, reason: 'invalid' as const, revision: head, message: problem };
       }
 

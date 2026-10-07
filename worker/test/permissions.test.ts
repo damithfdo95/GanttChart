@@ -6,13 +6,13 @@ import type { AuthResult, TenantRow, UserRow } from '../src/registry';
 const ACTIONS: Action[] = [
   'registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'audit.platform', 'legacy.adopt',
   'tenant.view', 'tenant.requestDeletion', 'storage.migrate', 'users.manage', 'audit.tenant', 'team.view', 'assignments.manage',
-  'data.read', 'data.write', 'data.restore', 'data.replace',
+  'data.read', 'data.write', 'data.restore', 'data.replace', 'history.read', 'tenant.transferOwnership',
 ];
 
 const SUPER: Principal = { kind: 'super_admin', email: 'super@example.com' };
 const member = (over: Partial<MemberPrincipal>): MemberPrincipal => ({
   kind: 'member', email: 'x@example.com', userId: 'usr_x', tenantId: 'ten_x', tenantName: 'T',
-  role: 'user', displayName: null, access: 'editor', storageMode: 'web', tenantStatus: 'active', ...over,
+  role: 'user', isOwner: false, displayName: null, access: 'editor', storageMode: 'web', tenantStatus: 'active', ...over,
 });
 const allowedFor = (p: Principal | null) => ACTIONS.filter((a) => can(p, a)).sort();
 
@@ -28,29 +28,35 @@ describe('permission matrix (default deny)', () => {
     }
   });
 
-  it('Admin of a WEB workspace: everything inside their tenant, nothing in the control plane', () => {
-    expect(allowedFor(member({ role: 'admin' }))).toEqual(
-      ['assignments.manage', 'audit.tenant', 'data.read', 'data.replace', 'data.restore', 'data.write', 'storage.migrate', 'team.view', 'tenant.requestDeletion', 'tenant.view', 'users.manage'],
+  it('Owner SV of a WEB workspace: everything inside their tenant, nothing in the control plane', () => {
+    expect(allowedFor(member({ role: 'admin', isOwner: true }))).toEqual(
+      ['assignments.manage', 'audit.tenant', 'data.read', 'data.replace', 'data.restore', 'data.write', 'history.read', 'storage.migrate', 'team.view', 'tenant.requestDeletion', 'tenant.transferOwnership', 'tenant.view', 'users.manage'],
     );
   });
 
-  it('Admin of a LOCAL workspace: no shared data and cannot manage users, but can migrate and request deletion', () => {
-    expect(allowedFor(member({ role: 'admin', storageMode: 'local' }))).toEqual(['audit.tenant', 'storage.migrate', 'tenant.requestDeletion', 'tenant.view']);
+  it('a non-owner SV manages the workspace but can neither delete it nor hand it over', () => {
+    expect(allowedFor(member({ role: 'admin', isOwner: false }))).toEqual(
+      ['assignments.manage', 'audit.tenant', 'data.read', 'data.replace', 'data.restore', 'data.write', 'history.read', 'storage.migrate', 'team.view', 'tenant.view', 'users.manage'],
+    );
+  });
+
+  it('Owner SV of a LOCAL workspace: no shared data and cannot manage users, but can migrate and request deletion', () => {
+    expect(allowedFor(member({ role: 'admin', isOwner: true, storageMode: 'local' }))).toEqual(['audit.tenant', 'storage.migrate', 'tenant.requestDeletion', 'tenant.view']);
   });
 
   it('User (editor) in a web workspace: read + write only', () => {
-    expect(allowedFor(member({ role: 'user', access: 'editor' }))).toEqual(['data.read', 'data.write', 'team.view', 'tenant.view']);
+    expect(allowedFor(member({ role: 'user', access: 'editor' }))).toEqual(['data.read', 'data.write', 'tenant.view']);
   });
 
   it('User (viewer): read only; the former "read-only" concept maps here', () => {
-    expect(allowedFor(member({ role: 'user', access: 'viewer' }))).toEqual(['data.read', 'team.view', 'tenant.view']);
+    expect(allowedFor(member({ role: 'user', access: 'viewer' }))).toEqual(['data.read', 'tenant.view']);
   });
 
   it('a User can never perform an Admin or Super Admin action, in any state', () => {
     for (const storageMode of ['web', 'local'] as const) {
       for (const access of ['editor', 'viewer'] as const) {
         const u = member({ role: 'user', access, storageMode });
-        for (const a of ['users.manage', 'assignments.manage', 'audit.tenant', 'audit.platform', 'storage.migrate', 'tenant.requestDeletion', 'data.restore', 'data.replace', 'registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'legacy.adopt'] as const) {
+        for (const a of ['users.manage', 'assignments.manage', 'audit.tenant', 'audit.platform', 'storage.migrate', 'tenant.requestDeletion', 'data.restore', 'data.replace', 'history.read', 'team.view', 'tenant.transferOwnership', 'registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'legacy.adopt'] as const) {
           expect(can(u, a), `${storageMode}/${access}/${a}`).toBe(false);
         }
       }
@@ -66,7 +72,7 @@ describe('permission matrix (default deny)', () => {
   });
 
   it('a tenant awaiting deletion keeps read access (so the admin can export) but cannot add users, migrate or restore-replace anew', () => {
-    const adm = member({ role: 'admin', tenantStatus: 'deletion_requested' });
+    const adm = member({ role: 'admin', isOwner: true, tenantStatus: 'deletion_requested' });
     expect(can(adm, 'data.read')).toBe(true);
     expect(can(adm, 'users.manage')).toBe(false);
     expect(can(adm, 'storage.migrate')).toBe(false);
@@ -103,19 +109,19 @@ describe('derived roles', () => {
     expect([appRoleOf(SUPER), appRoleOf(member({ role: 'admin' })), appRoleOf(member({}))]).toEqual(['super_admin', 'admin', 'user']);
   });
 
-  it('the DTO for the browser carries no internal ids beyond the tenant', () => {
+  it('the DTO for the browser carries only the person’s own account id and the tenant', () => {
     const dto = toPrincipalDto(member({ role: 'user', access: 'viewer' }), { id: 'ten_x', name: 'T', storageMode: 'web', status: 'active', createdAt: 'c', deletionRequestedAt: null });
     expect(dto).toEqual({
-      email: 'x@example.com', displayName: null, role: 'user', access: 'viewer', workspaceRole: 'viewer', sharedWorkspace: true,
+      email: 'x@example.com', userId: 'usr_x', displayName: null, role: 'user', access: 'viewer', isOwner: false, workspaceRole: 'viewer', sharedWorkspace: true,
       tenant: { id: 'ten_x', name: 'T', storageMode: 'web', status: 'active', createdAt: 'c', deletionRequestedAt: null },
     });
-    expect(JSON.stringify(dto)).not.toContain('usr_');
+    expect(JSON.stringify(dto).match(/usr_\w+/g)).toEqual(['usr_x']); // only their own
     expect(toPrincipalDto(SUPER, null)).toMatchObject({ role: 'super_admin', tenant: null, sharedWorkspace: false, workspaceRole: null });
   });
 });
 
 describe('resolving a verified email', () => {
-  const tenant: TenantRow = { id: 'ten_a', name: 'A', storage_mode: 'web', status: 'active', created_at: '', updated_at: '', deletion_requested_at: null, deletion_requested_by: null };
+  const tenant: TenantRow = { id: 'ten_a', name: 'A', storage_mode: 'web', status: 'active', created_at: '', updated_at: '', deletion_requested_at: null, deletion_requested_by: null, owner_user_id: 'usr_a' };
   const user = (over: Partial<UserRow>): UserRow => ({ id: 'usr_a', email: 'a@example.com', tenant_id: 'ten_a', role: 'user', access: 'editor', status: 'active', created_at: '', updated_at: '', created_by: null, last_login_at: null, display_name: null, ...over });
   const supers = ['super@example.com'];
   const registryThatKnows = (u: UserRow | null, t: TenantRow = tenant) => async (): Promise<AuthResult> => (u === null ? { allowed: false, reason: 'unregistered' } : { allowed: true, user: u, tenant: t });

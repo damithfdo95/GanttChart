@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { BugTicket } from '../../types';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
+import { useAccess } from '../../app/access';
 import { t } from '../../i18n';
 import { formatDate, todayEpochDays } from '../../lib/dates/dates';
 import { resolveBilingualName } from '../../i18n';
@@ -27,8 +28,13 @@ export function TicketTab() {
   const app = useAppStateCtx();
   const reportsApi = useReportsStateCtx();
   const lang = app.state.language;
+  const access = useAccess();
+  const tester = access.isTester;
+  const ownMember = (reportsApi.state.rcsMembers ?? []).find((m) => m.id === access.ownMemberId) ?? null;
+  /** A Tester raises tickets as themselves; the form starts (and restarts) with their own profile as the reporter. */
+  const blank = (): TicketFormValues => (tester && ownMember !== null ? { ...EMPTY_TICKET_FORM, reporterMemberId: ownMember.id, reportedBy: ownMember.name } : EMPTY_TICKET_FORM);
 
-  const [form, setForm] = useState<TicketFormValues>(EMPTY_TICKET_FORM);
+  const [form, setForm] = useState<TicketFormValues>(blank);
   const [errors, setErrors] = useState<Partial<Record<keyof TicketFormValues, string>>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -72,6 +78,10 @@ export function TicketTab() {
     setNotice(null);
   };
 
+  const editingTicket = editingId === null ? undefined : tickets.find((x) => x.id === editingId);
+  /** Everyone sees every ticket; a Tester changes only the ones they reported (the server enforces the same). */
+  const canChange = (ticket: BugTicket): boolean => !tester || (access.ownMemberId !== null && ticket.reporterMemberId === access.ownMemberId);
+
   const handleSubmit = (): void => {
     const candidate: BugTicket = {
       id: editingId ?? 'pending',
@@ -82,8 +92,8 @@ export function TicketTab() {
       createdAt: form.createdAt,
       // V6.9-A: stable reporter identity when an RCS member is selected;
       // reportedBy keeps the display-name snapshot (or the external text).
-      reporterMemberId: form.reporterMemberId === '' ? undefined : form.reporterMemberId,
-      reportedBy: form.reportedBy.trim(),
+      reporterMemberId: tester ? (editingTicket?.reporterMemberId ?? ownMember?.id) : form.reporterMemberId === '' ? undefined : form.reporterMemberId,
+      reportedBy: tester && ownMember !== null && editingTicket === undefined ? ownMember.name : form.reportedBy.trim(),
       severity: form.severity === '' ? undefined : form.severity,
       status: form.status === '' ? undefined : form.status,
       memo: form.memo.trim() === '' ? undefined : form.memo,
@@ -109,12 +119,13 @@ export function TicketTab() {
     } else {
       setTickets(updateBugTicket(tickets, editingId, candidate));
     }
-    setForm(EMPTY_TICKET_FORM);
+    setForm(blank());
     setEditingId(null);
     setNotice(null);
   };
 
   const handleEdit = (ticket: BugTicket): void => {
+    if (!canChange(ticket)) return;
     setEditingId(ticket.id);
     setForm(ticketFormFromTicket(ticket));
     setErrors({});
@@ -122,17 +133,18 @@ export function TicketTab() {
   };
 
   const handleDelete = (ticket: BugTicket): void => {
+    if (!canChange(ticket)) return;
     if (!window.confirm(t(lang, 'tickets.confirmDelete', { title: ticket.title }))) return;
     setTickets(removeBugTicket(tickets, ticket.id));
     if (editingId === ticket.id) {
       setEditingId(null);
-      setForm(EMPTY_TICKET_FORM);
+      setForm(blank());
     }
   };
 
   const handleCancelEdit = (): void => {
     setEditingId(null);
-    setForm(EMPTY_TICKET_FORM);
+    setForm(blank());
     setErrors({});
     setNotice(null);
   };
@@ -161,6 +173,7 @@ export function TicketTab() {
           values={form}
           errors={errors}
           memberNames={memberNames}
+          reporterLocked={tester}
           members={reportsApi.state.rcsMembers ?? []}
           submitLabel={editingId === null ? t(lang, 'tickets.addTicket') : t(lang, 'tickets.editTicket')}
           disabled={activeProject === undefined}
@@ -178,6 +191,7 @@ export function TicketTab() {
           members={reportsApi.state.rcsMembers ?? []}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          canChange={canChange}
         />
       </section>
     </div>

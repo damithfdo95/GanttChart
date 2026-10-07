@@ -404,3 +404,12 @@ See Troubleshooting — free up storage and export a backup while the app is sti
 ---
 
 *Manual version: 1.0 — matches the app version current as of October 2026.*
+
+---
+
+## Roles, Team Members and the menu (shared version)
+
+In the shared (web) version the two roles are **SV** (manages the workspace; there can be several, one is the **Owner SV**) and **Tester**.
+The screen list in section 3 is the SV's. The old **RCS Members** screen is now part of **Team Members**; **History** and **Settings** are SV-only;
+Export / Import / Reset are under **Settings → Data & Backup**. A Tester sees Dashboard (Operator section and Today's Execution), Projects / Test
+Executions (read-only), Gantt (read-only), Tickets, Performance (their own rows) and **My Team Member Profile**. Details: `docs/ADMINISTRATION.md`.

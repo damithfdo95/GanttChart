@@ -1,5 +1,6 @@
 import type { AppState, ProjectRecord, QaInputs } from '../../types';
 import { newProjectRecord } from './lifecycle';
+import { TESTER_INPUT_FIELDS } from '../../../shared/testerRules';
 
 /**
  * Project registry migrations and the single write-back path between the
@@ -79,6 +80,29 @@ export function seedInitialProjectRecord(
  * reference (data isolation). updatedAt is bumped only when meaningful data
  * actually changed; merely opening a project does not modify it.
  */
+/**
+ * The Tester's version of the write-back: whatever the editing surface holds, only the parts a Tester may change (today's
+ * execution and its totals, tickets, performance rows) reach the project record; everything else stays as stored. So a Tester
+ * who merely opens or selects a project never produces a change the server would have to refuse.
+ */
+export function applyActiveProjectSyncRestricted(projects: readonly ProjectRecord[], activeProjectId: string | null, inputs: QaInputs, nowIso: string): ProjectRecord[] {
+  let changed = false;
+  const result = projects.map((project) => {
+    if (project.id !== activeProjectId) return project;
+    const merged: Record<string, unknown> = { ...project.inputs };
+    for (const field of TESTER_INPUT_FIELDS) {
+      const value = (inputs as unknown as Record<string, unknown>)[field];
+      if (value === undefined) delete merged[field];
+      else merged[field] = value;
+    }
+    const next = merged as unknown as QaInputs;
+    if (projectDataSignature(project.nameEn, project.nameJa, next) === projectDataSignature(project.nameEn, project.nameJa, project.inputs)) return project;
+    changed = true;
+    return { ...project, inputs: next, updatedAt: nowIso };
+  });
+  return changed ? result : (projects as ProjectRecord[]);
+}
+
 export function applyActiveProjectSync(
   projects: readonly ProjectRecord[],
   activeProjectId: string | null,

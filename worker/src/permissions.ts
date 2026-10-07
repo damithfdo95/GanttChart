@@ -27,6 +27,8 @@ export interface MemberPrincipal {
   tenantId: string;
   tenantName: string;
   role: 'admin' | 'user';
+  /** True for the workspace's Owner SV (Stage 8B). Derived from the registry, never from a request. */
+  isOwner: boolean;
   /** Display name (text only). */
   displayName: string | null;
   access: UserAccess;
@@ -51,6 +53,8 @@ export type Action =
   | 'storage.migrate'
   | 'users.manage'
   | 'audit.tenant'
+  | 'history.read'
+  | 'tenant.transferOwnership'
   | 'team.view'
   | 'assignments.manage'
   // shared workspace data (web mode only)
@@ -92,8 +96,13 @@ export function can(principal: Principal | null, action: Action): boolean {
     case 'users.manage':
       return p.role === 'admin' && p.storageMode === 'web' && p.tenantStatus === 'active';
     case 'team.view':
-      // The Tester roster (names and status) is visible to everyone in a shared workspace, so people can see who is on what.
-      return workspaceIsShared(p);
+      // The full roster is an SV's tool (assigning, workload). A Tester sees only their own profile (whoami).
+      return p.role === 'admin' && workspaceIsShared(p);
+    case 'history.read':
+      // Shared (QA) revision history is for SVs only; it is not the administrative audit trail.
+      return p.role === 'admin' && workspaceIsShared(p);
+    case 'tenant.transferOwnership':
+      return p.isOwner && p.storageMode === 'web' && p.tenantStatus === 'active';
     case 'assignments.manage':
       return p.role === 'admin' && p.storageMode === 'web' && p.tenantStatus === 'active';
     case 'audit.tenant':
@@ -102,7 +111,8 @@ export function can(principal: Principal | null, action: Action): boolean {
     case 'storage.migrate':
       return p.role === 'admin' && p.tenantStatus === 'active';
     case 'tenant.requestDeletion':
-      return p.role === 'admin' && (p.tenantStatus === 'active' || p.tenantStatus === 'deletion_requested');
+      // Asking for the workspace's permanent deletion stays the Owner SV's responsibility.
+      return p.isOwner && (p.tenantStatus === 'active' || p.tenantStatus === 'deletion_requested');
     default:
       return false; // unknown action: deny
   }
@@ -121,15 +131,17 @@ export function workspaceRoleOf(p: Principal): Role | null {
 
 export function toPrincipalDto(p: Principal, tenant: TenantDto | null): PrincipalDto {
   if (p.kind === 'super_admin') {
-    return { email: p.email, displayName: null, role: 'super_admin', tenant: null, access: null, workspaceRole: null, sharedWorkspace: false };
+    return { email: p.email, userId: null, displayName: null, role: 'super_admin', tenant: null, access: null, isOwner: false, workspaceRole: null, sharedWorkspace: false };
   }
   const workspaceRole = workspaceRoleOf(p);
   return {
     email: p.email,
+    userId: p.userId,
     displayName: p.displayName,
     role: p.role,
     tenant,
     access: p.role === 'admin' ? 'editor' : p.access,
+    isOwner: p.isOwner,
     workspaceRole,
     sharedWorkspace: workspaceRole !== null,
   };

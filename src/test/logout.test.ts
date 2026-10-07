@@ -158,6 +158,8 @@ describe('what each role sees', () => {
   const deps = rig().deps;
   const principal = (role: PrincipalDto['role']): PrincipalDto => ({
     email: 'someone@rakuten.com',
+    userId: role === 'super_admin' ? null : 'usr_someone',
+    isOwner: role === 'admin',
     displayName: null,
     role,
     tenant: role === 'super_admin' ? null : { id: 'ten_x', name: 'QA', storageMode: 'web', status: 'active', createdAt: 't', deletionRequestedAt: null },

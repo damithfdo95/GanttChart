@@ -35,7 +35,7 @@ export function WorkspacePanel() {
     () => (api === null || tenant === null || principal === null ? null : browserMigrationDeps(api, { email: principal.email, tenantId: tenant.id })),
     [api, tenant, principal],
   );
-  const caps = panelCapabilities(principal === null ? null : { role: principal.role, tenant });
+  const caps = panelCapabilities(principal === null ? null : { role: principal.role, isOwner: principal.isOwner, tenant });
   if (!caps.showPanel || principal === null || api === null || tenant === null || deps === null) return null;
 
   const isAdmin = caps.canChooseStorage;

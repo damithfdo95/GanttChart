@@ -5,7 +5,7 @@
  */
 
 import type { RecordPut } from '../../../shared/protocol';
-import { REQUEST_DELETION_CONFIRMATION, type TesterDto, type AdminAuditDto, type PrincipalDto, type TenantDto, type TenantListQuery, type TenantListResult, type UserAccess, type UserDto } from '../../../shared/tenancy';
+import { REQUEST_DELETION_CONFIRMATION, TRANSFER_OWNERSHIP_CONFIRMATION, type TesterDto, type AdminAuditDto, type PrincipalDto, type TenantDto, type TenantListQuery, type TenantListResult, type UserAccess, type UserDto } from '../../../shared/tenancy';
 
 export class ApiError extends Error {
   constructor(
@@ -60,11 +60,18 @@ export interface TenancyApi {
   exportAll(): Promise<ExportAll>;
   whoami(): Promise<PrincipalDto>;
   listUsers(): Promise<UserDto[]>;
-  createUser(email: string, access: UserAccess, displayName?: string): Promise<UserDto>;
+  /** Add a Team Member: an SV or a Tester. The tenant is the server's, never sent. */
+  createUser(email: string, access: UserAccess, displayName?: string, role?: 'sv' | 'tester'): Promise<UserDto>;
   updateUser(userId: string, patch: { status?: 'enabled' | 'disabled'; access?: UserAccess }): Promise<{ user: UserDto; disconnected: boolean }>;
   requestDeletion(): Promise<TenantDto>;
   cancelDeletion(): Promise<TenantDto>;
-  /** The Testers of this workspace (every member may read it). */
+  /** Hand the workspace's ownership to another enabled SV (the Owner SV only; the typed word is checked by the server too). */
+  transferOwnership(userId: string): Promise<{ owner: UserDto; previous: UserDto }>;
+  /** Link an older roster-only member to an account of this workspace (SV). */
+  linkMember(memberId: string, userId: string): Promise<{ memberId: string }>;
+  /** Give an account that predates Team Member profiles its profile (SV). */
+  createProfile(userId: string): Promise<{ memberId: string; created: boolean }>;
+  /** The Testers of this workspace (SVs only: assigning and workload). */
   team(): Promise<TesterDto[]>;
   /** Assign a Tester account to a project (Admin; the server checks the account and the project). */
   assignTester(projectId: string, userId: string): Promise<{ created: boolean; assignment: { id: string; projectId: string; userId: string } }>;
@@ -124,7 +131,11 @@ export function createTenancyApi(fetchFn: FetchLike = (i, init) => fetch(i, init
     exportAll: () => call('GET', '/api/export'),
     whoami: () => call('GET', '/api/whoami'),
     listUsers: async () => (await call<{ users: UserDto[] }>('GET', '/api/tenant/users')).users,
-    createUser: async (email, access, displayName) => (await call<{ user: UserDto }>('POST', '/api/tenant/users', { email, access, ...(displayName === undefined || displayName.trim() === '' ? {} : { displayName }) })).user,
+    createUser: async (email, access, displayName, role = 'tester') =>
+      (await call<{ user: UserDto }>('POST', '/api/tenant/users', { email, access, role, ...(displayName === undefined || displayName.trim() === '' ? {} : { displayName }) })).user,
+    transferOwnership: (userId) => call('POST', '/api/tenant/owner', { userId, confirm: TRANSFER_OWNERSHIP_CONFIRMATION }),
+    linkMember: (memberId, userId) => call('POST', '/api/tenant/members/link', { memberId, userId }),
+    createProfile: (userId) => call('POST', '/api/tenant/members/profile', { userId }),
     updateUser: (userId, patch) => call('PATCH', `/api/tenant/users/${encodeURIComponent(userId)}`, patch),
     requestDeletion: async () => (await call<{ tenant: TenantDto }>('POST', '/api/tenant/deletion-request', { confirm: REQUEST_DELETION_CONFIRMATION })).tenant,
     team: async () => (await call<{ testers: TesterDto[] }>('GET', '/api/tenant/team')).testers,

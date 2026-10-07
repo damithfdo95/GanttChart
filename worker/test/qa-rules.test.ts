@@ -132,16 +132,20 @@ describe('a changed project record', () => {
 });
 
 describe('who may change what, and what may refer to what', () => {
-  const store = (records: Record<string, string>) => ({ get: (kind: string, id: string) => records[`${kind}:${id}`] ?? null });
+  const store = (records: Record<string, string>) => ({
+    get: (kind: string, id: string) => records[`${kind}:${id}`] ?? null,
+    list: (kind: string) => Object.entries(records).filter(([k]) => k.startsWith(`${kind}:`)).map(([k, json]) => ({ id: k.slice(kind.length + 1), json })),
+  });
   const commit = (role: 'admin' | 'editor' | 'viewer', puts: Array<{ kind: string; id: string; json: string }>, deletes: Array<{ kind: string; id: string }> = [], records: Record<string, string> = {}) =>
-    qaCommitError({ role, puts, deletes, view: store(records) });
+    qaCommitError({ role, userId: 'usr_t', today: '2026-10-07', puts, deletes, view: store(records) });
   const cycleJson = (over: Partial<CycleRecord> = {}) => JSON.stringify(cycle(over));
 
   it('only the Admin creates, edits or deletes cycles', () => {
     expect(commit('admin', [{ kind: 'cycle', id: 'cyc_a', json: cycleJson() }])).toBeNull();
     for (const role of ['editor', 'viewer'] as const) {
-      expect(commit(role, [{ kind: 'cycle', id: 'cyc_a', json: cycleJson() }])).toBe('cycles_admin_only');
-      expect(commit(role, [], [{ kind: 'cycle', id: 'cyc_a' }])).toBe('cycles_admin_only');
+      // A Tester is stopped before the cycle rule is even reached: they may touch nothing but projects.
+      expect(commit(role, [{ kind: 'cycle', id: 'cyc_a', json: cycleJson() }])).toBe('tester_cannot_change_kind');
+      expect(commit(role, [], [{ kind: 'cycle', id: 'cyc_a' }])).toBe('tester_cannot_delete');
     }
   });
 
@@ -164,11 +168,11 @@ describe('who may change what, and what may refer to what', () => {
     expect(commit('admin', [{ kind: 'project', id: 'p1', json: project([], { cycleId: 5 }) }])).toBe('project_invalid_cycle');
   });
 
-  it('only the Admin moves a project between cycles or in/out of one; an editor can still edit everything else', () => {
+  it('only an SV moves a project between cycles or in/out of one; a Tester changing the cycle is refused', () => {
     const records = { 'cycle:cyc_a': cycleJson(), 'cycle:cyc_b': cycleJson({ id: 'cyc_b' }), 'project:p1': project([], { cycleId: 'cyc_a' }) };
-    expect(commit('editor', [{ kind: 'project', id: 'p1', json: project([], { cycleId: 'cyc_b' }) }], [], records)).toBe('cycle_assignment_admin_only');
-    expect(commit('editor', [{ kind: 'project', id: 'p1', json: project([], { cycleId: null }) }], [], records)).toBe('cycle_assignment_admin_only');
-    expect(commit('editor', [{ kind: 'project', id: 'p1', json: project([entry()], { cycleId: 'cyc_a' }) }], [], records)).toBeNull(); // same cycle: an ordinary edit
+    expect(commit('editor', [{ kind: 'project', id: 'p1', json: project([], { cycleId: 'cyc_b' }) }], [], records)).toBe('tester_project_structure');
+    expect(commit('editor', [{ kind: 'project', id: 'p1', json: project([], { cycleId: null }) }], [], records)).toBe('tester_project_structure');
+    expect(commit('admin', [{ kind: 'project', id: 'p1', json: project([entry()], { cycleId: 'cyc_a' }) }], [], records)).toBeNull(); // same cycle: an ordinary edit
     expect(commit('admin', [{ kind: 'project', id: 'p1', json: project([], { cycleId: 'cyc_b' }) }], [], records)).toBeNull();
     expect(commit('admin', [{ kind: 'project', id: 'p1', json: project([], {}) }], [], records)).toBeNull(); // taken out of its cycle
   });
@@ -180,35 +184,34 @@ describe('who may change what, and what may refer to what', () => {
   });
 
   it('a project from before cycles existed (no cycleId) is simply valid', () => {
-    expect(commit('editor', [{ kind: 'project', id: 'p1', json: project([entry()]) }], [], { 'project:p1': project([]) })).toBeNull();
+    expect(commit('admin', [{ kind: 'project', id: 'p1', json: project([entry()]) }], [], { 'project:p1': project([]) })).toBeNull();
   });
 
   const assignment = (over: Record<string, unknown> = {}) => JSON.stringify({ id: 'a1', projectId: 'PRJ-001', userId: 'usr_x', testerName: 'Hana', startDate: '2026-10-01', active: true, ...over });
 
   it('an assignment of a Tester ACCOUNT can never be created through the sync channel, only by the server', () => {
-    for (const role of ['admin', 'editor'] as const) {
-      expect(commit(role, [{ kind: 'assignment', id: 'a1', json: assignment() }])).toBe(role === 'admin' ? 'assignment_requires_api' : 'assignment_admin_only');
-    }
+    expect(commit('admin', [{ kind: 'assignment', id: 'a1', json: assignment() }])).toBe('assignment_requires_api');
+    expect(commit('editor', [{ kind: 'assignment', id: 'a1', json: assignment() }])).toBe('tester_cannot_change_kind');
   });
 
   it('once it exists only the Admin edits or removes it, and its project and account never change', () => {
     const records = { 'assignment:a1': assignment() };
     expect(commit('admin', [{ kind: 'assignment', id: 'a1', json: assignment({ active: false, endDate: '2026-10-10' }) }], [], records)).toBeNull();
-    expect(commit('editor', [{ kind: 'assignment', id: 'a1', json: assignment({ active: false }) }], [], records)).toBe('assignment_admin_only');
+    expect(commit('editor', [{ kind: 'assignment', id: 'a1', json: assignment({ active: false }) }], [], records)).toBe('tester_cannot_change_kind');
     expect(commit('admin', [{ kind: 'assignment', id: 'a1', json: assignment({ userId: 'usr_y' }) }], [], records)).toBe('assignment_immutable_fields');
     expect(commit('admin', [{ kind: 'assignment', id: 'a1', json: assignment({ projectId: 'PRJ-002' }) }], [], records)).toBe('assignment_immutable_fields');
     expect(commit('admin', [], [{ kind: 'assignment', id: 'a1' }], records)).toBeNull();
-    expect(commit('editor', [], [{ kind: 'assignment', id: 'a1' }], records)).toBe('assignment_admin_only');
+    expect(commit('editor', [], [{ kind: 'assignment', id: 'a1' }], records)).toBe('tester_cannot_delete');
     expect(commit('admin', [{ kind: 'assignment', id: 'a1', json: assignment({ userId: 5 }) }], [], records)).toBe('assignment_invalid_user');
   });
 
   it('roster (member-based) assignments are untouched by these rules', () => {
     const legacy = JSON.stringify({ id: 'a2', projectId: 'PRJ-001', memberId: 'USER0003', startDate: '2026-10-01', active: true });
-    expect(commit('editor', [{ kind: 'assignment', id: 'a2', json: legacy }])).toBeNull();
-    expect(commit('editor', [], [{ kind: 'assignment', id: 'a2' }], { 'assignment:a2': legacy })).toBeNull();
+    expect(commit('admin', [{ kind: 'assignment', id: 'a2', json: legacy }])).toBeNull();
+    expect(commit('admin', [], [{ kind: 'assignment', id: 'a2' }], { 'assignment:a2': legacy })).toBeNull();
   });
 
   it('an invalid execution entry inside a project is refused with the reason', () => {
-    expect(commit('editor', [{ kind: 'project', id: 'p1', json: project([entry({ pass: -3 })]) }], [], { 'project:p1': project([]) })).toBe('execution_entry_invalid_pass');
+    expect(commit('admin', [{ kind: 'project', id: 'p1', json: project([entry({ pass: -3 })]) }], [], { 'project:p1': project([]) })).toBe('execution_entry_invalid_pass');
   });
 });

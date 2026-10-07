@@ -2,27 +2,29 @@ import type { UserDto } from '../../../shared/tenancy';
 
 export type UserSort = 'name' | 'email' | 'created' | 'status' | 'activity';
 export type UserStatusFilter = 'all' | 'active' | 'disabled';
+export type UserRoleFilter = 'all' | 'sv' | 'tester';
 
 export interface UserView {
   q: string;
   status: UserStatusFilter;
+  role: UserRoleFilter;
   sort: UserSort;
   dir: 'asc' | 'desc';
 }
 
-export const DEFAULT_USER_VIEW: UserView = { q: '', status: 'all', sort: 'name', dir: 'asc' };
+export const DEFAULT_USER_VIEW: UserView = { q: '', status: 'all', role: 'all', sort: 'name', dir: 'asc' };
 
 const text = (u: UserDto): string => (u.displayName ?? u.email).toLowerCase();
 
 /**
- * What the Admin's user table shows: only subordinate Users (the Admin's own account is not a row to manage),
- * searched by name or email, filtered by status, sorted. Pure; the server has already limited the list to the
- * Admin's own workspace.
+ * What the Team Members table shows: every member of the workspace (SVs and Testers, the Owner included), searched by
+ * name or email, filtered by role and status, sorted. Pure; the server has already limited the list to the SV's own
+ * workspace.
  */
 export function viewUsers(users: readonly UserDto[], view: UserView): UserDto[] {
   const q = view.q.normalize('NFKC').trim().toLowerCase();
   const rows = users.filter(
-    (u) => u.role === 'user' && (view.status === 'all' || u.status === view.status) && (q === '' || u.email.toLowerCase().includes(q) || (u.displayName ?? '').toLowerCase().includes(q)),
+    (u) => (view.role === 'all' || (view.role === 'sv' ? u.role === 'admin' : u.role === 'user')) && (view.status === 'all' || u.status === view.status) && (q === '' || u.email.toLowerCase().includes(q) || (u.displayName ?? '').toLowerCase().includes(q)),
   );
   const cmp = (a: UserDto, b: UserDto): number => {
     switch (view.sort) {

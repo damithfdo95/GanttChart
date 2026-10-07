@@ -185,7 +185,7 @@ describe('Web → Local', () => {
   it('refuses if a collaborator changed the workspace after the download (nothing is lost)', async () => {
     const { t, userEmail } = await webTenantWithUser();
     const snap = await download(t);
-    const live = await openSocket(userEmail);
+    const live = await openSocket(t.adminEmail);
     if (!live.ok) throw new Error('connect');
     await live.sock.next('snapshot');
     live.sock.send(commitMsg(snap.revision, [rec('project', 'p2', { name: 'late edit by a user' })]));
@@ -198,7 +198,7 @@ describe('Web → Local', () => {
 
   it('switches to local, closes live sessions, locks the users out — and KEEPS the cloud copy', async () => {
     const { t, userEmail } = await webTenantWithUser();
-    const live = await openSocket(userEmail);
+    const live = await openSocket(t.adminEmail);
     if (!live.ok) throw new Error('connect');
     const snap = await download(t);
     const r = await deactivate(t.adminEmail, snap.revision, snap.hash) as { status: number; json: { cloudCopy: string } };
@@ -249,7 +249,7 @@ describe('Web → Local', () => {
     const same = await upload(t, { migrationId: 'back2', expectedRevision: snap.revision, records: snap.records });
     expect(same.json).toMatchObject({ alreadyApplied: true, hash: snap.hash });
     expect((await post(t.adminEmail, '/api/tenant/storage/activate-web', { revision: snap.revision, hash: snap.hash })).status).toBe(200);
-    const live = await openSocket(userEmail);
+    const live = await openSocket(t.adminEmail);
     if (!live.ok) throw new Error('user should be able to connect again');
     await live.sock.next('snapshot');
     live.sock.send(commitMsg(snap.revision, [rec('project', 'p3', { name: 'after thaw' })]));

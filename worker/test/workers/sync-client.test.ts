@@ -17,7 +17,7 @@ interface LiveSocket extends SyncSocket {
   drop(): void;
 }
 
-function socketFactory(workspace: Workspace, email: string, role: Role = 'editor') {
+function socketFactory(workspace: Workspace, email: string, role: Role = 'admin') {
   const opened: LiveSocket[] = [];
   const create = (): SyncSocket => {
     let ws: WebSocket | null = null;

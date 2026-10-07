@@ -7,7 +7,7 @@
  * unit tests against real SQLite.
  *
  * Invariants are enforced by the database where it can be (CHECK constraints,
- * UNIQUE email, exactly one admin per tenant) and by the methods otherwise:
+ * UNIQUE email, exactly one OWNER per tenant, any number of SVs) and by the methods otherwise:
  * every user operation is scoped by BOTH the user id and the tenant id, so a
  * user id belonging to another tenant is simply "not found".
  */
@@ -46,6 +46,8 @@ export interface TenantRow {
   updated_at: string;
   deletion_requested_at: string | null;
   deletion_requested_by: string | null;
+  /** The Owner SV (Stage 8B). Null only for a legacy row that has no admin at all. */
+  owner_user_id: string | null;
 }
 
 export interface UserRow {
@@ -91,7 +93,9 @@ export type RegistryError =
   | 'tenant_inactive'
   | 'forbidden_target'
   | 'bad_state'
-  | 'same_person';
+  | 'same_person'
+  /** The Owner SV cannot be disabled, removed or demoted; ownership must be transferred first. */
+  | 'owner_protected';
 
 export type Reg<T> = { ok: true; value: T } | { ok: false; error: RegistryError };
 
@@ -130,8 +134,6 @@ const SCHEMA = [
      created_by    TEXT,
      last_login_at TEXT
    )`,
-  // Exactly one Admin per tenant, enforced by the database.
-  `CREATE UNIQUE INDEX IF NOT EXISTS users_one_admin_per_tenant ON users (tenant_id) WHERE role = 'admin'`,
   `CREATE INDEX IF NOT EXISTS users_by_tenant ON users (tenant_id)`,
   `CREATE TABLE IF NOT EXISTS deletion_audit (
      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -164,7 +166,30 @@ const SCHEMA = [
 ];
 
 /** Columns added after the first release. Added in place, so an existing registry upgrades itself on first start. */
-const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; ddl: string }> = [{ table: 'users', column: 'display_name', ddl: 'TEXT' }];
+const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; ddl: string }> = [
+  { table: 'users', column: 'display_name', ddl: 'TEXT' },
+  { table: 'tenants', column: 'owner_user_id', ddl: 'TEXT' },
+];
+
+/**
+ * Stage 8B. A tenant may have several SVs (internal role 'admin') and exactly one OWNER (`tenants.owner_user_id`).
+ * Applied on every start and idempotent: the old one-admin-per-tenant index is dropped, an existing tenant's single
+ * Admin becomes its Owner, and the database itself refuses to disable, demote or move the Owner or to point the
+ * ownership at anyone who is not an enabled SV of that same tenant.
+ */
+const OWNER_SCHEMA = [
+  `DROP INDEX IF EXISTS users_one_admin_per_tenant`,
+  `UPDATE tenants SET owner_user_id = (SELECT u.id FROM users u WHERE u.tenant_id = tenants.id AND u.role = 'admin' AND u.status <> 'disabled' ORDER BY u.created_at, u.id LIMIT 1) WHERE owner_user_id IS NULL`,
+  `CREATE TRIGGER IF NOT EXISTS users_owner_guard BEFORE UPDATE OF role, status, tenant_id ON users
+     WHEN OLD.id IN (SELECT owner_user_id FROM tenants WHERE id = OLD.tenant_id) AND (NEW.role <> 'admin' OR NEW.status = 'disabled' OR NEW.tenant_id <> OLD.tenant_id)
+     BEGIN SELECT RAISE(ABORT, 'the owner cannot be disabled, demoted or moved'); END`,
+  `CREATE TRIGGER IF NOT EXISTS tenants_owner_valid BEFORE UPDATE OF owner_user_id ON tenants
+     WHEN NEW.owner_user_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users WHERE id = NEW.owner_user_id AND tenant_id = NEW.id AND role = 'admin' AND status <> 'disabled')
+     BEGIN SELECT RAISE(ABORT, 'the owner must be an enabled SV of the same workspace'); END`,
+  `CREATE TRIGGER IF NOT EXISTS tenants_owner_not_cleared BEFORE UPDATE OF owner_user_id ON tenants
+     WHEN OLD.owner_user_id IS NOT NULL AND NEW.owner_user_id IS NULL
+     BEGIN SELECT RAISE(ABORT, 'a workspace always has an owner'); END`,
+];
 
 const AUDIT_ROW_LIMIT = 200;
 const META_MAX_CHARS = 1000;
@@ -235,12 +260,13 @@ export function toTenantDto(t: TenantRow): TenantDto {
   };
 }
 
-export function toUserDto(u: UserRow): UserDto {
+export function toUserDto(u: UserRow, ownerUserId: string | null = null): UserDto {
   return {
     id: u.id,
     email: u.email,
     displayName: u.display_name ?? null,
     role: u.role,
+    isOwner: ownerUserId !== null && u.id === ownerUserId,
     access: u.access,
     status: userLifecycle(u.status),
     createdAt: u.created_at,
@@ -274,6 +300,7 @@ export class RegistryStore {
       const have = this.storage.sql.exec<{ name: string } & Record<string, string | number | null>>(`PRAGMA table_info(${table})`).toArray();
       if (!have.some((c) => c.name === column)) this.storage.sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
     }
+    for (const statement of OWNER_SCHEMA) this.storage.sql.exec(statement);
   }
 
   // ---- administrative audit trail -----------------------------------------
@@ -358,12 +385,22 @@ export class RegistryStore {
     );
   }
 
-  adminOf(tenantId: string): UserRow | null {
+  /** The Owner SV of a workspace (null for a workspace that has none). */
+  ownerOf(tenantId: string): UserRow | null {
     return (
       this.storage.sql
-        .exec<UserRow & Record<string, string | number | null>>(`SELECT * FROM users WHERE tenant_id = ? AND role = 'admin'`, tenantId)
+        .exec<UserRow & Record<string, string | number | null>>(`SELECT u.* FROM users u JOIN tenants t ON t.owner_user_id = u.id AND t.id = u.tenant_id WHERE t.id = ?`, tenantId)
         .toArray()[0] ?? null
     );
+  }
+
+  /** Kept for callers that mean "the person who administers the workspace": that is the Owner SV. */
+  adminOf(tenantId: string): UserRow | null {
+    return this.ownerOf(tenantId);
+  }
+
+  ownerIdOf(tenantId: string): string | null {
+    return this.getTenant(tenantId)?.owner_user_id ?? null;
   }
 
   listUsers(tenantId: string): UserRow[] {
@@ -418,7 +455,7 @@ export class RegistryStore {
     const offset = Math.max(0, Math.floor(query.offset ?? 0));
 
     const total = this.storage.sql
-      .exec<{ n: number } & Record<string, number>>(`SELECT COUNT(*) AS n FROM tenants t LEFT JOIN users a ON a.tenant_id = t.id AND a.role = 'admin' ${clause}`, ...args)
+      .exec<{ n: number } & Record<string, number>>(`SELECT COUNT(*) AS n FROM tenants t LEFT JOIN users a ON a.id = t.owner_user_id AND a.tenant_id = t.id ${clause}`, ...args)
       .one().n;
     const rows = this.storage.sql
       .exec<
@@ -428,7 +465,7 @@ export class RegistryStore {
                 (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) AS user_count,
                 (SELECT MAX(u.last_login_at) FROM users u WHERE u.tenant_id = t.id) AS last_activity
            FROM tenants t
-           LEFT JOIN users a ON a.tenant_id = t.id AND a.role = 'admin'
+           LEFT JOIN users a ON a.id = t.owner_user_id AND a.tenant_id = t.id
            ${clause}
           ORDER BY ${sortColumn} ${dir}, t.id
           LIMIT ? OFFSET ?`,
@@ -532,6 +569,8 @@ export class RegistryStore {
         input.now,
         input.actorEmail,
       );
+      // The first SV of a workspace is its Owner.
+      this.storage.sql.exec(`UPDATE tenants SET owner_user_id = ? WHERE id = ?`, adminId, tenantId);
       this.appendAudit({
         at: input.now,
         action: 'admin.created',
@@ -596,10 +635,10 @@ export class RegistryStore {
     });
   }
 
-  // ---- users (the tenant's Admin) --------------------------------------------
+  // ---- Team Members (managed by the workspace's SVs) --------------------------------
 
   /**
-   * Add a subordinate user. Only a WEB-mode, active tenant can have users; the
+   * Add a Team Member: a Tester or another SV. Only a WEB-mode, active tenant can have members; the
    * tenant comes from the caller's verified principal, never from request data.
    * The new account is `active` at once: nobody is invited by email, so there is no pending state.
    */
@@ -607,6 +646,8 @@ export class RegistryStore {
     tenantId: string;
     email: string;
     displayName?: unknown;
+    /** 'admin' = SV, 'user' = Tester. */
+    role?: 'admin' | 'user';
     access: UserAccess;
     reserved: readonly string[];
     managedDomains: readonly string[];
@@ -617,7 +658,11 @@ export class RegistryStore {
     if (tenant === null) return fail('not_found');
     if (tenant.status !== 'active') return fail('tenant_inactive');
     if (tenant.storage_mode !== 'web') return fail('wrong_mode');
+    const role = input.role ?? 'user';
+    if (role !== 'admin' && role !== 'user') return fail('invalid_input');
     if (input.access !== 'editor' && input.access !== 'viewer') return fail('invalid_input');
+    // An SV always works with full rights; the editor/viewer level is a Tester setting.
+    const access: UserAccess = role === 'admin' ? 'editor' : input.access;
     const email = normalizeEmail(input.email);
     if (email === null) return fail('invalid_email');
     const display = parseDisplayName(input.displayName);
@@ -630,12 +675,13 @@ export class RegistryStore {
     return this.storage.transactionSync(() => {
       const id = newUserId();
       this.storage.sql.exec(
-        `INSERT INTO users (id, email, display_name, tenant_id, role, access, status, created_at, updated_at, created_by) VALUES (?, ?, ?, ?, 'user', ?, 'active', ?, ?, ?)`,
+        `INSERT INTO users (id, email, display_name, tenant_id, role, access, status, created_at, updated_at, created_by) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
         id,
         email,
         display.value,
         input.tenantId,
-        input.access,
+        role,
+        access,
         input.now,
         input.now,
         input.actor.userId,
@@ -648,21 +694,23 @@ export class RegistryStore {
         targetType: 'user',
         targetId: id,
         targetEmail: email,
-        meta: { access: input.access },
+        meta: { access, memberRole: role === 'admin' ? 'sv' : 'tester' },
       });
       return ok(this.getUserInTenant(input.tenantId, id)!);
     });
   }
 
   /**
-   * Change a subordinate user. Scoped by tenant AND user id; the Admin row can
-   * never be changed this way. Disabling keeps the account, its history and its
-   * attribution; reactivating restores access.
+   * Change a Team Member. Scoped by tenant AND user id. The Owner SV can never be changed this way, nobody can
+   * disable themselves, and the editor/viewer level belongs to Testers only. Disabling keeps the account, its
+   * history and its attribution; reactivating restores access.
    */
   updateUser(input: { tenantId: string; userId: string; status?: 'enabled' | 'disabled'; access?: UserAccess; actor: AuditActor; now: string }): Reg<UserRow> {
     const user = this.getUserInTenant(input.tenantId, input.userId);
     if (user === null) return fail('not_found');
-    if (user.role !== 'user') return fail('forbidden_target');
+    if (user.id === this.ownerIdOf(input.tenantId)) return fail('owner_protected');
+    if (input.actor.userId !== null && input.actor.userId === user.id) return fail('same_person');
+    if (user.role === 'admin' && input.access !== undefined) return fail('forbidden_target');
     if (input.access !== undefined && input.access !== 'editor' && input.access !== 'viewer') return fail('invalid_input');
     if (input.status !== undefined && input.status !== 'enabled' && input.status !== 'disabled') return fail('invalid_input');
     const nextStatus: UserStatus = input.status === undefined ? user.status : input.status === 'disabled' ? 'disabled' : 'active';
@@ -684,9 +732,40 @@ export class RegistryStore {
     });
   }
 
+  /**
+   * Hand the ownership to another enabled SV of the same workspace. ONE statement on ONE row: there is no moment
+   * with zero or two owners, and the database refuses a target that is not an enabled SV of this workspace. Only the
+   * current Owner may do it.
+   */
+  transferOwnership(input: { tenantId: string; actor: AuditActor; toUserId: string; now: string }): Reg<{ owner: UserRow; previous: UserRow }> {
+    const tenant = this.getTenant(input.tenantId);
+    if (tenant === null) return fail('not_found');
+    if (tenant.status !== 'active') return fail('tenant_inactive');
+    const current = this.ownerOf(input.tenantId);
+    if (current === null || input.actor.userId !== current.id) return fail('forbidden_target');
+    const target = this.getUserInTenant(input.tenantId, input.toUserId);
+    if (target === null) return fail('not_found');
+    if (target.id === current.id) return fail('bad_state');
+    if (target.role !== 'admin' || target.status === 'disabled') return fail('forbidden_target');
+    return this.storage.transactionSync(() => {
+      this.storage.sql.exec(`UPDATE tenants SET owner_user_id = ?, updated_at = ? WHERE id = ? AND owner_user_id = ?`, target.id, input.now, input.tenantId, current.id);
+      this.appendAudit({
+        at: input.now,
+        action: 'owner.transferred',
+        actor: input.actor,
+        tenantId: input.tenantId,
+        targetType: 'user',
+        targetId: target.id,
+        targetEmail: target.email,
+        meta: { from: current.email, to: target.email },
+      });
+      return ok({ owner: this.getUserInTenant(input.tenantId, target.id)!, previous: this.getUserInTenant(input.tenantId, current.id)! });
+    });
+  }
+
   // ---- deletion workflow ---------------------------------------------------
 
-  /** The tenant's Admin asks for permanent deletion. Nothing is deleted. */
+  /** The Owner SV asks for permanent deletion. Nothing is deleted. */
   requestDeletion(input: { tenantId: string; requestedByUserId: string; now: string }): Reg<TenantRow> {
     const tenant = this.getTenant(input.tenantId);
     if (tenant === null) return fail('not_found');

@@ -12,6 +12,8 @@ interface TicketTableProps {
   members?: RcsMember[];
   onEdit: (ticket: BugTicket) => void;
   onDelete: (ticket: BugTicket) => void;
+  /** Which tickets this person may change or remove (a Tester: only their own). Default: all. */
+  canChange?: (ticket: BugTicket) => boolean;
 }
 
 /**
@@ -22,7 +24,7 @@ interface TicketTableProps {
  * identity when one is established (reporterMemberId or a unique
  * name/history resolution). The recorded name is never rewritten.
  */
-export function TicketTable({ lang, tickets, members = [], onEdit, onDelete }: TicketTableProps) {
+export function TicketTable({ lang, tickets, members = [], onEdit, onDelete, canChange }: TicketTableProps) {
   const sorted = [...tickets].sort(
     (a, b) => b.createdAt.localeCompare(a.createdAt) || (b.ticketKey ?? '').localeCompare(a.ticketKey ?? '') || a.id.localeCompare(b.id),
   );
@@ -85,12 +87,16 @@ export function TicketTable({ lang, tickets, members = [], onEdit, onDelete }: T
                 <td>{ticket.severity === undefined ? '—' : bugSeverityLabel(lang, ticket.severity)}</td>
                 <td>{ticket.status === undefined ? '—' : bugStatusLabel(lang, ticket.status)}</td>
                 <td className="dr-row-actions">
-                  <button type="button" className="btn" onClick={() => onEdit(ticket)}>
-                    {t(lang, 'tickets.editTicket')}
-                  </button>
-                  <button type="button" className="btn btn-danger" onClick={() => onDelete(ticket)}>
-                    {t(lang, 'tickets.deleteTicket')}
-                  </button>
+                  {canChange !== undefined && !canChange(ticket) ? null : (
+                    <>
+                      <button type="button" className="btn" onClick={() => onEdit(ticket)}>
+                        {t(lang, 'tickets.editTicket')}
+                      </button>
+                      <button type="button" className="btn btn-danger" onClick={() => onDelete(ticket)}>
+                        {t(lang, 'tickets.deleteTicket')}
+                      </button>
+                    </>
+                  )}
                 </td>
               </tr>
             );

@@ -57,7 +57,7 @@ export function AuditLog({ lang, load, title, emptyKey }: { lang: Language; load
               {rows.map((row) => (
                 <tr key={row.id}>
                   <td>{whenText(row.at, lang)}</td>
-                  <td>{t(lang, `tenancy.audit.action.${row.action}` as TranslationKey)}</td>
+                  <td>{actionLabel(row, lang)}</td>
                   <td>
                     {row.actorEmail}
                     <br />
@@ -73,6 +73,12 @@ export function AuditLog({ lang, load, title, emptyKey }: { lang: Language; load
       ) : null}
     </section>
   );
+}
+
+/** The event in words. A created member says which kind (SV or Tester); everything else has one label. */
+export function actionLabel(row: Pick<AdminAuditDto, 'action' | 'meta'>, lang: Language): string {
+  if (row.action === 'user.created') return t(lang, row.meta.memberRole === 'sv' ? 'tenancy.audit.action.user.created_sv' : 'tenancy.audit.action.user.created');
+  return t(lang, `tenancy.audit.action.${row.action}` as TranslationKey);
 }
 
 /** A short, plain-language rendering of the safe metadata. */
@@ -91,7 +97,9 @@ export function detailsText(row: Pick<AdminAuditDto, 'action' | 'meta'>, lang: L
     case 'tenant.deleted':
       return t(lang, 'tenancy.audit.detail.deleted', { name: String(m.workspaceName ?? ''), users: Number(m.usersDeleted ?? 0) });
     case 'user.created':
-      return t(lang, `tenancy.access.${m.access === 'viewer' ? 'viewer' : 'editor'}` as TranslationKey);
+      return m.memberRole === 'sv' ? t(lang, 'tenancy.role.sv') : t(lang, `tenancy.access.${m.access === 'viewer' ? 'viewer' : 'editor'}` as TranslationKey);
+    case 'owner.transferred':
+      return `${String(m.from ?? '')} → ${String(m.to ?? '')}`;
     case 'user.access_changed':
       return `${t(lang, `tenancy.access.${m.from === 'viewer' ? 'viewer' : 'editor'}` as TranslationKey)} → ${t(lang, `tenancy.access.${m.to === 'viewer' ? 'viewer' : 'editor'}` as TranslationKey)}`;
     case 'storage.migration_uploaded':

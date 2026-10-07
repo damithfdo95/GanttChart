@@ -268,6 +268,7 @@ function isReportSettings(v: unknown): v is ReportSettings {
     s.holidays.every((h: unknown) => typeof h === 'string') &&
     typeof s.supervisorName === 'string' &&
     typeof s.projectJiraUrl === 'string' &&
+    (s.toolName === undefined || typeof s.toolName === 'string') &&
     typeof templates === 'object' &&
     templates !== null &&
     typeof templates.en === 'string' &&
@@ -401,6 +402,7 @@ export function isRcsMember(v: unknown): v is RcsMember {
     typeof r.startDate === 'string' &&
     (r.endDate === undefined || typeof r.endDate === 'string') &&
     typeof r.active === 'boolean' &&
+    (r.userId === undefined || typeof r.userId === 'string') &&
     // V6.9-A name history is optional so pre-V6.9 data stays valid.
     (r.nameHistory === undefined || (Array.isArray(r.nameHistory) && r.nameHistory.every(isRcsMemberNameHistory)))
   );

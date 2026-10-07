@@ -31,6 +31,7 @@ import {
   type ServerMessage,
 } from '../../shared/protocol';
 import { qaCommitError } from '../../shared/qaRules';
+import { SV_ONLY_KINDS } from '../../shared/testerRules';
 import { CLOSE_CODES, canonicalRecordsHash, isTenantId, recordsHaveData, summarizeRecords, validateImportRecords } from '../../shared/tenancy';
 import { WorkspaceStore, type CommitResult, type RevisionInfo } from './store';
 
@@ -71,6 +72,11 @@ export { IDENTITY_EMAIL_HEADER, IDENTITY_EXPIRES_HEADER, IDENTITY_ROLE_HEADER, I
 
 function isExpired(attachment: Attachment): boolean {
   return attachment.expiresAt !== null && Date.now() > attachment.expiresAt;
+}
+
+/** What a Tester receives: everything except the SV-only kinds (reviews, identity logs, reports, topics). */
+function visibleTo<T extends { kind: string }>(role: Role, items: T[]): T[] {
+  return role === 'admin' ? items : items.filter((i) => !SV_ONLY_KINDS.has(i.kind));
 }
 
 function isRole(value: string | null): value is Role {
@@ -200,20 +206,20 @@ export class WorkspaceRoom extends DurableObject<Env> {
         this.send(ws, { t: 'ready', v: PROTOCOL_VERSION, revision: this.store.revision(), you });
         if (msg.lastRevision === null) {
           const snap = this.store.snapshot();
-          this.send(ws, { t: 'snapshot', revision: snap.revision, records: snap.records });
+          this.send(ws, { t: 'snapshot', revision: snap.revision, records: visibleTo(attachment.role, snap.records) });
           return;
         }
         const missed = this.store.changesSince(msg.lastRevision);
         if (missed.kind === 'snapshot') {
-          this.send(ws, { t: 'snapshot', revision: missed.revision, records: missed.records });
+          this.send(ws, { t: 'snapshot', revision: missed.revision, records: visibleTo(attachment.role, missed.records) });
         } else {
           this.send(ws, {
             t: 'changes',
             revision: missed.revision,
             actor: 'server',
             at: new Date().toISOString(),
-            puts: missed.puts,
-            deletes: missed.deletes,
+            puts: visibleTo(attachment.role, missed.puts),
+            deletes: visibleTo(attachment.role, missed.deletes),
             catchUp: true,
           });
         }
@@ -271,7 +277,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
         reason: msg.reason ?? 'edit',
         now: new Date().toISOString(),
         // Who may change what, and what may refer to what (shared/qaRules.ts).
-        rules: ({ puts, deletes, get }) => qaCommitError({ role: attachment.role, puts, deletes, view: { get } }),
+        rules: ({ puts, deletes, get, list }) => qaCommitError({ role: attachment.role, userId: attachment.userId, today: new Date().toISOString().slice(0, 10), puts, deletes, view: { get, list } }),
       });
     } catch (error) {
       // transactionSync rolled back: nothing was applied.
@@ -342,11 +348,73 @@ export class WorkspaceRoom extends DurableObject<Env> {
     return { ok: true, assignment: { id, projectId: input.projectId, userId: input.userId }, revision: result.revision, created: true };
   }
 
+  // ---- RPC: Team Member profiles -------------------------------------------------
+
+  /**
+   * Make sure the account has a Team Member profile (the RCS member record that attendance, performance and tickets point
+   * at), linked by the stable account id. The Worker has already created the account in the registry. Idempotent: an
+   * account that already has a profile gets that one back. The id follows the existing USER0001 convention.
+   */
+  async ensureMemberProfile(
+    tenantId: string,
+    input: { userId: string; name: string; role: 'SV' | 'Tester'; today: string; actor: string },
+  ): Promise<{ ok: true; memberId: string; created: boolean } | { ok: false; error: 'archived' | 'failed' }> {
+    this.assertTenant(tenantId);
+    if (this.frozen) return { ok: false, error: 'archived' };
+    const members = this.store.recordsOfKind('member');
+    let max = 0;
+    for (const m of members) {
+      const parsed = JSON.parse(m.json) as { userId?: string };
+      if (parsed.userId === input.userId) return { ok: true, memberId: m.id, created: false };
+      const n = /^USER(\d+)$/.exec(m.id);
+      if (n !== null) max = Math.max(max, Number(n[1]));
+    }
+    const id = `USER${String(max + 1).padStart(4, '0')}`;
+    const json = JSON.stringify({ id, name: input.name, team: 'RCS', role: input.role, startDate: input.today, active: true, userId: input.userId });
+    const committed = this.commitServerChange('member-profile', 'member', [{ kind: 'member', id, json }], input.actor);
+    return committed ? { ok: true, memberId: id, created: true } : { ok: false, error: 'failed' };
+  }
+
+  /**
+   * Link an existing roster-only member (older data, no account) to an account of this workspace. The Worker has checked
+   * the account; here the member must exist, must not already be linked, and the account must not already have a profile.
+   */
+  async linkMember(
+    tenantId: string,
+    input: { memberId: string; userId: string; actor: string },
+  ): Promise<{ ok: true; memberId: string; created: boolean } | { ok: false; error: 'member_not_found' | 'member_already_linked' | 'account_already_linked' | 'archived' | 'failed' }> {
+    this.assertTenant(tenantId);
+    if (this.frozen) return { ok: false, error: 'archived' };
+    const members = this.store.recordsOfKind('member');
+    const target = members.find((m) => m.id === input.memberId);
+    if (target === undefined) return { ok: false, error: 'member_not_found' };
+    const parsed = JSON.parse(target.json) as Record<string, unknown>;
+    if (parsed.userId === input.userId) return { ok: true, memberId: target.id, created: false };
+    if (parsed.userId !== undefined) return { ok: false, error: 'member_already_linked' };
+    if (members.some((m) => (JSON.parse(m.json) as { userId?: string }).userId === input.userId)) return { ok: false, error: 'account_already_linked' };
+    const json = JSON.stringify({ ...parsed, userId: input.userId });
+    return this.commitServerChange('member-link', 'member', [{ kind: 'member', id: target.id, json }], input.actor) ? { ok: true, memberId: target.id, created: true } : { ok: false, error: 'failed' };
+  }
+
+  /** One server-originated revision (no client rules: the caller has already validated), pushed live to everyone connected. */
+  private commitServerChange(reason: string, _what: string, puts: RecordPut[], actor: string): boolean {
+    let result: CommitResult;
+    try {
+      result = this.store.commit({ commitId: `${reason}-${crypto.randomUUID()}`, baseRevision: this.store.revision(), puts, deletes: [], actor, reason, now: new Date().toISOString() });
+    } catch {
+      return false;
+    }
+    if (!result.ok) return false;
+    if (result.changed && !result.duplicate) this.broadcast({ t: 'changes', revision: result.revision, actor, at: result.at, puts: result.puts, deletes: result.deletes });
+    return true;
+  }
+
   // ---- RPC: reads --------------------------------------------------------------
 
-  async exportAll(tenantId: string): Promise<{ revision: number; records: RecordPut[] }> {
+  async exportAll(tenantId: string, role: Role = 'admin'): Promise<{ revision: number; records: RecordPut[] }> {
     this.assertTenant(tenantId);
-    return this.store.snapshot();
+    const snap = this.store.snapshot();
+    return { revision: snap.revision, records: visibleTo(role, snap.records) };
   }
 
   async listRevisions(tenantId: string, limit: number, before?: number): Promise<RevisionInfo[]> {
@@ -364,13 +432,29 @@ export class WorkspaceRoom extends DurableObject<Env> {
     this.assertTenant(tenantId);
     if (this.frozen) return { ok: false, error: 'archived' };
     const commitId = `restore-${revision}-${crypto.randomUUID()}`;
+    // The links between Team Member profiles and accounts are not QA history: an older revision must not undo them.
+    const links = this.store
+      .recordsOfKind('member')
+      .map((m) => ({ m, parsed: JSON.parse(m.json) as Record<string, unknown> }))
+      .filter((x) => typeof x.parsed.userId === 'string');
     const result = this.store.restoreAsNewRevision(revision, actor, new Date().toISOString(), commitId);
     if (result === null) return { ok: false, error: 'revision-unavailable' };
     if (!result.ok) return { ok: false, error: result.reason };
     if (result.changed) {
       this.broadcast({ t: 'changes', revision: result.revision, actor, at: result.at, puts: result.puts, deletes: result.deletes });
     }
-    return { ok: true, revision: result.revision };
+    let head = result.revision;
+    if (links.length > 0) {
+      const now = new Map(this.store.recordsOfKind('member').map((m) => [m.id, m]));
+      const repair: RecordPut[] = [];
+      for (const { m, parsed } of links) {
+        const have = now.get(m.id);
+        if (have === undefined) repair.push(m);
+        else if ((JSON.parse(have.json) as { userId?: unknown }).userId !== parsed.userId) repair.push({ kind: 'member', id: m.id, json: JSON.stringify({ ...(JSON.parse(have.json) as Record<string, unknown>), userId: parsed.userId }) });
+      }
+      if (repair.length > 0 && this.commitServerChange('restore-keep-links', 'member', repair, actor)) head = this.store.revision();
+    }
+    return { ok: true, revision: head };
   }
 
   async stats(tenantId: string): Promise<{ revision: number; floor: number; connections: number; bytes: number; frozen: boolean }> {
@@ -550,7 +634,16 @@ export class WorkspaceRoom extends DurableObject<Env> {
   }
 
   private broadcast(message: ChangesMessage, except?: WebSocket): void {
-    const frame = JSON.stringify(message);
+    const frames = new Map<boolean, string>();
+    const frameFor = (role: Role): string => {
+      const full = role === 'admin';
+      let f = frames.get(full);
+      if (f === undefined) {
+        f = JSON.stringify(full ? message : { ...message, puts: visibleTo(role, message.puts), deletes: visibleTo(role, message.deletes) });
+        frames.set(full, f);
+      }
+      return f;
+    };
     for (const socket of this.ctx.getWebSockets()) {
       if (socket === except) continue;
       try {
@@ -560,7 +653,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
           socket.close(CLOSE_CODES.sessionExpired, 'session expired');
           continue;
         }
-        socket.send(frame);
+        socket.send(frameFor(attachment.role));
       } catch {
         // dead socket — ignored, it will be cleaned up by the runtime
       }

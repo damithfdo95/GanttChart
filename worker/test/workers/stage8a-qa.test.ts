@@ -13,6 +13,7 @@ const NOW = '2026-10-07T00:00:00.000Z';
 let seq = 0;
 const rk = (label: string): string => `${label}-${++seq}-${crypto.randomUUID().slice(0, 6)}@rakuten.com`;
 const cid = (): string => `cyc_${crypto.randomUUID()}`;
+const today = (): string => new Date().toISOString().slice(0, 10);
 
 const cycle = (over: Partial<CycleRecord> = {}): CycleRecord => ({ id: cid(), name: 'Android 4.2.0 Release', status: 'planned', plannedStart: '2026-10-01', plannedEnd: '2026-10-31', completedAt: null, createdAt: NOW, updatedAt: NOW, ...over });
 const entry = (over: Record<string, unknown> = {}) => ({ id: crypto.randomUUID(), date: '2026-10-05', testers: 2, pass: 10, fail: 2, notApplicable: 0, spo: 0, blocked: 1, retest: 0, questioned: 0, overtimeMinutes: 0, ...over });
@@ -23,6 +24,13 @@ async function addTester(t: Tenant, label = 'tester', displayName?: string): Pro
   const mail = rk(label);
   const r = await post<{ user: UserDto }>(t.adminEmail, '/api/tenant/users', { email: mail, ...(displayName === undefined ? {} : { displayName }) });
   if (r.status !== 201) throw new Error(`addTester failed ${r.status} ${r.text}`);
+  return { email: mail, user: r.json.user };
+}
+
+async function addSv(t: Tenant, label = 'sv'): Promise<{ email: string; user: UserDto }> {
+  const mail = rk(label);
+  const r = await post<{ user: UserDto }>(t.adminEmail, '/api/tenant/users', { email: mail, role: 'sv' });
+  if (r.status !== 201) throw new Error(`addSv failed ${r.status} ${r.text}`);
   return { email: mail, user: r.json.user };
 }
 
@@ -90,7 +98,7 @@ describe('cycles: shared, Admin-administered, tenant-bound', () => {
     const viewer = await joined(a.viewer.email);
     const c = cycle();
     const refused = await commit(editor, [{ kind: 'cycle', id: c.id, json: JSON.stringify(c) }]);
-    expect(refused).toMatchObject({ ok: false, reject: { reason: 'invalid', message: 'cycles_admin_only' } });
+    expect(refused).toMatchObject({ ok: false, reject: { reason: 'invalid', message: 'tester_cannot_change_kind' } });
     const readOnly = await commit(viewer, [{ kind: 'cycle', id: c.id, json: JSON.stringify(c) }]);
     expect(readOnly.ok).toBe(false);
     expect((await get(a.t.adminEmail, '/api/export')).text).not.toContain(c.id);
@@ -108,7 +116,7 @@ describe('cycles: shared, Admin-administered, tenant-bound', () => {
     expect((await get(a.t.adminEmail, '/api/export')).text).not.toContain(foreign.id);
   });
 
-  it('an editing Tester cannot move a project between cycles, but can still record its execution', async () => {
+  it('an editing Tester cannot move a project between cycles, but can still record today’s execution on a project they are assigned to', async () => {
     const a = await workspace('Alpha');
     const admin = await joined(a.t.adminEmail);
     const editor = await joined(a.editor.email);
@@ -120,15 +128,19 @@ describe('cycles: shared, Admin-administered, tenant-bound', () => {
     await editor.sock.next('changes');
     editor.revision = (await get<{ revision: number }>(a.t.adminEmail, '/api/export')).json.revision;
 
-    expect(await commit(editor, [projectRec('proj-1', 'PRJ-001', { cycleId: c2.id })])).toMatchObject({ ok: false, reject: { message: 'cycle_assignment_admin_only' } });
-    expect(await commit(editor, [projectRec('proj-1', 'PRJ-001', { cycleId: null })])).toMatchObject({ ok: false, reject: { message: 'cycle_assignment_admin_only' } });
-    // Their normal work is untouched: same cycle, new execution entry.
-    expect((await commit(editor, [projectRec('proj-1', 'PRJ-001', { cycleId: c1.id }, [entry()])])).ok).toBe(true);
+    expect(await commit(editor, [projectRec('proj-1', 'PRJ-001', { cycleId: c2.id })])).toMatchObject({ ok: false, reject: { message: 'tester_project_structure' } });
+    expect(await commit(editor, [projectRec('proj-1', 'PRJ-001', { cycleId: null })])).toMatchObject({ ok: false, reject: { message: 'tester_project_structure' } });
+    // Not assigned yet: even today's entry is refused.
+    expect(await commit(editor, [projectRec('proj-1', 'PRJ-001', { cycleId: c1.id }, [entry({ date: today() })])])).toMatchObject({ ok: false, reject: { message: 'tester_execution_not_assigned' } });
+    expect((await post(a.t.adminEmail, '/api/tenant/assignments', { projectId: 'PRJ-001', userId: a.editor.user.id })).status).toBe(201);
+    editor.revision = (await get<{ revision: number }>(a.t.adminEmail, '/api/export')).json.revision;
+    // Assigned: today's entry works, the cycle stays as it was.
+    expect((await commit(editor, [projectRec('proj-1', 'PRJ-001', { cycleId: c1.id }, [entry({ date: today() })])])).ok).toBe(true);
   });
 
   it('a project without a cycle (everything created before cycles) stays valid and editable', async () => {
     const a = await workspace('Alpha');
-    const editor = await joined(a.editor.email);
+    const editor = await joined(a.t.adminEmail);
     expect((await commit(editor, [projectRec('proj-1', 'PRJ-001', {}, [entry()])])).ok).toBe(true);
   });
 });
@@ -136,7 +148,7 @@ describe('cycles: shared, Admin-administered, tenant-bound', () => {
 describe('execution results: impossible values are refused by the server', () => {
   it('refuses negative, fractional and impossible-date entries from any client, and stores nothing', async () => {
     const a = await workspace('Alpha');
-    const editor = await joined(a.editor.email);
+    const editor = await joined(a.t.adminEmail);
     const before = (await get<{ revision: number }>(a.t.adminEmail, '/api/export')).json.revision;
     for (const [over, message] of [
       [{ pass: -1 }, 'execution_entry_invalid_pass'],
@@ -153,7 +165,7 @@ describe('execution results: impossible values are refused by the server', () =>
 
   it('refuses pushing completed cases above the planned total, allows exactly the total, and allows lowering the total afterwards', async () => {
     const a = await workspace('Alpha');
-    const editor = await joined(a.editor.email);
+    const editor = await joined(a.t.adminEmail);
     expect((await commit(editor, [projectRec('proj-1', 'PRJ-001', {}, [entry({ id: 'd1', pass: 60, fail: 20 })], 100)])).ok).toBe(true);
     expect(await commit(editor, [projectRec('proj-1', 'PRJ-001', {}, [entry({ id: 'd1', pass: 60, fail: 20 }), entry({ id: 'd2', date: '2026-10-06', pass: 21, fail: 0 })], 100)])).toMatchObject({ ok: false, reject: { message: 'executed_exceeds_planned' } });
     expect((await commit(editor, [projectRec('proj-1', 'PRJ-001', {}, [entry({ id: 'd1', pass: 60, fail: 20 }), entry({ id: 'd2', date: '2026-10-06', pass: 20, fail: 0 })], 100)])).ok).toBe(true);
@@ -164,7 +176,7 @@ describe('execution results: impossible values are refused by the server', () =>
 
   it('refuses a second entry for the same day', async () => {
     const a = await workspace('Alpha');
-    const editor = await joined(a.editor.email);
+    const editor = await joined(a.t.adminEmail);
     expect((await commit(editor, [projectRec('proj-1', 'PRJ-001', {}, [entry({ id: 'x1' })])])).ok).toBe(true);
     expect(await commit(editor, [projectRec('proj-1', 'PRJ-001', {}, [entry({ id: 'x1' }), entry({ id: 'x2' })])])).toMatchObject({ ok: false, reject: { message: 'execution_entry_duplicate_date' } });
   });
@@ -268,7 +280,7 @@ describe('Tester assignment (accounts, server-checked)', () => {
     const forged = JSON.stringify({ id: crypto.randomUUID(), projectId: 'PRJ-001', userId: a.editor.user.id, testerName: 'x', startDate: '2026-10-01', active: true });
     const id = crypto.randomUUID();
     expect(await commit(admin, [{ kind: 'assignment', id, json: forged }])).toMatchObject({ ok: false, reject: { message: 'assignment_requires_api' } });
-    expect(await commit(editor, [{ kind: 'assignment', id, json: forged }])).toMatchObject({ ok: false, reject: { message: 'assignment_admin_only' } });
+    expect(await commit(editor, [{ kind: 'assignment', id, json: forged }])).toMatchObject({ ok: false, reject: { message: 'tester_cannot_change_kind' } });
   });
 
   it('afterwards only the Admin can end or remove it, and it keeps its account and project', async () => {
@@ -278,26 +290,29 @@ describe('Tester assignment (accounts, server-checked)', () => {
     const admin = await joined(a.t.adminEmail);
     const editor = await joined(a.editor.email);
     const ended = JSON.stringify({ id, projectId: 'PRJ-001', userId: a.editor.user.id, testerName: 'Eri Editor', startDate: '2026-10-01', endDate: '2026-10-09', active: false });
-    expect(await commit(editor, [{ kind: 'assignment', id, json: ended }])).toMatchObject({ ok: false, reject: { message: 'assignment_admin_only' } });
+    expect(await commit(editor, [{ kind: 'assignment', id, json: ended }])).toMatchObject({ ok: false, reject: { message: 'tester_cannot_change_kind' } });
     expect(await commit(admin, [{ kind: 'assignment', id, json: ended.replace(a.editor.user.id, `usr_${crypto.randomUUID()}`) }])).toMatchObject({ ok: false, reject: { message: 'assignment_immutable_fields' } });
     expect((await commit(admin, [{ kind: 'assignment', id, json: ended }])).ok).toBe(true);
   });
 });
 
-describe('the roster everyone in the workspace may see', () => {
-  it('lists only this workspace’s Testers, to the Admin and to Testers alike', async () => {
+describe('the Tester roster belongs to the SVs', () => {
+  it('lists only this workspace’s Testers, to an SV; a Tester gets no roster at all', async () => {
     const a = await workspace('Alpha');
     const b = await workspace('Beta');
-    for (const who of [a.t.adminEmail, a.editor.email, a.viewer.email]) {
+    const sv = await addSv(a.t);
+    for (const who of [a.t.adminEmail, sv.email]) {
       const r = await get<{ testers: TesterDto[] }>(who, '/api/tenant/team');
       expect(r.status, who).toBe(200);
       const emails = r.json.testers.map((x) => x.email);
       expect(emails).toEqual(expect.arrayContaining([a.editor.email, a.viewer.email]));
       expect(emails).not.toContain(b.editor.email);
-      expect(emails).not.toContain(a.t.adminEmail); // never an Admin
+      expect(emails).not.toContain(a.t.adminEmail); // never an SV
+      expect(emails).not.toContain(sv.email);
       expect(r.json.testers.find((x) => x.email === a.editor.email)).toMatchObject({ displayName: 'Eri Editor', status: 'active' });
       expect(Object.keys(r.json.testers[0]).sort()).toEqual(['displayName', 'email', 'id', 'status']);
     }
+    for (const who of [a.editor.email, a.viewer.email]) expect((await get(who, '/api/tenant/team')).status, who).toBe(403);
   });
 
   it('shows a disabled Tester as disabled (history stays attributable), and refuses the Super Admin, strangers and forged tenants', async () => {
@@ -315,8 +330,8 @@ describe('the roster everyone in the workspace may see', () => {
 describe('conflicts and live sync', () => {
   it('two people recording the same project at once: the second is told about the conflict, nothing is overwritten', async () => {
     const a = await workspace('Alpha');
-    const second = await addTester(a.t, 'second');
-    const one = await joined(a.editor.email);
+    const second = await addSv(a.t, 'second');
+    const one = await joined(a.t.adminEmail);
     const two = await joined(second.email);
     const sameBase = one.revision;
     expect((await commit(one, [projectRec('proj-1', 'PRJ-001', {}, [entry({ id: 'm1', pass: 10, fail: 0 })])])).ok).toBe(true);
@@ -329,10 +344,10 @@ describe('conflicts and live sync', () => {
 
   it('assigning a Tester while another person edits the project does not conflict (different records)', async () => {
     const a = await workspace('Alpha');
-    const editor = await joined(a.editor.email);
+    const editor = await joined(a.t.adminEmail);
     const base = editor.revision;
     expect((await post(a.t.adminEmail, '/api/tenant/assignments', { projectId: 'PRJ-001', userId: a.editor.user.id })).status).toBe(201);
-    editor.revision = base; // the editor has not seen the assignment yet
+    editor.revision = base; // this SV has not seen the assignment yet
     const r = await commit(editor, [projectRec('proj-1', 'PRJ-001', {}, [entry()])]);
     expect(r.ok).toBe(true);
   });

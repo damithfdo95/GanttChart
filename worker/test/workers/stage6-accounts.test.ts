@@ -82,10 +82,12 @@ describe('only a tenant Admin creates Users, inside their own tenant, for manage
     expect((await post(w.viewerA, '/api/tenant/users', { email: rk('x'), access: 'editor' })).status).toBe(403);
   });
 
-  it('a body that asks for the Admin role (or any other field) cannot create an Admin', async () => {
+  it('a body can name only the product roles (sv, tester): the internal role name or any other field cannot create an SV', async () => {
     const w = await twoTenants();
     const email = rk('sneaky');
-    const r = await post<{ user: UserDto }>(w.a.adminEmail, '/api/tenant/users', { email, access: 'editor', role: 'admin', isAdmin: true, tenantRole: 'admin' });
+    expect((await post(w.a.adminEmail, '/api/tenant/users', { email, access: 'editor', role: 'admin' })).status).toBe(400);
+    expect((await post(w.a.adminEmail, '/api/tenant/users', { email, access: 'editor', role: 'super_admin' })).status).toBe(400);
+    const r = await post<{ user: UserDto }>(w.a.adminEmail, '/api/tenant/users', { email, access: 'editor', isAdmin: true, tenantRole: 'admin' });
     expect(r.status).toBe(201);
     expect(r.json.user.role).toBe('user');
     expect((await whoami(email)).json.role).toBe('user');

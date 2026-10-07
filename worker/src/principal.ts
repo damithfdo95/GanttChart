@@ -35,6 +35,7 @@ export function principalFromAuth(auth: AuthResult): PrincipalResult {
     tenantId: tenant.id,
     tenantName: tenant.name,
     role: user.role,
+    isOwner: tenant.owner_user_id === user.id,
     displayName: user.display_name ?? null,
     access: user.role === 'admin' ? 'editor' : user.access,
     storageMode: tenant.storage_mode,

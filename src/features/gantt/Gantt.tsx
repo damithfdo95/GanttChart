@@ -8,6 +8,7 @@ import { WORK_DAY_END, WORK_LUNCH } from '../../lib/calculations/workday';
 import { projectPlanningStatus, projectProgress, buildDayTimeline } from '../../domain/projects';
 import { formatCases, formatClock, formatInteger, formatNumber } from '../../lib/formatting/format';
 import { PlanningPanel } from '../../components/PlanningPanel';
+import { useAccess } from '../../app/access';
 import { SectionCard } from '../../components/SectionCard';
 import { MetricCard } from '../../components/MetricCard';
 import { MultiDayTimeline } from '../../components/MultiDayTimeline';
@@ -47,6 +48,8 @@ export function Gantt({ focusProjectId, onFocusHandled }: GanttProps) {
   const reportsApi = useReportsStateCtx();
   const lang = app.state.language;
   const sub = otherLanguage(lang);
+  // A Tester sees the plan; changing it is an SV's (the server enforces the same).
+  const readOnly = useAccess().isTester;
 
   const [statusFilter, setStatusFilter] = useState<GanttStatusFilter>('active');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -198,6 +201,8 @@ export function Gantt({ focusProjectId, onFocusHandled }: GanttProps) {
             </div>
           </SectionCard>
 
+          {readOnly ? <p className="dr-summary" role="note">{t(lang, 'gantt.testerReadOnly')}</p> : null}
+          <fieldset className="plain-fieldset" disabled={readOnly}>
           <PlanningPanel
             inputs={app.state}
             lang={lang}
@@ -210,6 +215,7 @@ export function Gantt({ focusProjectId, onFocusHandled }: GanttProps) {
             onAddRow={app.addPlanningRow}
             onRemoveRow={app.removePlanningRow}
           />
+          </fieldset>
         </>
       ) : null}
 

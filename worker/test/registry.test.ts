@@ -72,14 +72,11 @@ describe('tenant + admin creation', () => {
     expect(reg.createTenantWithAdmin({ name: 'T', adminEmail: 'SUPER@example.com', managedDomains: MANAGED, reserved: SUPER, actorEmail: 's', now: now() })).toEqual({ ok: false, error: 'email_reserved' });
   });
 
-  it('the database itself refuses a second admin for a tenant', () => {
-    const { tenant } = newTenant('A', 'a@example.com');
-    expect(() =>
-      storage.sql.exec(
-        `INSERT INTO users (id, email, tenant_id, role, access, status, created_at, updated_at) VALUES ('usr_zz', 'second@example.com', ?, 'admin', 'editor', 'active', 'x', 'x')`,
-        tenant.id,
-      ),
-    ).toThrow();
+  it('a tenant may have several SVs (the one-admin index is gone) but exactly one Owner', () => {
+    const { tenant, admin } = newTenant('A', 'a@example.com');
+    storage.sql.exec(`INSERT INTO users (id, email, tenant_id, role, access, status, created_at, updated_at) VALUES ('usr_zz', 'second@example.com', ?, 'admin', 'editor', 'active', 'x', 'x')`, tenant.id);
+    expect(reg.listUsers(tenant.id).filter((u) => u.role === 'admin')).toHaveLength(2);
+    expect(reg.ownerOf(tenant.id)?.id).toBe(admin.id);
   });
 
   it('the database refuses invalid states and unknown values', () => {
@@ -124,11 +121,11 @@ describe('users are bound to ONE tenant and cannot be reached across tenants', (
     expect(reg.listUsers(a.tenant.id).map((u) => u.email)).toEqual(['a@example.com']);
   });
 
-  it('the admin row can never be modified through user management', () => {
+  it('the Owner SV row can never be modified through member management', () => {
     const a = webTenant('A', 'a@example.com');
-    expect(reg.updateUser({ actor: ACTOR, tenantId: a.tenant.id, userId: a.admin.id, status: 'disabled', now: now() })).toEqual({ ok: false, error: 'forbidden_target' });
-    expect(reg.updateUser({ actor: ACTOR, tenantId: a.tenant.id, userId: a.admin.id, access: 'viewer', now: now() })).toEqual({ ok: false, error: 'forbidden_target' });
-    expect(reg.getUserInTenant(a.tenant.id, a.admin.id)).toMatchObject({ role: 'admin', access: 'editor' });
+    expect(reg.updateUser({ actor: ACTOR, tenantId: a.tenant.id, userId: a.admin.id, status: 'disabled', now: now() })).toEqual({ ok: false, error: 'owner_protected' });
+    expect(reg.updateUser({ actor: ACTOR, tenantId: a.tenant.id, userId: a.admin.id, access: 'viewer', now: now() })).toEqual({ ok: false, error: 'owner_protected' });
+    expect(reg.getUserInTenant(a.tenant.id, a.admin.id)).toMatchObject({ role: 'admin', access: 'editor', status: 'active' });
   });
 
   it('disable / re-enable / change access; re-enabling restores active (there is no invited state)', () => {
@@ -198,7 +195,7 @@ describe('authenticate (authenticated is not authorized)', () => {
 
   it('decideAccess is exhaustive and pure', () => {
     const user = (over: Partial<UserRow>): UserRow => ({ id: 'u', email: 'e@e.co', tenant_id: 't', role: 'user', access: 'editor', status: 'active', created_at: '', updated_at: '', created_by: null, last_login_at: null, display_name: null, ...over });
-    const tenant = (over: Partial<TenantRow>): TenantRow => ({ id: 't', name: 'n', storage_mode: 'web', status: 'active', created_at: '', updated_at: '', deletion_requested_at: null, deletion_requested_by: null, ...over });
+    const tenant = (over: Partial<TenantRow>): TenantRow => ({ id: 't', name: 'n', storage_mode: 'web', status: 'active', created_at: '', updated_at: '', deletion_requested_at: null, deletion_requested_by: null, owner_user_id: null, ...over });
     expect(decideAccess(user({}), tenant({}))).toEqual({ allowed: true });
     expect(decideAccess(user({ status: 'invited' }), tenant({}))).toEqual({ allowed: true });
     expect(decideAccess(user({}), tenant({ status: 'deletion_requested' }))).toEqual({ allowed: true });

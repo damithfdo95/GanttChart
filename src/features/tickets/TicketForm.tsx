@@ -73,6 +73,8 @@ interface TicketFormProps {
   errors: Partial<Record<keyof TicketFormValues, string>>;
   /** Known tester/member names for the external-reporter datalist (free text allowed). */
   memberNames: string[];
+  /** A Tester raises tickets as themselves: the reporter cannot be chosen. */
+  reporterLocked?: boolean;
   /** RCS member master (V6.9-A) — powers the reporter selector. */
   members?: RcsMember[];
   submitLabel: string;
@@ -92,7 +94,7 @@ interface TicketFormProps {
  * Unknown" keeps the legacy free-text reporter — external reporters are
  * never forced into the member master and never falsely attributed.
  */
-export function TicketForm({ lang, values, errors, memberNames, members = [], submitLabel, disabled = false, onChange, onSubmit, onCancel }: TicketFormProps) {
+export function TicketForm({ lang, values, errors, memberNames, members = [], reporterLocked = false, submitLabel, disabled = false, onChange, onSubmit, onCancel }: TicketFormProps) {
   const selectableMembers = [...members].sort((a, b) => {
     if (a.active !== b.active) return a.active ? -1 : 1; // active first
     return a.id.localeCompare(b.id);
@@ -144,6 +146,7 @@ export function TicketForm({ lang, values, errors, memberNames, members = [], su
         <select
           className="input"
           value={values.reporterMemberId}
+          disabled={reporterLocked}
           onChange={(e) => {
             const memberId = e.target.value;
             if (memberId === '') {
@@ -174,6 +177,7 @@ export function TicketForm({ lang, values, errors, memberNames, members = [], su
             className="input reporter-external-input"
             type="text"
             list="ticket-reporter-options"
+            disabled={reporterLocked && values.reporterMemberId !== ''}
             placeholder={t(lang, 'tickets.reporterExternalPlaceholder')}
             value={values.reportedBy}
             onChange={(e) => onChange({ reportedBy: e.target.value })}

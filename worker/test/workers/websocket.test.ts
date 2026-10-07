@@ -26,7 +26,7 @@ describe('connect + hello', () => {
 
   it('first connect gets ready (with identity) then an empty snapshot', async () => {
     const { sock, ready } = await join(newWorkspace(), 'alice@example.com');
-    expect(ready).toEqual({ t: 'ready', v: PROTOCOL_VERSION, revision: 0, you: { email: 'alice@example.com', role: 'editor' } });
+    expect(ready).toEqual({ t: 'ready', v: PROTOCOL_VERSION, revision: 0, you: { email: 'alice@example.com', role: 'admin' } });
     expect(await sock.next('snapshot')).toEqual({ t: 'snapshot', revision: 0, records: [] });
     sock.close();
   });
@@ -226,7 +226,7 @@ describe('Access session lifetime', () => {
 
   it('closes a socket whose session ends: next message gets session_expired + close 4401', async () => {
     const ws = newWorkspace();
-    const { sock } = await join(ws, 'alice@example.com', null, 'editor', Date.now() + 1200);
+    const { sock } = await join(ws, 'alice@example.com', null, 'admin', Date.now() + 1200);
     await sock.next('snapshot');
     sock.send(commitMsg(0, [rec('project', 'a', 1)]));
     expect((await sock.next('ack')).revision).toBe(1); // still valid
@@ -240,7 +240,7 @@ describe('Access session lifetime', () => {
   it('never delivers a broadcast to an expired session, and closes it', async () => {
     const ws = newWorkspace();
     const writer = (await join(ws, 'writer@example.com')).sock;
-    const short = (await join(ws, 'short@example.com', null, 'editor', Date.now() + 1000)).sock;
+    const short = (await join(ws, 'short@example.com', null, 'admin', Date.now() + 1000)).sock;
     await Promise.all([writer.next('snapshot'), short.next('snapshot')]);
     await new Promise((r) => setTimeout(r, 1200)); // short's session has ended (it never sent anything)
     writer.send(commitMsg(0, [rec('project', 'secret', 'classified')]));

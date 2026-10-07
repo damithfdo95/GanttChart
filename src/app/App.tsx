@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { AppProviders, useAppStateCtx, useAutoBackupCtx, usePersistenceCtx } from './state-contexts';
+import { AppProviders, useAppStateCtx, useAutoBackupCtx, usePersistenceCtx, useReportsStateCtx } from './state-contexts';
+import { toolNameOf } from '../domain/branding';
 import type { SharedBoot } from './shared-sync';
 import { TenantProvider, useTenant, type TenantApi } from './tenant-context';
 import { useSession } from './session-context';
@@ -15,7 +16,6 @@ import { Settings } from '../features/settings/Settings';
 import { TicketTab } from '../features/tickets/TicketTab';
 import { PerformanceTab } from '../features/performance/PerformanceTab';
 import { ReviewTab } from '../features/review/ReviewTab';
-import { RcsMembersTab } from '../features/members/RcsMembersTab';
 import { MIGRATION_FAILURE_LABEL_KEY } from '../lib/storage/db/recovery';
 import { t, type TranslationKey } from '../i18n';
 import type { OverallFocus } from '../domain/projects';
@@ -212,6 +212,7 @@ function ShellLogout() {
 
 function Shell() {
   const { state } = useAppStateCtx();
+  const reports = useReportsStateCtx();
   const { principal } = useTenant();
   const [screen, setScreen] = useState<Screen>('dashboard');
   const [overallFocus, setOverallFocus] = useState<OverallFocus>({});
@@ -222,8 +223,8 @@ function Shell() {
   useEffect(() => {
     document.documentElement.lang = state.language;
     const screenKey = NAV_ITEMS.find((item) => item.id === screen)?.key ?? 'app.title';
-    document.title = `${t(state.language, screenKey)} — ${t(state.language, 'app.title')}`;
-  }, [state.language, screen]);
+    document.title = `${t(state.language, screenKey)} — ${toolNameOf(reports.state.settings, state.language)}`;
+  }, [state.language, screen, reports.state.settings]);
 
   const openOverall = (focus: OverallFocus): void => {
     setOverallFocus(focus);
@@ -277,13 +278,11 @@ function Shell() {
         <PerformanceTab />
       ) : screen === 'review' ? (
         <ReviewTab />
-      ) : screen === 'members' ? (
-        <RcsMembersTab />
       ) : screen === 'reports' ? (
         <ReportsExport />
       ) : screen === 'history' ? (
         <HistoryScreen />
-      ) : screen === 'team' && principal?.role === 'admin' ? (
+      ) : screen === 'team' && (principal?.role === 'admin' || principal?.role === 'user') ? (
         <TeamScreen onOpenSettings={() => setScreen('settings')} />
       ) : (
         <Settings />

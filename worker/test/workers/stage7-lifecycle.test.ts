@@ -278,12 +278,11 @@ describe('Admin: managing Users', () => {
     expect(await rowCount('users')).toBe(before);
   });
 
-  it('cannot create an Admin, move a User, name another workspace, or forge who is acting', async () => {
+  it('cannot create an SV by a forged field, move a User, name another workspace, or forge who is acting', async () => {
     const w = await twoTenants();
     const mail = rk('promo');
     const r = await post<{ user: UserDto }>(w.a.adminEmail, '/api/tenant/users', {
       email: mail,
-      role: 'admin',
       isAdmin: true,
       actor: { email: SUPER, role: 'super_admin' },
       actorEmail: SUPER,
@@ -330,7 +329,7 @@ describe('Admin: managing Users', () => {
     const adminB = (await listUsers(w.b.adminEmail)).find((u) => u.role === 'admin')!;
     expect((await patch(w.a.adminEmail, `/api/tenant/users/${otherUser.id}`, { status: 'disabled' })).status).toBe(404);
     expect((await patch(w.a.adminEmail, `/api/tenant/users/${adminB.id}`, { status: 'disabled' })).status).toBe(404);
-    expect((await patch(w.a.adminEmail, `/api/tenant/users/${adminA.id}`, { status: 'disabled' })).status).toBe(403); // cannot disable an Admin, even themselves
+    expect((await patch(w.a.adminEmail, `/api/tenant/users/${adminA.id}`, { status: 'disabled' })).status).toBe(409); // the Owner SV cannot be disabled, even by themselves
     expect((await patch(w.a.adminEmail, '/api/tenant/users/not-an-id', { status: 'disabled' })).status).toBe(400);
     expect((await whoami(w.userB)).status).toBe(200);
     expect((await whoami(w.b.adminEmail)).status).toBe(200);
@@ -454,7 +453,7 @@ describe('the sign-in entry and the shell identity', () => {
     await post(SUPER, '/api/super/tenants', { name: 'Shown QA', adminEmail: mail, displayName: 'Yuki Ito' });
     const who = await whoami(mail);
     expect(who.json).toMatchObject({ email: mail, displayName: 'Yuki Ito', role: 'admin', tenant: { name: 'Shown QA', storageMode: 'local' } });
-    expect(JSON.stringify(who.json)).not.toContain('usr_');
+    expect(JSON.stringify(who.json).match(/usr_[\w-]+/g)).toHaveLength(1); // only their own account id
     expect((await whoami(SUPER)).json).toMatchObject({ role: 'super_admin', displayName: null, tenant: null });
     const res = await exports.default.fetch(new Request(`${BASE}/api/whoami`, { headers: { 'x-dev-email': mail } }));
     expect(res.status).toBe(200);

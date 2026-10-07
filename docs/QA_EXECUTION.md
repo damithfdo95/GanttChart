@@ -16,7 +16,7 @@ record kind, `ProjectRecord.cycleId`, `TesterProjectAssignment.userId`, domain m
 
 Fields: `id`, `name`, optional `version` label, optional `description`, `status` (Planned / Active / Completed /
 Archived), `plannedStart`, `plannedEnd`, `completedAt`, `createdAt`, `updatedAt`. A project has at most one cycle
-(`cycleId`; absent or null = none). Only an Admin creates, edits, moves, completes or archives a cycle or changes a
+(`cycleId`; absent or null = none). Only an SV creates, edits, moves, completes or archives a cycle or changes a
 project's cycle; this is enforced **by the server** (shared rules run inside the commit), not only in the UI.
 
 | From | Allowed to |
@@ -31,7 +31,7 @@ instead. Names, versions and ids are never translated.
 
 ## 3. Tester assignment
 
-Assignments created through the Admin API carry the Tester's stable `userId` (not an email or display name). The
+Assignments created through the SV-only API carry the Tester's stable `userId` (not an email or display name). The
 server checks that the user is a Tester **of the same tenant** and not disabled (`tester_not_found` 404 /
 `tester_disabled` 409). Account assignments cannot be created over the sync channel (`assignment_requires_api`), and
 `userId` / `projectId` of an existing one cannot be changed. Ending an assignment keeps it (history); a disabled
@@ -102,3 +102,10 @@ Production data needs no migration.
 
 Templates, trend forecasting, AI risk scoring, external tracker integration, weighted capacity, email/Slack
 notifications, complex charts, cross-tenant organisation analytics, branding.
+
+## 11. Roles (Stage 8B)
+
+"Admin" in this document now reads **SV** in the product (internal role `admin`; there can be several SVs per workspace). A **Tester** (internal
+role `user`) sees cycle information only through the screens they have (Dashboard, Projects / Test Executions, Gantt); the **Cycles** screen, the manager
+panels, the control center and the Tester workload are SV-only, and a Tester can record **Today's Execution only on a project they are assigned to**.
+See [ADMINISTRATION.md](ADMINISTRATION.md) §9.

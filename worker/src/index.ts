@@ -25,6 +25,7 @@ import {
   CLOSE_CODES,
   REPLACE_CONFIRMATION,
   REQUEST_DELETION_CONFIRMATION,
+  TRANSFER_OWNERSHIP_CONFIRMATION,
   SWITCH_TO_LOCAL_CONFIRMATION,
   canonicalRecordsHash,
   emailDomain,
@@ -176,6 +177,7 @@ const REGISTRY_STATUS: Record<RegistryError, number> = {
   bad_state: 409,
   forbidden_target: 403,
   same_person: 403,
+  owner_protected: 409,
 };
 
 function registryProblem(error: RegistryError): Response {
@@ -326,7 +328,7 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
   if (path === '/api/export' && isRead) {
     const denial = need(ctx, 'data.read');
     if (denial !== null) return denial;
-    const snap = await roomFor(ctx, p).exportAll(p.tenantId);
+    const snap = await roomFor(ctx, p).exportAll(p.tenantId, workspaceRoleOf(p) ?? 'viewer');
     return json({ ...snap, hash: await canonicalRecordsHash(snap.records) });
   }
 
@@ -337,7 +339,7 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
   }
 
   if (path === '/api/revisions' && isRead) {
-    const denial = need(ctx, 'data.read');
+    const denial = need(ctx, 'history.read'); // SV only
     if (denial !== null) return denial;
     const limit = Math.min(500, Math.max(1, Number(url.searchParams.get('limit') ?? 100) || 100));
     const beforeRaw = url.searchParams.get('before');
@@ -350,7 +352,7 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     const revision = revisionParam(rev[1]);
     if (revision === null) return problem(400, 'Invalid revision');
     if (rev[2] === undefined && isRead) {
-      const denial = need(ctx, 'data.read');
+      const denial = need(ctx, 'history.read');
       if (denial !== null) return denial;
       const records = await roomFor(ctx, p).previewRevision(p.tenantId, revision);
       return records === null ? problem(404, 'Revision not available') : json({ revision, records });
@@ -378,15 +380,70 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     const body = await readJson(ctx);
     if (!body.ok) return body.response;
     const access = (body.body.access ?? 'editor') as UserAccess;
+    // The only roles a member can be created with. The words are the product's (SV / Tester), never the internal ones.
+    const wanted = body.body.role === undefined ? 'tester' : body.body.role;
+    if (wanted !== 'sv' && wanted !== 'tester') return problem(400, 'invalid_role');
     const result = await ctx.registry.createUser({
       tenantId: p.tenantId, // from the principal, never from the body
       email: String(body.body.email ?? ''),
       displayName: body.body.displayName,
+      role: wanted === 'sv' ? 'admin' : 'user',
       access,
       reserved: ctx.superAdmins,
       actor: actorOf(p), // from the principal, never from the body
     });
-    return result.ok ? json({ user: result.value }, 201) : registryProblem(result.error);
+    if (!result.ok) return registryProblem(result.error);
+    // The account's Team Member profile (the roster entry attendance, performance and tickets refer to), linked by account id.
+    let profile: 'created' | 'existing' | 'failed' = 'failed';
+    try {
+      const made = await roomFor(ctx, p).ensureMemberProfile(p.tenantId, {
+        userId: result.value.id,
+        name: result.value.displayName ?? result.value.email,
+        role: result.value.role === 'admin' ? 'SV' : 'Tester',
+        today: new Date().toISOString().slice(0, 10),
+        actor: p.email,
+      });
+      if (made.ok) profile = made.created ? 'created' : 'existing';
+    } catch {
+      profile = 'failed'; // the account exists; an SV can link a roster entry to it from Team Members
+    }
+    return json({ user: result.value, profile }, 201);
+  }
+
+  // Link an older roster-only member to an account of this workspace (an SV's decision; never guessed from names).
+  if (path === '/api/tenant/members/link' && method === 'POST') {
+    const denial = need(ctx, 'users.manage');
+    if (denial !== null) return denial;
+    const body = await readJson(ctx);
+    if (!body.ok) return body.response;
+    const memberId = body.body.memberId;
+    const userId = body.body.userId;
+    if (typeof memberId !== 'string' || memberId.length === 0 || memberId.length > 100) return problem(400, 'invalid_member_id');
+    if (!isUserId(userId)) return problem(400, 'invalid_user_id');
+    const account = await ctx.registry.getUser(p.tenantId, userId);
+    if (account === null) return problem(404, 'user_not_found');
+    const linked = await roomFor(ctx, p).linkMember(p.tenantId, { memberId, userId, actor: p.email });
+    if (!linked.ok) return problem(linked.error === 'member_not_found' ? 404 : 409, linked.error);
+    return json(linked);
+  }
+
+  // Give ONE account of this workspace its Team Member profile (an SV's explicit choice, for accounts that predate profiles).
+  if (path === '/api/tenant/members/profile' && method === 'POST') {
+    const denial = need(ctx, 'users.manage');
+    if (denial !== null) return denial;
+    const body = await readJson(ctx);
+    if (!body.ok) return body.response;
+    if (!isUserId(body.body.userId)) return problem(400, 'invalid_user_id');
+    const account = await ctx.registry.getUser(p.tenantId, body.body.userId);
+    if (account === null) return problem(404, 'user_not_found');
+    const made = await roomFor(ctx, p).ensureMemberProfile(p.tenantId, {
+      userId: account.id,
+      name: account.displayName ?? account.email,
+      role: account.role === 'admin' ? 'SV' : 'Tester',
+      today: new Date().toISOString().slice(0, 10),
+      actor: p.email,
+    });
+    return made.ok ? json(made, made.created ? 201 : 200) : problem(409, made.error);
   }
 
   const userRoute = /^\/api\/tenant\/users\/([^/]+)$/.exec(path);
@@ -416,7 +473,19 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     return json({ user: result.value, disconnected });
   }
 
-  // ---- deletion request (Admin) ----
+  // ---- ownership (the Owner SV only) ----
+  if (path === '/api/tenant/owner' && method === 'POST') {
+    const denial = need(ctx, 'tenant.transferOwnership');
+    if (denial !== null) return denial;
+    const body = await readJson(ctx);
+    if (!body.ok) return body.response;
+    if (body.body.confirm !== TRANSFER_OWNERSHIP_CONFIRMATION) return problem(400, 'confirmation_required');
+    if (!isUserId(body.body.userId)) return problem(400, 'invalid_user_id');
+    const result = await ctx.registry.transferOwnership({ tenantId: p.tenantId, actor: actorOf(p), toUserId: body.body.userId });
+    return result.ok ? json(result.value) : registryProblem(result.error);
+  }
+
+  // ---- deletion request (the Owner SV) ----
   if (path === '/api/tenant/deletion-request' && method === 'POST') {
     const denial = need(ctx, 'tenant.requestDeletion');
     if (denial !== null) return denial;

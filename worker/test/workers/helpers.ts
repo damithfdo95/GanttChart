@@ -65,7 +65,7 @@ export interface TestSocket {
 export async function connect(
   workspace: Workspace,
   email = 'alice@example.com',
-  role: Role = 'editor',
+  role: Role = 'admin',
   expiresAt: number | null = null,
 ): Promise<TestSocket> {
   const response = await workspace.fetch(new Request('http://localhost/ws', { headers: identityHeaders(workspace, email, role, expiresAt) }));
@@ -135,7 +135,7 @@ export async function join(
   workspace: Workspace,
   email = 'alice@example.com',
   lastRevision: number | null = null,
-  role: Role = 'editor',
+  role: Role = 'admin',
   expiresAt: number | null = null,
 ) {
   const sock = await connect(workspace, email, role, expiresAt);

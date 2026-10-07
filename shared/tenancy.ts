@@ -49,6 +49,8 @@ export const SWITCH_TO_LOCAL_CONFIRMATION = 'LOCAL';
 
 /** The exact word an Admin must type to REQUEST deletion of their workspace (checked by BOTH the browser and the server). */
 export const REQUEST_DELETION_CONFIRMATION = 'DELETE';
+/** Typed to hand the workspace to another SV (checked by the server, not only in the browser). */
+export const TRANSFER_OWNERSHIP_CONFIRMATION = 'TRANSFER';
 
 /** WebSocket close codes with a meaning for the client. */
 export const CLOSE_CODES = {
@@ -167,7 +169,10 @@ export interface UserDto {
   id: string;
   email: string;
   displayName: string | null;
+  /** Internal role. 'admin' is shown as SV and 'user' as Tester (see docs/ADMINISTRATION.md). */
   role: 'admin' | 'user';
+  /** True for the ONE Owner SV of the workspace. Derived from tenants.owner_user_id, never from the email. */
+  isOwner: boolean;
   access: UserAccess;
   status: UserLifecycle;
   createdAt: string;
@@ -215,6 +220,7 @@ export const AUDIT_ACTIONS = [
   'user.disabled',
   'user.reactivated',
   'user.access_changed',
+  'owner.transferred',
   'storage.migration_uploaded',
   'storage.web_activated',
   'storage.local_activated',
@@ -222,7 +228,7 @@ export const AUDIT_ACTIONS = [
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 /** What the Super Admin sees: platform-level events only. Account events inside a workspace stay with that workspace's Admin. */
-export const PLATFORM_AUDIT_ACTIONS: readonly AuditAction[] = AUDIT_ACTIONS.filter((a) => !a.startsWith('user.'));
+export const PLATFORM_AUDIT_ACTIONS: readonly AuditAction[] = AUDIT_ACTIONS.filter((a) => !a.startsWith('user.') && a !== 'owner.transferred');
 
 export interface AuditActor {
   userId: string | null;
@@ -247,12 +253,16 @@ export interface AdminAuditDto {
 /** What `/api/whoami` tells the signed-in person about themselves. */
 export interface PrincipalDto {
   email: string;
+  /** The person's own stable account id (null for the Super Admin). It is what links their Team Member profile to them. */
+  userId: string | null;
   displayName: string | null;
   role: AppRole;
   /** null for a super admin (they have no tenant). */
   tenant: TenantDto | null;
   /** For users: editor or viewer. Admins are always editor. */
   access: UserAccess | null;
+  /** True for the Owner SV of the workspace (false for every other SV, every Tester and the Super Admin). */
+  isOwner: boolean;
   /** The permission level the live workspace uses (derived server-side). null when there is no shared workspace for this person. */
   workspaceRole: Role | null;
   /** True when this person may open the shared workspace right now. */

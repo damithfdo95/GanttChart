@@ -42,7 +42,6 @@ import {
   formatSignedMultiDayDuration,
 } from '../../lib/formatting/format';
 import { LANGUAGES, otherLanguage, resolveBilingualName, t, type TranslationKey } from '../../i18n';
-import { downloadStateAsJson, parseImportPayload } from '../../lib/jsonio/jsonio';
 import { SectionCard } from '../../components/SectionCard';
 import { MetricCard } from '../../components/MetricCard';
 import { Field } from '../../components/Field';
@@ -52,16 +51,16 @@ import { StatusExplanation } from '../../components/StatusExplanation';
 import { ExecutiveSummaryView } from '../../components/ExecutiveSummary';
 import { Timeline } from '../../components/Timeline';
 import { WhatIfTable, type WhatIfRow } from '../../components/WhatIfTable';
-import { DataControls, type ImportMessage } from '../../components/DataControls';
 import { DailyProgressPanel } from '../../components/DailyProgressPanel';
 import { DailyExecutionForm } from '../../components/DailyExecutionForm';
 import { BlockingPanel } from '../../components/BlockingPanel';
 import { MilestonePanel } from '../../components/MilestonePanel';
 import { RecoveryPanel } from '../../components/RecoveryPanel';
-import { useSharedGuard } from '../../app/useSharedGuard';
 import { useTenant } from '../../app/tenant-context';
+import { useAccess } from '../../app/access';
 import { WorkspaceEmptyNotice } from './WorkspaceEmptyNotice';
 import { ManagerPanel } from './ManagerPanel';
+import { toolNameOf } from '../../domain/branding';
 import { ProjectControlCenter } from './ProjectControlCenter';
 import { MultiDayTimeline } from '../../components/MultiDayTimeline';
 import { formatDate, formatDateDisplay, parseDate, todayEpochDays } from '../../lib/dates/dates';
@@ -92,12 +91,13 @@ const STATUS_KEY: Record<ScheduleStatus, TranslationKey> = {
  */
 export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFocus) => void }) {
   const app = useAppStateCtx();
-  const { state, updateField, replaceState, resetToDemo, changeStartDate, deleteDailyExecutionEntry } = app;
-  const guard = useSharedGuard();
+  const { state, updateField, changeStartDate, deleteDailyExecutionEntry } = app;
   const { principal } = useTenant();
+  const access = useAccess();
+  // A Tester sees the Operator section (and enters Today's Execution) only; the manager panels are the SV's.
+  const tester = access.isTester;
   const reportsApi = useReportsStateCtx();
   const now = useNow(30_000);
-  const [importMessage, setImportMessage] = useState<ImportMessage | null>(null);
   // The date loaded in the "Today's Execution" form (editable past days
   // included) — owned here so the Daily Progress panel's per-row Edit
   // button can preload a recorded day.
@@ -107,6 +107,9 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
   const sub = otherLanguage(lang);
   const todayEpoch = todayEpochDays();
   const today = formatDate(todayEpoch);
+  // A Tester records today's results on the executions they are assigned to; say so instead of letting the server refuse it.
+  const activeProjectRecord = reportsApi.state.projects.find((p) => p.id === reportsApi.state.activeProjectId);
+  const blockedReason = access.canRecordFor(activeProjectRecord?.projectId, today) ? undefined : t(lang, 'exec.notAssigned');
 
   const projectName = resolveBilingualName(lang, { nameEn: state.projectNameEn, nameJa: state.projectNameJa });
   const portfolio = useMemo(
@@ -209,7 +212,7 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
   const progress = state.totalCases > 0 ? Math.min(1, state.casesCompleted / state.totalCases) : 1;
 
   // ---- Level 2: executive summary, daily plan, blocking (single source of truth) ----
-  const view = state.dashboardView ?? 'operator';
+  const view = tester ? 'operator' : (state.dashboardView ?? 'operator');
   const executive = useMemo(
     () => calculateExecutiveSummary(state, now, todayEpoch),
     [state, now, todayEpoch],
@@ -330,43 +333,6 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
     if (Number.isFinite(n)) updateField(field, n);
   };
 
-  const handleExport = (): void => {
-    downloadStateAsJson(state);
-  };
-
-  const handleImportFile = (file: File): void => {
-    if (!guard.guardWrite()) return; // read-only people cannot replace the shared project's data
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = parseImportPayload(String(reader.result ?? ''));
-      if (result.ok) {
-        replaceState(result.data);
-        setImportMessage({ kind: 'ok', text: t(lang, 'messages.importOk') });
-      } else {
-        setImportMessage({ kind: 'error', text: t(lang, result.errorKey) });
-      }
-    };
-    reader.onerror = () => setImportMessage({ kind: 'error', text: t(lang, 'messages.importErrRead') });
-    reader.readAsText(file);
-  };
-
-  /**
-   * Reset the active project's inputs to demo data. Destructive for the
-   * active project (execution counts, plan, name are replaced), so an
-   * explicit confirmation identifying the project is required first —
-   * consistent with Delete Project / Clear All Local Data.
-   */
-  const handleReset = (): void => {
-    const name =
-      resolveBilingualName(lang, { nameEn: state.projectNameEn, nameJa: state.projectNameJa }) ||
-      t(lang, 'app.title');
-    if (!window.confirm(t(lang, 'dashboard.confirmReset', { name }))) return;
-    // In shared mode the project is everyone's: say so, and never for read-only people.
-    if (!guard.confirmEveryone('shared.confirm.resetProject')) return;
-    resetToDemo();
-    setImportMessage(null);
-  };
-
   // ---- status card facts (§17) -----------------------------------------------
   const statusFacts: StatusFact[] = [
     { label: t(lang, 'labels.expectedFinish'), value: expectedFinishText, hint: t(lang, 'hint.plannedFinish') },
@@ -450,7 +416,7 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
       <WorkspaceEmptyNotice lang={lang} principal={principal} projectCount={reportsApi.state.projects.length} />
       <header className="app-header">
         <div className="app-title-group">
-          <h1>{t(lang, 'app.title')}</h1>
+          <h1>{toolNameOf(reportsApi.state.settings, lang)}</h1>
           {projectName === '' ? null : <span className="app-project-name">{projectName}</span>}
           <span className="app-subtitle">{t(lang, 'app.subtitle')}</span>
         </div>
@@ -471,6 +437,7 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
               </select>
             </label>
           ) : null}
+          {tester ? null : (
           <div className="view-toggle" role="group" aria-label={t(lang, 'buttons.view')}>
             <button
               type="button"
@@ -489,6 +456,7 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
               {t(lang, 'views.manager')}
             </button>
           </div>
+          )}
           <div className="lang-toggle" role="group" aria-label={t(lang, 'app.languageLabel')}>
             {LANGUAGES.map((option) => (
               <button
@@ -502,17 +470,6 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
               </button>
             ))}
           </div>
-          <DataControls
-            labels={{
-              export: t(lang, 'buttons.export'),
-              import: t(lang, 'buttons.import'),
-              reset: t(lang, 'buttons.reset'),
-            }}
-            message={importMessage}
-            onExport={handleExport}
-            onImportFile={handleImportFile}
-            onReset={handleReset}
-          />
         </div>
       </header>
 
@@ -526,7 +483,7 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
       )}
       <ExecutiveSummaryView summary={executive} lang={lang} />
 
-      {onOpenOverall !== undefined ? (
+      {onOpenOverall !== undefined && !tester ? (
         <div className="overall-summary dashboard-portfolio-summary">
           {(
             [
@@ -548,12 +505,14 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
         </div>
       ) : null}
 
-      {onOpenOverall !== undefined ? <ManagerPanel lang={lang} /> : null}
-      {onOpenOverall !== undefined ? <ProjectControlCenter lang={lang} /> : null}
+      {onOpenOverall !== undefined && !tester ? <ManagerPanel lang={lang} /> : null}
+      {onOpenOverall !== undefined && !tester ? <ProjectControlCenter lang={lang} /> : null}
 
       {view === 'operator' ? (
         <div className="dashboard-grid">
           <SectionCard title={t(lang, 'sections.input')} subtitle={t(sub, 'sections.input')} span={5}>
+          {tester ? <p className="dr-summary" role="note">{t(lang, 'dashboard.testerReadOnlyInputs')}</p> : null}
+          <fieldset className="plain-fieldset" disabled={tester}>
           <div className="input-grid">
             <Field label={t(lang, 'fields.totalCases')} error={errors.totalCases ? t(lang, errors.totalCases) : undefined}>
               <input
@@ -623,6 +582,7 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
               />
             </Field>
           </div>
+          </fieldset>
         </SectionCard>
 
         <SectionCard title={t(lang, 'sections.capacity')} subtitle={t(sub, 'sections.capacity')} span={3}>
@@ -657,7 +617,7 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
               casesCompleted = Σ(Pass + Fail + N/A + SPO), exactly the
               previous V6.4 composition, one level up. */}
           <h3 className="exec-subsection-title" id="todays-execution">{t(lang, 'exec.todayTitle')}</h3>
-          <DailyExecutionForm lang={lang} date={executionDate} onDateChange={setExecutionDate} />
+          <DailyExecutionForm lang={lang} date={executionDate} onDateChange={setExecutionDate} todayOnly={tester} blockedReason={blockedReason} />
           <h3 className="exec-subsection-title exec-subsection-derived">{t(lang, 'exec.liveStatus')}</h3>
           <div className="metrics-grid execution-metrics">
           <MetricCard
