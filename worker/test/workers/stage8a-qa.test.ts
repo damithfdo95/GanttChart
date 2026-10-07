@@ -380,8 +380,11 @@ describe('conflicts and live sync', () => {
     const again = await openSocket(a.editor.email);
     if (!again.ok) throw new Error('reconnect');
     again.sock.send({ t: 'hello', v: 1, clientId: `c-${crypto.randomUUID()}`, lastRevision: known } as never);
-    const changes = await again.sock.next('changes');
-    expect(changes.puts.map((p) => p.kind).sort()).toEqual(['assignment', 'cycle']);
+    // An assignment changed while the Tester was away, so what they may read changed too: they get the whole (filtered) picture again.
+    const snap = await again.sock.next('snapshot');
+    const kinds = snap.records.map((p) => p.kind);
+    expect(kinds).toContain('cycle');
+    expect(kinds).toContain('assignment');
   });
 });
 

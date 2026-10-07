@@ -329,7 +329,7 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
   if (path === '/api/export' && isRead) {
     const denial = need(ctx, 'data.read');
     if (denial !== null) return denial;
-    const snap = await roomFor(ctx, p).exportAll(p.tenantId, workspaceRoleOf(p) ?? 'viewer');
+    const snap = await roomFor(ctx, p).exportAll(p.tenantId, workspaceRoleOf(p) ?? 'viewer', p.userId);
     return json({ ...snap, hash: await canonicalRecordsHash(snap.records) });
   }
 

@@ -19,7 +19,6 @@
  * headers. This object is only reachable through the Worker's binding.
  */
 
-import { businessDate } from '../../shared/businessTime';
 import { DurableObject } from 'cloudflare:workers';
 import {
   PROTOCOL_VERSION,
@@ -33,6 +32,8 @@ import {
 } from '../../shared/protocol';
 import { qaCommitError } from '../../shared/qaRules';
 import { SV_ONLY_KINDS } from '../../shared/testerRules';
+import { businessDate } from '../../shared/businessTime';
+import { TM_KINDS, authorizedScopeIds, filterForTester, testerMaySee } from '../../shared/testManagementAccess';
 import { CLOSE_CODES, canonicalRecordsHash, isTenantId, recordsHaveData, summarizeRecords, validateImportRecords } from '../../shared/tenancy';
 import { WorkspaceStore, type CommitResult, type RevisionInfo } from './store';
 
@@ -207,19 +208,23 @@ export class WorkspaceRoom extends DurableObject<Env> {
         this.send(ws, { t: 'ready', v: PROTOCOL_VERSION, revision: this.store.revision(), you });
         if (msg.lastRevision === null) {
           const snap = this.store.snapshot();
-          this.send(ws, { t: 'snapshot', revision: snap.revision, records: visibleTo(attachment.role, snap.records) });
+          this.send(ws, { t: 'snapshot', revision: snap.revision, records: this.visibleFor(attachment, snap.records) });
           return;
         }
         const missed = this.store.changesSince(msg.lastRevision);
-        if (missed.kind === 'snapshot') {
-          this.send(ws, { t: 'snapshot', revision: missed.revision, records: visibleTo(attachment.role, missed.records) });
+        // What a Tester may read depends on their assignments: if any assignment or scope changed while they were away, a catch-up
+        // of "what changed" cannot say what became visible, so they get the whole (filtered) picture instead.
+        const visibilityMoved = attachment.role !== 'admin' && missed.kind === 'changes' && [...missed.puts, ...missed.deletes].some((r) => r.kind === 'assignment' || r.kind === 'scope');
+        if (missed.kind === 'snapshot' || visibilityMoved) {
+          const snap = missed.kind === 'snapshot' ? missed : { revision: missed.revision, records: this.store.snapshot().records };
+          this.send(ws, { t: 'snapshot', revision: snap.revision, records: this.visibleFor(attachment, snap.records) });
         } else {
           this.send(ws, {
             t: 'changes',
             revision: missed.revision,
             actor: 'server',
             at: new Date().toISOString(),
-            puts: visibleTo(attachment.role, missed.puts),
+            puts: this.visibleFor(attachment, missed.puts),
             deletes: visibleTo(attachment.role, missed.deletes),
             catchUp: true,
           });
@@ -417,10 +422,11 @@ export class WorkspaceRoom extends DurableObject<Env> {
 
   // ---- RPC: reads --------------------------------------------------------------
 
-  async exportAll(tenantId: string, role: Role = 'admin'): Promise<{ revision: number; records: RecordPut[] }> {
+  async exportAll(tenantId: string, role: Role = 'admin', userId?: string): Promise<{ revision: number; records: RecordPut[] }> {
     this.assertTenant(tenantId);
     const snap = this.store.snapshot();
-    return { revision: snap.revision, records: visibleTo(role, snap.records) };
+    // An account the server cannot name gets nothing of Test Management (fail closed).
+    return { revision: snap.revision, records: this.visibleFor({ role, userId: userId ?? '' }, snap.records) };
   }
 
   async listRevisions(tenantId: string, limit: number, before?: number): Promise<RevisionInfo[]> {
@@ -639,17 +645,38 @@ export class WorkspaceRoom extends DurableObject<Env> {
     }
   }
 
+  /** What this person may receive: everything for an SV; for anyone else the SV-only kinds and unauthorised Test Management are removed. */
+  private visibleFor<T extends { kind: string; id: string; json?: string }>(who: { role: Role; userId: string }, items: T[]): T[] {
+    if (who.role === 'admin') return items;
+    const base = visibleTo(who.role, items);
+    if (!base.some((i) => TM_KINDS.has(i.kind) || i.kind === 'assignment')) return base;
+    return filterForTester(base, this.authorizedFor(who.userId), who.userId);
+  }
+
+  private authorizedFor(userId: string): Set<string> {
+    if (userId === '') return new Set();
+    return authorizedScopeIds(
+      this.store.recordsOfKind('assignment').map((r) => r.json),
+      this.store.recordsOfKind('scope').map((r) => r.json),
+      userId,
+      businessDate(),
+    );
+  }
+
   private broadcast(message: ChangesMessage, except?: WebSocket): void {
-    const frames = new Map<boolean, string>();
-    const frameFor = (role: Role): string => {
-      const full = role === 'admin';
-      let f = frames.get(full);
+    const frames = new Map<string, string>();
+    const frameFor = (att: Attachment): string => {
+      const key = att.role === 'admin' ? 'admin' : `u:${att.role}:${att.userId}`;
+      let f = frames.get(key);
       if (f === undefined) {
-        f = JSON.stringify(full ? message : { ...message, puts: visibleTo(role, message.puts), deletes: visibleTo(role, message.deletes) });
-        frames.set(full, f);
+        f = JSON.stringify(att.role === 'admin' ? message : { ...message, puts: this.visibleFor(att, message.puts), deletes: visibleTo(att.role, message.deletes) });
+        frames.set(key, f);
       }
       return f;
     };
+    // An assignment or a scope changed: what each Tester may read changed with it. They are sent the full authorised picture of Test
+    // Management (what they may now see, and removal of everything else), which is idempotent for what they already have.
+    const visibilityMoved = [...message.puts, ...message.deletes].some((r) => r.kind === 'assignment' || r.kind === 'scope');
     for (const socket of this.ctx.getWebSockets()) {
       if (socket === except) continue;
       try {
@@ -659,10 +686,21 @@ export class WorkspaceRoom extends DurableObject<Env> {
           socket.close(CLOSE_CODES.sessionExpired, 'session expired');
           continue;
         }
-        socket.send(frameFor(attachment.role));
+        socket.send(frameFor(attachment));
+        if (visibilityMoved && attachment.role !== 'admin') this.resyncTester(socket, attachment, message.revision);
       } catch {
         // dead socket — ignored, it will be cleaned up by the runtime
       }
     }
+  }
+
+  /** Bring one Tester's Test Management view in line with their current assignments. */
+  private resyncTester(socket: WebSocket, attachment: Attachment, revision: number): void {
+    const auth = this.authorizedFor(attachment.userId);
+    const all = this.store.snapshot().records.filter((r) => TM_KINDS.has(r.kind));
+    const puts = all.filter((r) => testerMaySee(r, auth, attachment.userId));
+    const deletes = all.filter((r) => !testerMaySee(r, auth, attachment.userId)).map((r) => ({ kind: r.kind, id: r.id }));
+    if (puts.length === 0 && deletes.length === 0) return;
+    this.send(socket, { t: 'changes', revision, actor: 'server', at: new Date().toISOString(), puts, deletes, catchUp: true });
   }
 }

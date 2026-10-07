@@ -92,7 +92,8 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
   const lang = app.state.language;
   const settings = reportsApi.state.settings;
   // A Tester reads this screen; every change to projects is an SV's (the server enforces the same).
-  const readOnly = !overallCapabilities(useAccess().isTester).canChangeStatus;
+  const access = useAccess();
+  const readOnly = !overallCapabilities(access.isTester).canChangeStatus;
 
   const [filters, setFilters] = useState({ ...DEFAULT_PORTFOLIO_FILTERS });
   const [sortKey, setSortKey] = useState<ProjectSortKey>('default');
@@ -286,7 +287,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
   // ---- V6.3: project export / workspace export / import / delete ----
 
   const handleExportProject = (project: ProjectRecord): void => {
-    const payload = createProjectBackupPayload(project, reportsApi.state.reports);
+    const payload = createProjectBackupPayload(project, reportsApi.state.reports, undefined, { scopes: reportsApi.state.scopes, testCases: reportsApi.state.testCases, caseResults: reportsApi.state.caseResults });
     downloadTextFile(
       `ganttchart-project-${project.projectId}-${today}.json`,
       'application/json',
@@ -334,8 +335,16 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
         ) {
           return;
         }
-        const merged = importProjectIntoRegistry(reportsApi.state.projects, reportsApi.state.reports, result.data);
+        const merged = importProjectIntoRegistry(reportsApi.state.projects, reportsApi.state.reports, result.data, {
+          existing: { scopes: reportsApi.state.scopes, testCases: reportsApi.state.testCases },
+          // In a shared workspace the restored results are attributed to the person restoring them; in plain local use they stay as exported.
+          ...(access.userId === null ? {} : { actor: access.userId }),
+        });
         reportsApi.setProjects(merged.projects);
+        const added = merged.testManagement;
+        if (added.scopes.length + added.testCases.length + added.caseResults.length > 0) {
+          reportsApi.updateTestManagement((tm) => ({ scopes: [...tm.scopes, ...added.scopes], testCases: [...tm.testCases, ...added.testCases], caseResults: [...tm.caseResults, ...added.caseResults] }));
+        }
         for (const report of merged.newReports) reportsApi.upsertReport(report);
         activateProjectRecord(reportsApi, app, merged.importedProject);
         setImportMessage({

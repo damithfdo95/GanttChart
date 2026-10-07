@@ -133,7 +133,8 @@ describe('a Tester working on an assigned scope', () => {
   it('records Pass / Fail / Blocked with flags, memo and device, on cases of the scope they are assigned to', async () => {
     const w = await workspace('Alpha');
     const hana = await joined(w.hana.email);
-    expect(hana.records.filter((r) => ['scope', 'testCase'].includes(r.kind))).toHaveLength(5); // definitions are readable (like Overall); WRITING is what is scoped
+    // Only what the assignment covers is even sent: the Ecosystem scope and its two cases; nothing of HTMA.
+    expect(hana.records.filter((r) => ['scope', 'testCase'].includes(r.kind)).map((r) => r.id).sort()).toEqual(['scp_eco', 'tc_eco1', 'tc_eco2']);
     const r1 = await commit(hana, [put('caseResult', caseResultId('tc_eco1'), result('tc_eco1', w.hana.user.id))]);
     expect(r1.ok).toBe(true);
     const r2 = await commit(hana, [put('caseResult', caseResultId('tc_eco2'), result('tc_eco2', w.hana.user.id, { status: 'fail', retest: true, question: true, memo: 'crash on rotate', device: 'Galaxy S23', os: 'Android 15' }))]);
@@ -290,5 +291,103 @@ describe('an SV managing a project they own', () => {
     const many = Array.from({ length: 400 }, (_, i) => put('testCase', `tc_bulk${i}`, tcase(100 + i, { id: `tc_bulk${i}` })));
     expect((await commit(w.sv, many)).ok).toBe(true);
     expect(await head(w.t.adminEmail)).toBe(before + 1);
+  });
+});
+
+const defs = (records: Array<{ kind: string; id: string }>): string[] => records.filter((r) => ['scope', 'testCase', 'caseResult'].includes(r.kind)).map((r) => r.id).sort();
+
+describe('what a Tester may READ of Test Management', () => {
+  it('only the scopes they are assigned to, with those scopes active cases and results - in the snapshot and in the export', async () => {
+    const w = await workspace('Alpha');
+    const svUser = (await get<{ users: UserDto[] }>(w.t.adminEmail, '/api/tenant/users')).json.users.find((u) => u.isOwner)!;
+    await sync(w.sv, w.t.adminEmail);
+    expect((await commit(w.sv, [put('caseResult', caseResultId('tc_htma1'), result('tc_htma1', svUser.id, { scopeId: 'scp_htma' })), put('caseResult', caseResultId('tc_eco1'), result('tc_eco1', svUser.id))])).ok).toBe(true);
+    const hana = await joined(w.hana.email);
+    const ken = await joined(w.ken.email);
+    expect(defs(hana.records)).toEqual(['res_tc_eco1', 'scp_eco', 'tc_eco1', 'tc_eco2']);
+    expect(defs(ken.records)).toEqual(['res_tc_htma1', 'scp_htma', 'tc_htma1']);
+    const exported = (await get<{ records: Array<{ kind: string; id: string }> }>(w.hana.email, '/api/export')).json.records;
+    expect(defs(exported)).toEqual(defs(hana.records));
+    expect(JSON.stringify(exported)).not.toContain('HTMA');
+    expect(defs((await get<{ records: Array<{ kind: string; id: string }> }>(w.t.adminEmail, '/api/export')).json.records)).toHaveLength(7); // the SV sees all of it
+  });
+
+  it('a Tester with no assignment, or one on another project, receives no definitions and no results at all', async () => {
+    const w = await workspace('Alpha');
+    const nobody = await addTester(w.t, 'nobody');
+    expect(defs((await joined(nobody.email)).records)).toEqual([]);
+    expect((await get(nobody.email, '/api/export')).text).not.toContain('scp_eco');
+    await sync(w.sv, w.t.adminEmail);
+    expect((await commit(w.sv, [project('PRJ-002', 'proj-2'), put('scope', 'scp_p2', scope({ id: 'scp_p2', projectId: 'PRJ-002', code: 'P2' }))])).ok).toBe(true);
+    expect((await post(w.t.adminEmail, '/api/tenant/assignments', { projectId: 'PRJ-002', userId: nobody.user.id })).status).toBe(201);
+    expect(defs((await joined(nobody.email)).records)).toEqual(['scp_p2']); // PRJ-001 scopes stay hidden
+  });
+
+  it('an assignment made before Stage 8C (no scope) covers every ACTIVE scope of its project, and nothing else', async () => {
+    const w = await workspace('Alpha');
+    const legacy = await addTester(w.t, 'legacy');
+    expect((await post(w.t.adminEmail, '/api/tenant/assignments', { projectId: 'PRJ-001', userId: legacy.user.id })).status).toBe(201);
+    expect(defs((await joined(legacy.email)).records)).toEqual(['scp_eco', 'scp_htma', 'tc_eco1', 'tc_eco2', 'tc_htma1']);
+    await sync(w.sv, w.t.adminEmail);
+    expect((await commit(w.sv, [put('scope', 'scp_htma', scope({ id: 'scp_htma', name: 'HTMA', code: 'HTMA', order: 20, status: 'archived' }))])).ok).toBe(true);
+    expect(defs((await joined(legacy.email)).records)).toEqual(['scp_eco', 'tc_eco1', 'tc_eco2']);
+  });
+
+  it('archived test cases are not sent to a Tester; a disabled Tester cannot connect at all', async () => {
+    const w = await workspace('Alpha');
+    await sync(w.sv, w.t.adminEmail);
+    expect((await commit(w.sv, [put('testCase', 'tc_eco2', tcase(2, { status: 'archived' }))])).ok).toBe(true);
+    expect(defs((await joined(w.hana.email)).records)).toEqual(['scp_eco', 'tc_eco1']);
+    await patch(w.t.adminEmail, `/api/tenant/users/${w.hana.user.id}`, { status: 'disabled' });
+    expect((await openSocket(w.hana.email)).ok).toBe(false);
+    expect((await get(w.hana.email, '/api/export')).status).toBe(403);
+  });
+
+  it('live: work in a scope they are not on is never pushed to them; a new assignment delivers the scope at once; ending it takes it away', async () => {
+    const w = await workspace('Alpha');
+    const hana = await joined(w.hana.email);
+    const ken = await joined(w.ken.email);
+    expect((await commit(ken, [put('caseResult', caseResultId('tc_htma1'), result('tc_htma1', w.ken.user.id, { scopeId: 'scp_htma' }))])).ok).toBe(true);
+    const quiet = await hana.sock.next('changes');
+    expect(defs(quiet.puts)).toEqual([]); // not a single HTMA record reaches Hana
+
+    const made = await post<{ assignment: { id: string } }>(w.t.adminEmail, '/api/tenant/assignments', { projectId: 'PRJ-001', userId: w.hana.user.id, scopeId: 'scp_htma' });
+    expect(made.status).toBe(201);
+    const direct = await hana.sock.next('changes');
+    expect(direct.puts.map((p) => p.kind)).toEqual(['assignment']);
+    const delivered = await hana.sock.next('changes');
+    expect(defs(delivered.puts)).toEqual(['res_tc_htma1', 'scp_eco', 'scp_htma', 'tc_eco1', 'tc_eco2', 'tc_htma1']);
+
+    await sync(w.sv, w.t.adminEmail);
+    const stored = (await get<{ records: Array<{ kind: string; id: string; json: string }> }>(w.t.adminEmail, '/api/export')).json.records.find((r) => r.id === made.json.assignment.id)!;
+    expect((await commit(w.sv, [put('assignment', stored.id, { ...JSON.parse(stored.json), active: false, endDate: '2026-10-07' })])).ok).toBe(true);
+    await hana.sock.next('changes'); // the assignment record itself
+    const taken = await hana.sock.next('changes');
+    expect(defs(taken.deletes)).toEqual(['res_tc_htma1', 'scp_htma', 'tc_htma1']);
+    expect(defs(taken.puts)).toEqual(['scp_eco', 'tc_eco1', 'tc_eco2']);
+  });
+
+  it('a Tester who reconnects after their assignments changed gets the whole filtered picture, not a partial catch-up', async () => {
+    const w = await workspace('Alpha');
+    const away = await joined(w.hana.email);
+    const known = away.revision;
+    away.sock.close();
+    expect((await post(w.t.adminEmail, '/api/tenant/assignments', { projectId: 'PRJ-001', userId: w.hana.user.id, scopeId: 'scp_htma' })).status).toBe(201);
+    const again = await openSocket(w.hana.email);
+    if (!again.ok) throw new Error('reconnect');
+    again.sock.send({ t: 'hello', v: 1, clientId: `c-${crypto.randomUUID()}`, lastRevision: known } as never);
+    const snap = await again.sock.next('snapshot');
+    expect(defs(snap.records)).toEqual(['scp_eco', 'scp_htma', 'tc_eco1', 'tc_eco2', 'tc_htma1']);
+  });
+
+  it('forged scope or project ids in a request return nothing extra, and another workspace is denied', async () => {
+    const a = await workspace('Alpha');
+    for (const q of ['?scopeId=scp_htma', '?projectId=PRJ-001&scopeId=scp_htma']) {
+      const r = await call(a.hana.email, 'GET', `/api/export${q}`);
+      expect(r.status).toBe(200);
+      expect(JSON.stringify(r.json)).not.toContain('scp_htma');
+    }
+    const b = await workspace('Beta');
+    expect((await call(a.hana.email, 'GET', `/api/export?tenantId=${b.t.id}`)).status).toBe(403);
   });
 });
