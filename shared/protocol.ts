@@ -27,6 +27,9 @@ export const RECORD_KINDS = [
   'caseResult',
   'dailyPlan',
   'meetingNote',
+  'notification',
+  'notificationAck',
+  'branding',
   'settings',
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];

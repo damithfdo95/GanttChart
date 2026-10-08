@@ -33,10 +33,13 @@ import {
 import { qaCommitError } from '../../shared/qaRules';
 import { memberRoleOf } from '../../shared/members';
 import { SV_ONLY_KINDS } from '../../shared/testerRules';
-import { businessDate } from '../../shared/businessTime';
+import { businessClock, businessDate } from '../../shared/businessTime';
+import { ackId, ackIsPrunable, audienceIncludes, checkNotification, checkNotificationAck, isAckableOccurrence, type NotificationAck, type NotificationDef, type NotificationFields, type Recipient } from '../../shared/notifications';
+import { checkLogo, type BrandingRecord } from '../../shared/branding';
+import { DEFAULT_PLAN_RETENTION_DAYS, RETENTION_CHOICES, retentionCutoff } from '../../shared/meeting';
 import { TM_KINDS, authorizedScopeIds, filterForTester, testerMaySee } from '../../shared/testManagementAccess';
 import { CLOSE_CODES, canonicalRecordsHash, isTenantId, recordsHaveData, summarizeRecords, validateImportRecords } from '../../shared/tenancy';
-import { WorkspaceStore, type CommitResult, type RevisionInfo } from './store';
+import { WorkspaceStore, type CommitResult, type RevisionFilter, type RevisionInfo } from './store';
 
 /** A Team Member profile as the Worker reads it (the fields it needs to decide; never the whole record). */
 export interface MemberInfo {
@@ -76,6 +79,20 @@ function redactMemberEmail<T extends { kind: string; json?: string }>(item: T, u
     return { ...item, json: JSON.stringify(rest) };
   } catch {
     return item;
+  }
+}
+
+/** The date (business time) of the last housekeeping run: it runs at most once a day. */
+const RETENTION_FLAG = 'retention-last-run';
+
+/** Does this stored definition address this person (and is it on)? Unreadable definitions reach nobody. */
+function definitionReaches(json: string | undefined, who: Recipient): boolean {
+  if (json === undefined) return false;
+  try {
+    const c = checkNotification(JSON.parse(json));
+    return c.ok && c.value.enabled && audienceIncludes(c.value.audience, who);
+  } catch {
+    return false;
   }
 }
 
@@ -259,7 +276,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
         const missed = this.store.changesSince(msg.lastRevision);
         // What a Tester may read depends on their assignments: if any assignment or scope changed while they were away, a catch-up
         // of "what changed" cannot say what became visible, so they get the whole (filtered) picture instead.
-        const visibilityMoved = attachment.role !== 'admin' && missed.kind === 'changes' && [...missed.puts, ...missed.deletes].some((r) => r.kind === 'assignment' || r.kind === 'scope');
+        const visibilityMoved = attachment.role !== 'admin' && missed.kind === 'changes' && [...missed.puts, ...missed.deletes].some((r) => r.kind === 'assignment' || r.kind === 'scope' || r.kind === 'notification' || r.kind === 'member');
         if (missed.kind === 'snapshot' || visibilityMoved) {
           const snap = missed.kind === 'snapshot' ? missed : { revision: missed.revision, records: this.store.snapshot().records };
           this.send(ws, { t: 'snapshot', revision: snap.revision, records: this.visibleFor(attachment, snap.records) });
@@ -269,8 +286,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
             revision: missed.revision,
             actor: 'server',
             at: new Date().toISOString(),
-            puts: this.visibleFor(attachment, missed.puts),
-            deletes: visibleTo(attachment.role, missed.deletes),
+            ...this.viewFor(attachment, missed.puts, missed.deletes),
             catchUp: true,
           });
         }
@@ -348,6 +364,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
       return;
     }
     this.send(ws, { t: 'ack', id: msg.id, revision: result.revision, changed: result.changed });
+    if (result.changed && !result.duplicate && msg.puts.some((p) => p.kind === 'dailyPlan' || p.kind === 'meetingNote')) this.maybeRunRetention(Date.now());
     if (result.changed && !result.duplicate) {
       this.broadcast(
         { t: 'changes', revision: result.revision, actor: attachment.email, at: result.at, puts: result.puts, deletes: result.deletes },
@@ -677,6 +694,170 @@ export class WorkspaceRoom extends DurableObject<Env> {
     return true;
   }
 
+  // ---- RPC: scheduled notifications, logo, retention (Stage 8E) --------------------------------
+
+  /** Who a person is for audience purposes: their role, and their Team Member profile (and whether it is active) if they have one. */
+  private recipientFor(who: { role: Role; userId: string }, members?: Array<{ id: string; o: Record<string, unknown> }>): Recipient {
+    const rows = members ?? this.memberRows();
+    const m = who.userId === '' ? undefined : rows.find((x) => x.o.userId === who.userId);
+    return { role: who.role === 'admin' ? 'admin' : 'user', memberId: m?.id ?? null, memberActive: m === undefined ? true : m.o.active !== false };
+  }
+
+  private notificationRows(): Array<{ id: string; def: NotificationDef }> {
+    const out: Array<{ id: string; def: NotificationDef }> = [];
+    for (const r of this.store.recordsOfKind('notification')) {
+      try {
+        const c = checkNotification(JSON.parse(r.json));
+        if (c.ok) out.push({ id: r.id, def: c.value });
+      } catch {
+        /* an unreadable definition does not exist */
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Create or change a definition. The fields come from the SV's request; everything about WHO did it is the server's: the actor's account id
+   * is stamped here from the verified caller. Returns what happened so the Worker can write the right audit line.
+   */
+  async saveNotification(
+    tenantId: string,
+    input: { id?: string; fields: NotificationFields; actor: { userId: string; email: string } },
+  ): Promise<{ ok: true; id: string; action: 'created' | 'updated' | 'enabled' | 'disabled' } | { ok: false; error: string }> {
+    this.assertTenant(tenantId);
+    if (this.frozen) return { ok: false, error: 'archived' };
+    const now = new Date().toISOString();
+    const prev = input.id === undefined ? undefined : this.notificationRows().find((r) => r.id === input.id)?.def;
+    if (input.id !== undefined && prev === undefined) return { ok: false, error: 'notification_not_found' };
+    const def: NotificationDef = {
+      ...input.fields,
+      id: prev?.id ?? `ntf_${crypto.randomUUID()}`,
+      createdAt: prev?.createdAt ?? now,
+      updatedAt: now,
+      createdByUserId: prev?.createdByUserId ?? input.actor.userId,
+      updatedByUserId: input.actor.userId,
+    };
+    const checked = checkNotification(def);
+    if (!checked.ok) return { ok: false, error: checked.error };
+    if (def.audience.kind === 'members') {
+      const known = new Set(this.memberRows().map((m) => m.id));
+      if (!(def.audience.memberIds ?? []).every((m) => known.has(m))) return { ok: false, error: 'notification_member_not_found' };
+    }
+    if (!this.commitServerChange('notification-save', [{ kind: 'notification', id: def.id, json: JSON.stringify(def) }], [], input.actor.email)) return { ok: false, error: 'failed' };
+    const action = prev === undefined ? 'created' : prev.enabled !== def.enabled ? (def.enabled ? 'enabled' : 'disabled') : 'updated';
+    return { ok: true, id: def.id, action };
+  }
+
+  async deleteNotification(tenantId: string, input: { id: string; actor: { email: string } }): Promise<{ ok: true; title: string } | { ok: false; error: string }> {
+    this.assertTenant(tenantId);
+    if (this.frozen) return { ok: false, error: 'archived' };
+    const prev = this.notificationRows().find((r) => r.id === input.id);
+    if (prev === undefined) return { ok: false, error: 'notification_not_found' };
+    // Its acknowledgments go with it (they mean nothing without it).
+    const acks = this.store.recordsOfKind('notificationAck').filter((r) => r.id.startsWith(`na_${input.id}_`)).map((r) => ({ kind: 'notificationAck' as const, id: r.id }));
+    for (let i = 0; i < acks.length; i += 400) this.commitServerChange('notification-acks-removed', [], acks.slice(i, i + 400), input.actor.email);
+    if (!this.commitServerChange('notification-delete', [], [{ kind: 'notification', id: input.id }], input.actor.email)) return { ok: false, error: 'failed' };
+    return { ok: true, title: prev.def.title };
+  }
+
+  /**
+   * One person closes one occurrence. Everything is decided here: the person is the authenticated caller, the definition must exist, be on and
+   * address them, and the occurrence must be a real one that is already due by the SERVER's clock. Closing it again changes nothing.
+   */
+  async acknowledgeNotification(
+    tenantId: string,
+    input: { userId: string; role: Role; notificationId: string; occurrence: string; nowMs: number; email: string },
+  ): Promise<{ ok: true; created: boolean } | { ok: false; error: 'notification_not_found' | 'not_addressed' | 'invalid_occurrence' | 'archived' | 'failed' }> {
+    this.assertTenant(tenantId);
+    if (this.frozen) return { ok: false, error: 'archived' };
+    const def = this.notificationRows().find((r) => r.id === input.notificationId)?.def;
+    if (def === undefined || !def.enabled) return { ok: false, error: 'notification_not_found' };
+    if (!audienceIncludes(def.audience, this.recipientFor({ role: input.role, userId: input.userId }))) return { ok: false, error: 'not_addressed' };
+    if (!isAckableOccurrence(def, input.occurrence, businessClock(input.nowMs))) return { ok: false, error: 'invalid_occurrence' };
+    const id = ackId(def.id, input.occurrence, input.userId);
+    if (this.store.recordsOfKind('notificationAck').some((r) => r.id === id)) return { ok: true, created: false };
+    const ack: NotificationAck = { id, notificationId: def.id, occurrence: input.occurrence, userId: input.userId, at: new Date(input.nowMs).toISOString() };
+    if (!this.commitServerChange('notification-ack', [{ kind: 'notificationAck', id, json: JSON.stringify(ack) }], [], input.email)) return { ok: false, error: 'failed' };
+    this.maybeRunRetention(input.nowMs);
+    return { ok: true, created: true };
+  }
+
+  /** Set or replace the workspace logo (validated again here, whatever the browser did). */
+  async setBranding(tenantId: string, input: { mime: string; data: string; actor: { userId: string; email: string } }): Promise<{ ok: true; bytes: number } | { ok: false; error: string }> {
+    this.assertTenant(tenantId);
+    if (this.frozen) return { ok: false, error: 'archived' };
+    const check = checkLogo(input.mime, input.data);
+    if (!check.ok) return { ok: false, error: check.error };
+    const record: BrandingRecord = { id: 'branding', mime: input.mime as BrandingRecord['mime'], data: input.data, bytes: check.bytes, updatedAt: new Date().toISOString(), updatedByUserId: input.actor.userId };
+    return this.commitServerChange('branding-set', [{ kind: 'branding', id: 'branding', json: JSON.stringify(record) }], [], input.actor.email) ? { ok: true, bytes: check.bytes } : { ok: false, error: 'failed' };
+  }
+
+  async removeBranding(tenantId: string, input: { actor: { email: string } }): Promise<{ ok: true; removed: boolean } | { ok: false; error: string }> {
+    this.assertTenant(tenantId);
+    if (this.frozen) return { ok: false, error: 'archived' };
+    if (!this.store.recordsOfKind('branding').some((r) => r.id === 'branding')) return { ok: true, removed: false };
+    return this.commitServerChange('branding-remove', [], [{ kind: 'branding', id: 'branding' }], input.actor.email) ? { ok: true, removed: true } : { ok: false, error: 'failed' };
+  }
+
+  /** The days of meeting plans and notes this workspace keeps: its setting (90, 180, 365 or 730), else 365. */
+  private planRetentionDays(): number {
+    const row = this.store.recordsOfKind('settings').find((r) => r.id === 'settings');
+    try {
+      const days = row === undefined ? undefined : (JSON.parse(row.json) as { planRetentionDays?: unknown }).planRetentionDays;
+      return typeof days === 'number' && (RETENTION_CHOICES as readonly number[]).includes(days) ? days : DEFAULT_PLAN_RETENTION_DAYS;
+    } catch {
+      return DEFAULT_PLAN_RETENTION_DAYS;
+    }
+  }
+
+  /**
+   * Housekeeping, at most once per business day (a stored date guards it; calling it again the same day does nothing and reads one flag):
+   *  - meeting plans and notes dated before today minus the retention days are deleted (today and the future are never touched);
+   *  - acknowledgments that can never matter again are deleted (old AND superseded; see shared/notifications.ts).
+   * Test cases, projects, scopes, people and the administrative audit are never touched. Runs from the daily alarm, after a plan or an
+   * acknowledgment is saved, and when an SV opens Meeting History. No cron product is involved.
+   */
+  private maybeRunRetention(nowMs: number): { ran: boolean; plans: number; notes: number; acks: number } {
+    const clock = businessClock(nowMs);
+    if (this.store.readFlag(RETENTION_FLAG) === clock.date) return { ran: false, plans: 0, notes: 0, acks: 0 };
+    this.store.writeFlag(RETENTION_FLAG, clock.date); // first, so a second call (or a failure half way) never repeats the day's work
+    const cutoff = retentionCutoff(clock.date, this.planRetentionDays());
+    const stale = (kind: 'dailyPlan' | 'meetingNote'): Array<{ kind: RecordPut['kind']; id: string }> => {
+      const out: Array<{ kind: RecordPut['kind']; id: string }> = [];
+      for (const r of this.store.recordsOfKind(kind)) {
+        try {
+          const date = (JSON.parse(r.json) as { date?: unknown }).date;
+          if (typeof date === 'string' && date < cutoff) out.push({ kind, id: r.id });
+        } catch {
+          /* leave what cannot be read */
+        }
+      }
+      return out;
+    };
+    const plans = stale('dailyPlan');
+    const notes = stale('meetingNote');
+    const defs = new Map(this.notificationRows().map((r) => [r.id, r.def]));
+    const acks: Array<{ kind: RecordPut['kind']; id: string }> = [];
+    for (const r of this.store.recordsOfKind('notificationAck')) {
+      try {
+        const c = checkNotificationAck(JSON.parse(r.json));
+        if (c.ok && ackIsPrunable(c.value, defs.get(c.value.notificationId), clock)) acks.push({ kind: 'notificationAck', id: r.id });
+      } catch {
+        /* leave what cannot be read */
+      }
+    }
+    const all = [...plans, ...notes, ...acks];
+    for (let i = 0; i < all.length; i += 400) this.commitServerChange('retention', [], all.slice(i, i + 400), 'retention');
+    return { ran: true, plans: plans.length, notes: notes.length, acks: acks.length };
+  }
+
+  /** The once-a-day housekeeping, callable by the Worker (an SV opening Meeting History) and by tests with a controlled clock. */
+  async runRetention(tenantId: string, nowMs: number = Date.now()): Promise<{ ran: boolean; plans: number; notes: number; acks: number }> {
+    this.assertTenant(tenantId);
+    if (this.frozen) return { ran: false, plans: 0, notes: 0, acks: 0 };
+    return this.maybeRunRetention(nowMs);
+  }
+
   // ---- RPC: reads --------------------------------------------------------------
 
   async exportAll(tenantId: string, role: Role = 'admin', userId?: string): Promise<{ revision: number; records: RecordPut[] }> {
@@ -686,9 +867,9 @@ export class WorkspaceRoom extends DurableObject<Env> {
     return { revision: snap.revision, records: this.visibleFor({ role, userId: userId ?? '' }, snap.records) };
   }
 
-  async listRevisions(tenantId: string, limit: number, before?: number): Promise<RevisionInfo[]> {
+  async listRevisions(tenantId: string, limit: number, before?: number, filter: RevisionFilter = {}): Promise<RevisionInfo[]> {
     this.assertTenant(tenantId);
-    return this.store.listRevisions(limit, before);
+    return this.store.listRevisions(limit, before, filter);
   }
 
   async previewRevision(tenantId: string, revision: number): Promise<RecordPut[] | null> {
@@ -899,6 +1080,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
       retention = Math.min(retention, SIZE_GUARD_RETENTION_DAYS);
     }
     this.store.prune(new Date(Date.now() - retention * DAY_MS).toISOString());
+    this.maybeRunRetention(Date.now());
     await this.ctx.storage.setAlarm(Date.now() + DAY_MS);
   }
 
@@ -914,10 +1096,26 @@ export class WorkspaceRoom extends DurableObject<Env> {
 
   /** What this person may receive: everything for an SV; for anyone else the SV-only kinds and unauthorised Test Management are removed. */
   private visibleFor<T extends { kind: string; id: string; json?: string }>(who: { role: Role; userId: string }, items: T[]): T[] {
-    if (who.role === 'admin') return items;
-    const base = visibleTo(who.role, items).map((i) => redactMemberEmail(i, who.userId));
+    // Everybody, an SV too, receives only THEIR OWN notification acknowledgments (they name a person).
+    let base = items.some((i) => i.kind === 'notificationAck') ? items.filter((i) => i.kind !== 'notificationAck' || i.id.endsWith(`_${who.userId}`)) : items;
+    if (who.role === 'admin') return base;
+    base = visibleTo(who.role, base).map((i) => redactMemberEmail(i, who.userId));
+    // A Tester receives a notification definition only if it is switched on and addresses them.
+    if (base.some((i) => i.kind === 'notification')) {
+      const recipient = this.recipientFor(who);
+      base = base.filter((i) => i.kind !== 'notification' || definitionReaches(i.json, recipient));
+    }
     if (!base.some((i) => TM_KINDS.has(i.kind) || i.kind === 'assignment')) return base;
     return filterForTester(base, this.authorizedFor(who.userId), who.userId);
+  }
+
+  /** The same filtering for a change message: what to put, and what to delete (a definition that stopped addressing someone is deleted from their copy). */
+  private viewFor(who: { role: Role; userId: string }, puts: RecordPut[], deletes: Array<{ kind: RecordPut['kind']; id: string }>): { puts: RecordPut[]; deletes: Array<{ kind: RecordPut['kind']; id: string }> } {
+    const seen = this.visibleFor(who, puts);
+    const kept = new Set(seen.map((p) => `${p.kind}\u0000${p.id}`));
+    const hidden = who.role === 'admin' ? [] : puts.filter((p) => p.kind === 'notification' && !kept.has(`${p.kind}\u0000${p.id}`)).map((p) => ({ kind: p.kind, id: p.id }));
+    const allowed = visibleTo(who.role, deletes).filter((d) => d.kind !== 'notificationAck' || d.id.endsWith(`_${who.userId}`));
+    return { puts: seen, deletes: [...allowed, ...hidden] };
   }
 
   private authorizedFor(userId: string): Set<string> {
@@ -932,11 +1130,13 @@ export class WorkspaceRoom extends DurableObject<Env> {
 
   private broadcast(message: ChangesMessage, except?: WebSocket): void {
     const frames = new Map<string, string>();
+    const perPerson = [...message.puts, ...message.deletes].some((r) => r.kind === 'notificationAck');
     const frameFor = (att: Attachment): string => {
-      const key = att.role === 'admin' ? 'admin' : `u:${att.role}:${att.userId}`;
+      const shared = att.role === 'admin' && !perPerson;
+      const key = shared ? 'admin' : `u:${att.role}:${att.userId}`;
       let f = frames.get(key);
       if (f === undefined) {
-        f = JSON.stringify(att.role === 'admin' ? message : { ...message, puts: this.visibleFor(att, message.puts), deletes: visibleTo(att.role, message.deletes) });
+        f = JSON.stringify(shared ? message : { ...message, ...this.viewFor(att, message.puts, message.deletes) });
         frames.set(key, f);
       }
       return f;

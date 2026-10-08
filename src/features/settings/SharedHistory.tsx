@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useAppStateCtx } from '../../app/state-contexts';
+import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
+import { actorLabel, changedLabel, kindLabelKey } from '../../domain/historyLabels';
 import { useSharedSync } from '../../app/shared-sync';
 import { countRecords } from '../../lib/sync/records';
 import { SHARED_HISTORY_DAYS } from '../../lib/sync/guards';
 import { RECORD_KINDS, type RecordPut } from '../../../shared/protocol';
 import { t } from '../../i18n';
-import { DEFAULT_HISTORY_PAGE_SIZE, HISTORY_PAGE_SIZES, pageUrl, toPage, type HistoryPage, type HistoryPageSize } from '../../lib/history/pagination';
+import { DEFAULT_HISTORY_PAGE_SIZE, HISTORY_PAGE_SIZES, pageUrl, toPage, type HistoryFilter, type HistoryPage, type HistoryPageSize } from '../../lib/history/pagination';
 
 interface RevisionRow {
   revision: number;
@@ -15,6 +16,8 @@ interface RevisionRow {
   puts: number;
   deletes: number;
   summary: Array<{ kind: string; puts: number; deletes: number }>;
+  /** The first few records the revision changed (named on screen by what they are now, never by id). */
+  changed?: Array<{ kind: string; id: string }>;
 }
 
 const KINDS: ReadonlySet<string> = new Set(RECORD_KINDS);
@@ -32,6 +35,8 @@ function when(iso: string, lang: 'en' | 'ja'): string {
 export function SharedHistory() {
   const lang = useAppStateCtx().state.language;
   const shared = useSharedSync();
+  const reports = useReportsStateCtx();
+  const [filter, setFilter] = useState<HistoryFilter>({});
   const [page, setPage] = useState<HistoryPage<RevisionRow> | null>(null);
   const [pageSize, setPageSize] = useState<HistoryPageSize>(DEFAULT_HISTORY_PAGE_SIZE);
   /** One `before` cursor per page we are past; empty = the newest page. */
@@ -46,13 +51,13 @@ export function SharedHistory() {
   const load = useCallback(async (): Promise<void> => {
     setFailed(false);
     try {
-      const res = await fetch(pageUrl(pageSize, before), { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } });
+      const res = await fetch(pageUrl(pageSize, before, filter), { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } });
       if (!res.ok) throw new Error(String(res.status));
       setPage(toPage((await res.json()) as RevisionRow[], pageSize));
     } catch {
       setFailed(true);
     }
-  }, [pageSize, before]);
+  }, [pageSize, before, filter]);
 
   useEffect(() => {
     void load();
@@ -68,6 +73,13 @@ export function SharedHistory() {
     const m = /^restore:(\d+)$/.exec(reason);
     return m === null ? t(lang, 'shared.history.reasonEdit') : t(lang, 'shared.history.reasonRestore', { n: m[1] });
   };
+
+  const change = (patch: HistoryFilter): void => {
+    setFilter((f) => ({ ...f, ...patch }));
+    setCursors([]); // a different list: start from its newest page
+  };
+  const actors = [...new Set([...(reports.state.rcsMembers ?? []).map((m) => m.email).filter((e): e is string => e !== undefined), ...(rows ?? []).map((r) => r.actor)])].sort();
+  const filtered = (filter.kind ?? '') !== '' || (filter.actor ?? '') !== '' || (filter.from ?? '') !== '' || (filter.to ?? '') !== '';
 
   const showPreview = async (n: number): Promise<void> => {
     setMessage(null);
@@ -117,6 +129,43 @@ export function SharedHistory() {
           {message.text}
         </p>
       )}
+      <div className="tenancy-controls" role="search" aria-label={t(lang, 'hist.filter')}>
+        <label>
+          {t(lang, 'hist.recordType')}
+          <select className="input" value={filter.kind ?? ''} onChange={(e) => change({ kind: e.target.value })}>
+            <option value="">{t(lang, 'tenancy.list.all')}</option>
+            {RECORD_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {t(lang, kindLabelKey(k))}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {t(lang, 'hist.actor')}
+          <select className="input" value={filter.actor ?? ''} onChange={(e) => change({ actor: e.target.value })}>
+            <option value="">{t(lang, 'tenancy.list.all')}</option>
+            {actors.map((a) => (
+              <option key={a} value={a}>
+                {actorLabel(a, reports.state, lang)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {t(lang, 'hist.from')}
+          <input className="input" type="date" value={filter.from ?? ''} onChange={(e) => change({ from: e.target.value })} />
+        </label>
+        <label>
+          {t(lang, 'hist.to')}
+          <input className="input" type="date" value={filter.to ?? ''} onChange={(e) => change({ to: e.target.value })} />
+        </label>
+        {filtered ? (
+          <button type="button" className="btn btn-ghost" onClick={() => { setFilter({}); setCursors([]); }}>
+            {t(lang, 'hist.clear')}
+          </button>
+        ) : null}
+      </div>
       {preview === null ? null : (
         <p className="dr-summary" role="status">
           {preview.text}
@@ -147,8 +196,17 @@ export function SharedHistory() {
               <tr key={row.revision}>
                 <td>{row.revision}</td>
                 <td>{when(row.committedAt, lang)}</td>
-                <td>{row.actor}</td>
-                <td>{reasonText(row.reason)}</td>
+                <td>{actorLabel(row.actor, reports.state, lang)}</td>
+                <td>
+                  {reasonText(row.reason)}
+                  {(row.changed ?? []).length === 0 ? null : (
+                    <ul className="hist-changed">
+                      {(row.changed ?? []).map((c) => (
+                        <li key={`${c.kind}:${c.id}`}>{changedLabel(c.kind, c.id, reports.state, lang)}</li>
+                      ))}
+                    </ul>
+                  )}
+                </td>
                 <td>{row.puts + row.deletes}</td>
                 <td>
                   <button type="button" className="btn btn-ghost" onClick={() => void showPreview(row.revision)}>

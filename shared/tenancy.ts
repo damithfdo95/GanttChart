@@ -230,6 +230,14 @@ export const AUDIT_ACTIONS = [
   'member.removed',
   'member.reactivated',
   'member.account_linked',
+  // Stage 8E: scheduled notifications and workspace branding (configuration; acknowledgments are not audited).
+  'notification.created',
+  'notification.updated',
+  'notification.enabled',
+  'notification.disabled',
+  'notification.deleted',
+  'branding.updated',
+  'branding.removed',
   'storage.migration_uploaded',
   'storage.web_activated',
   'storage.local_activated',
@@ -237,7 +245,7 @@ export const AUDIT_ACTIONS = [
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 /** What the Super Admin sees: platform-level events only. Account events inside a workspace stay with that workspace's Admin. */
-export const PLATFORM_AUDIT_ACTIONS: readonly AuditAction[] = AUDIT_ACTIONS.filter((a) => !a.startsWith('user.') && !a.startsWith('member.') && a !== 'owner.transferred');
+export const PLATFORM_AUDIT_ACTIONS: readonly AuditAction[] = AUDIT_ACTIONS.filter((a) => !a.startsWith('user.') && !a.startsWith('member.') && !a.startsWith('notification.') && !a.startsWith('branding.') && a !== 'owner.transferred');
 
 export interface AuditActor {
   userId: string | null;

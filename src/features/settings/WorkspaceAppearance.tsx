@@ -52,7 +52,6 @@ export function WorkspaceAppearance() {
           {message.text}
         </p>
       )}
-      <p className="link-help">{t(lang, 'settings.appearance.logoNote')}</p>
     </section>
   );
 }

@@ -367,3 +367,11 @@ Local storage has no logins: Team Members shows profiles only (add, edit, role i
 ### Restore and import
 
 Restoring a backup or importing a project never creates or changes a login link (see `docs/QA_EXECUTION.md` section 13). Restoring an older revision keeps today's links.
+
+## 12. Stage 8E: notifications, logo, retention (SV)
+
+* **Settings -> Notifications** (Web storage only): create, edit, enable, disable, duplicate and delete scheduled notifications, with a next-occurrence preview. Audience: everyone, SV only, Testers only, or chosen members. A Tester only sees and closes their own banners.
+* **Settings -> Workspace logo:** PNG, JPEG or WebP (no SVG), resized in the browser to about 512 px, hard server limit 256 KiB. Testers see it but cannot change it.
+* **Settings -> Data retention:** how long Morning/Evening plans and meeting notes are kept: 90, 180, 365 (default) or 730 days. Applied once a day; test cases, projects and the audit are never deleted.
+* **Audit:** `notification.created|updated|enabled|disabled|deleted` and `branding.updated|removed` appear in the administrative audit. Closing a banner is deliberately **not** audited.
+* Details and the exact rules: `docs/CLOUD_ARCHITECTURE.md` (Stage 8E).

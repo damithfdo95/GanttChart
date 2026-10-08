@@ -767,7 +767,7 @@ export class RegistryStore {
    */
   recordMemberEvent(input: {
     tenantId: string;
-    action: Extract<AuditAction, `member.${string}`>;
+    action: Extract<AuditAction, `member.${string}` | `notification.${string}` | `branding.${string}`>;
     actor: AuditActor;
     userId?: string | null;
     meta?: Record<string, string | number | boolean | null>;

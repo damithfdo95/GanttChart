@@ -24,6 +24,9 @@ import type {
   TestScope,
   DailyTeamPlan,
   MeetingNote,
+  NotificationAck,
+  NotificationDef,
+  BrandingRecord,
   DailyReport,
   DailyTopic,
   ExternalIdentity,
@@ -74,6 +77,9 @@ const ORDER: Record<Exclude<RecordKind, 'settings'>, (record: never) => string> 
   caseResult: (r: CaseResult) => r.updatedAt ?? '',
   dailyPlan: (r: DailyTeamPlan) => `${r.date ?? ''}`,
   meetingNote: (r: MeetingNote) => r.date ?? '',
+  notification: (r: NotificationDef) => r.createdAt ?? '',
+  notificationAck: (r: NotificationAck) => r.at ?? '',
+  branding: (r: BrandingRecord) => r.id,
 };
 
 function sortKind<T extends Identified>(kind: Exclude<RecordKind, 'settings'>, items: T[]): T[] {
@@ -114,6 +120,9 @@ const ARRAY_FIELDS: ArrayField[] = [
   { kind: 'caseResult', read: (s) => s.caseResults ?? [], write: (s, v) => ({ ...s, caseResults: v as CaseResult[] }) },
   { kind: 'dailyPlan', read: (s) => s.dailyPlans ?? [], write: (s, v) => ({ ...s, dailyPlans: v as DailyTeamPlan[] }) },
   { kind: 'meetingNote', read: (s) => s.meetingNotes ?? [], write: (s, v) => ({ ...s, meetingNotes: v as MeetingNote[] }) },
+  { kind: 'notification', read: (s) => s.notifications ?? [], write: (s, v) => ({ ...s, notifications: v as NotificationDef[] }) },
+  { kind: 'notificationAck', read: (s) => s.notificationAcks ?? [], write: (s, v) => ({ ...s, notificationAcks: v as NotificationAck[] }) },
+  { kind: 'branding', read: (s) => s.brandings ?? [], write: (s, v) => ({ ...s, brandings: v as BrandingRecord[] }) },
 ];
 
 const FIELD_BY_KIND = new Map(ARRAY_FIELDS.map((f) => [f.kind, f]));
@@ -247,6 +256,9 @@ export function reportsFromRecords(records: readonly RecordPut[], local: Reports
     caseResults: [],
     dailyPlans: [],
     meetingNotes: [],
+    notifications: [],
+    notificationAcks: [],
+    brandings: [],
   };
   const built = applyRecordChanges(empty, records, []);
   // The device's own project selection survives if that project still exists.
@@ -290,6 +302,7 @@ export function hasMeaningfulLocalData(state: ReportsState): boolean {
   if ((state.cycles ?? []).length > 0) return true;
   if ((state.scopes ?? []).length > 0 || (state.testCases ?? []).length > 0) return true;
   if ((state.dailyPlans ?? []).length > 0 || (state.meetingNotes ?? []).length > 0) return true;
+  if ((state.notifications ?? []).length > 0 || (state.brandings ?? []).length > 0) return true;
   if (state.projects.length >= 2) return true;
   // The seeded project is only bumped (updatedAt) by a real data change.
   return state.projects.some((p) => p.updatedAt !== p.createdAt);

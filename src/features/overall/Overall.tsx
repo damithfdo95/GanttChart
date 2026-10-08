@@ -320,7 +320,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
         if (!guard.confirmReplace()) return;
         app.replaceState(result.data.appState);
         // A file never creates or changes a login link: people with a login keep the link this workspace has now.
-        reportsApi.replaceReportsState(sanitizeRestoredAccountLinks(result.data.reportsState, reportsApi.state));
+        reportsApi.replaceReportsState(sanitizeRestoredAccountLinks(result.data.reportsState, reportsApi.state, access.userId));
         setImportMessage({ kind: 'ok', text: t(lang, 'import.backupOk') });
         return;
       }

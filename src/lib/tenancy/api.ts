@@ -5,6 +5,7 @@
  */
 
 import type { RecordPut } from '../../../shared/protocol';
+import type { NotificationFields } from '../../../shared/notifications';
 import { REQUEST_DELETION_CONFIRMATION, TRANSFER_OWNERSHIP_CONFIRMATION, type TesterDto, type AdminAuditDto, type PrincipalDto, type TenantDto, type TenantListQuery, type TenantListResult, type UserAccess, type UserDto } from '../../../shared/tenancy';
 
 export class ApiError extends Error {
@@ -81,6 +82,17 @@ export interface TenancyApi {
   provisionAccount(memberId: string, access?: UserAccess): Promise<{ memberId: string; user: UserDto; linked: boolean; assignments: number }>;
   /** Assign a Team Member (linked or not) to a project, or one scope of it. */
   assignMember(projectId: string, memberId: string, scopeId?: string): Promise<{ created: boolean; linked?: boolean }>;
+  /** Scheduled notifications (SV): create, change (also used to switch one on or off), delete. The server stamps who did it. */
+  createNotification(fields: NotificationFields): Promise<{ id: string }>;
+  updateNotification(id: string, fields: NotificationFields): Promise<{ id: string; action: string }>;
+  deleteNotification(id: string): Promise<{ deleted: boolean }>;
+  /** Close one occurrence of a notification for the signed-in person (the server decides the person and checks the occurrence). */
+  acknowledgeNotification(id: string, occurrence: string): Promise<{ created: boolean }>;
+  /** The workspace logo (SV): a small validated PNG, JPEG or WebP as base64. */
+  setLogo(mime: string, data: string): Promise<{ bytes: number }>;
+  removeLogo(): Promise<{ removed: boolean }>;
+  /** The once-a-day housekeeping of old meeting plans and notes (SV opening Meeting History). */
+  runRetention(): Promise<{ ran: boolean; plans: number; notes: number; acks: number }>;
   /** Link an older roster-only member to an account of this workspace (SV). */
   linkMember(memberId: string, userId: string): Promise<{ memberId: string }>;
   /** Give an account that predates Team Member profiles its profile (SV). */
@@ -149,6 +161,13 @@ export function createTenancyApi(fetchFn: FetchLike = (i, init) => fetch(i, init
       (await call<{ user: UserDto }>('POST', '/api/tenant/users', { email, access, role, ...(displayName === undefined || displayName.trim() === '' ? {} : { displayName }) })).user,
     transferOwnership: (userId) => call('POST', '/api/tenant/owner', { userId, confirm: TRANSFER_OWNERSHIP_CONFIRMATION }),
     linkMember: (memberId, userId) => call('POST', '/api/tenant/members/link', { memberId, userId }),
+    createNotification: (fields) => call('POST', '/api/tenant/notifications', fields),
+    updateNotification: (id, fields) => call('PATCH', `/api/tenant/notifications/${encodeURIComponent(id)}`, fields),
+    deleteNotification: (id) => call('DELETE', `/api/tenant/notifications/${encodeURIComponent(id)}`),
+    acknowledgeNotification: (id, occurrence) => call('POST', `/api/tenant/notifications/${encodeURIComponent(id)}/ack`, { occurrence }),
+    setLogo: (mime, data) => call('PUT', '/api/tenant/branding', { mime, data }),
+    removeLogo: () => call('DELETE', '/api/tenant/branding'),
+    runRetention: () => call('POST', '/api/tenant/retention', {}),
     createMember: (input) => call('POST', '/api/tenant/members', input),
     editMember: (memberId, patch) => call('PATCH', `/api/tenant/members/${encodeURIComponent(memberId)}`, patch),
     setMemberRole: (memberId, role) => call('POST', `/api/tenant/members/${encodeURIComponent(memberId)}/role`, { role }),

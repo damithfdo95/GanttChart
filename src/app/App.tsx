@@ -25,6 +25,8 @@ import { pad2 } from '../lib/formatting/format';
 import { NAV_ITEMS, navItems, type Screen } from './navigation';
 import { AccountBadge } from '../features/tenancy/AccountBadge';
 import { TeamScreen } from '../features/tenancy/TeamScreen';
+import { BrandMark } from '../features/branding/BrandMark';
+import { NotificationBanner } from '../features/notifications/NotificationBanner';
 import { CyclesScreen } from '../features/cycles/CyclesScreen';
 import { TestManagementScreen } from '../features/testManagement/TestManagementScreen';
 import { MyTestingScreen } from '../features/testManagement/MyTestingScreen';
@@ -249,6 +251,7 @@ function Shell() {
   return (
     <>
       <nav className="app-nav" aria-label={t(state.language, 'nav.mainNavigation')}>
+        <BrandMark lang={state.language} />
         {navItems(principal?.role ?? null).map((item) => (
           <button
             key={item.id}
@@ -267,6 +270,7 @@ function Shell() {
           <ShellLogout />
         </div>
       </nav>
+      <NotificationBanner />
       <SyncBanners />
       <CorruptionBanner />
       <StorageFallbackBanner />

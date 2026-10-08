@@ -35,7 +35,7 @@ export interface WorkspaceDbRead {
 
 /** Read every store and rebuild the workspace parts (core null when never written). */
 export async function readWorkspaceFromDb(): Promise<WorkspaceDbRead> {
-  const [projects, dailyActuals, reports, attendance, topics, appState, core, testerAssignments, reviews, rcsMembers, identityAuditLog, externalIdentities, cycles, scopes, testCases, caseResults, dailyPlans, meetingNotes] =
+  const [projects, dailyActuals, reports, attendance, topics, appState, core, testerAssignments, reviews, rcsMembers, identityAuditLog, externalIdentities, cycles, scopes, testCases, caseResults, dailyPlans, meetingNotes, notifications, notificationAcks, brandings] =
     await Promise.all([
       getAllFromStore<WorkspaceParts['projects'][number]>(STORE_PROJECTS),
       getAllFromStore<WorkspaceParts['dailyActuals'][number]>(STORE_DAILY_ACTUALS),
@@ -55,6 +55,9 @@ export async function readWorkspaceFromDb(): Promise<WorkspaceDbRead> {
       getFromStore<WorkspaceParts['collections']['caseResults']>(STORE_METADATA, META_KEY_COLLECTION.caseResults),
       getFromStore<WorkspaceParts['collections']['dailyPlans']>(STORE_METADATA, META_KEY_COLLECTION.dailyPlans),
       getFromStore<WorkspaceParts['collections']['meetingNotes']>(STORE_METADATA, META_KEY_COLLECTION.meetingNotes),
+      getFromStore<WorkspaceParts['collections']['notifications']>(STORE_METADATA, META_KEY_COLLECTION.notifications),
+      getFromStore<WorkspaceParts['collections']['notificationAcks']>(STORE_METADATA, META_KEY_COLLECTION.notificationAcks),
+      getFromStore<WorkspaceParts['collections']['brandings']>(STORE_METADATA, META_KEY_COLLECTION.brandings),
     ]);
   return {
     appState,
@@ -77,6 +80,9 @@ export async function readWorkspaceFromDb(): Promise<WorkspaceDbRead> {
         caseResults: caseResults ?? [],
         dailyPlans: dailyPlans ?? [],
         meetingNotes: meetingNotes ?? [],
+        notifications: notifications ?? [],
+        notificationAcks: notificationAcks ?? [],
+        brandings: brandings ?? [],
       },
     },
   };
@@ -121,6 +127,9 @@ export function mirrorFromRead(read: WorkspaceDbRead): WorkspaceMirror {
       caseResults: JSON.stringify(read.parts.collections.caseResults),
       dailyPlans: JSON.stringify(read.parts.collections.dailyPlans),
       meetingNotes: JSON.stringify(read.parts.collections.meetingNotes),
+      notifications: JSON.stringify(read.parts.collections.notifications),
+      notificationAcks: JSON.stringify(read.parts.collections.notificationAcks),
+      brandings: JSON.stringify(read.parts.collections.brandings),
     },
   };
 }
@@ -249,6 +258,9 @@ export function planWorkspaceWrite(appState: unknown, reports: ReportsState, mir
   diffMetadata(plan, META_KEY_COLLECTION.caseResults, parts.collections.caseResults, mirror.collections.caseResults);
   diffMetadata(plan, META_KEY_COLLECTION.dailyPlans, parts.collections.dailyPlans, mirror.collections.dailyPlans);
   diffMetadata(plan, META_KEY_COLLECTION.meetingNotes, parts.collections.meetingNotes, mirror.collections.meetingNotes);
+  diffMetadata(plan, META_KEY_COLLECTION.notifications, parts.collections.notifications, mirror.collections.notifications);
+  diffMetadata(plan, META_KEY_COLLECTION.notificationAcks, parts.collections.notificationAcks, mirror.collections.notificationAcks);
+  diffMetadata(plan, META_KEY_COLLECTION.brandings, parts.collections.brandings, mirror.collections.brandings);
 
   return plan;
 }

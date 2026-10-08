@@ -29,6 +29,21 @@ export function toPage<T extends { revision: number }>(fetched: readonly T[], pa
 }
 
 /** The request for one page: `before` is the oldest revision of the page before it (undefined = the newest page). */
-export function pageUrl(pageSize: number, before: number | undefined): string {
-  return `/api/revisions?limit=${pageSize + 1}${before === undefined ? '' : `&before=${before}`}`;
+export function pageUrl(pageSize: number, before: number | undefined, filter: HistoryFilter = {}): string {
+  const extra = (['kind', 'actor', 'from', 'to'] as const)
+    .filter((k) => filter[k] !== undefined && filter[k] !== '')
+    .map((k) => `&${k}=${encodeURIComponent(filter[k] as string)}`)
+    .join('');
+  return `/api/revisions?limit=${pageSize + 1}${before === undefined ? '' : `&before=${before}`}${extra}`;
+}
+
+/**
+ * Narrowing of the list, applied by the server BEFORE paging, so the cursor still walks the filtered list without repeating or skipping a
+ * row. `actor` is the email recorded with the change; `from` / `to` are business-time calendar days (inclusive).
+ */
+export interface HistoryFilter {
+  kind?: string;
+  actor?: string;
+  from?: string;
+  to?: string;
 }

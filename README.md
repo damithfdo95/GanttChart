@@ -729,3 +729,12 @@ Details, formulas and permissions: [docs/QA_EXECUTION.md](docs/QA_EXECUTION.md) 
   (SV or Tester), remove people (history is kept, the login is disabled in the same action) and reactivate them. The Owner SV is protected.
 * **Team meeting.** Gantt -> Meeting View gives the SV a whole-team Morning view (today's plan) and Evening view (plan against actual, then tomorrow's plan, which becomes the next Morning), with a presentation mode.
   Details: [docs/QA_EXECUTION.md](docs/QA_EXECUTION.md) section 13 and [docs/ADMINISTRATION.md](docs/ADMINISTRATION.md) section 11.
+
+## Stage 8E: persistent notifications, tenant logo, meeting history, plan retention
+
+* **Notifications.** SVs schedule in-system notifications (daily, weekly, monthly, yearly; Asia/Tokyo time) for everyone, SVs, Testers or chosen members. A banner stays until each person closes it; the next occurrence appears again; after an absence only the latest missed occurrence shows.
+* **Logo.** PNG, JPEG or WebP (no SVG), resized in the browser, validated again on the server (hard limit 256 KiB), shown in the shell and the Meeting header.
+* **Meeting History** shows a past day's stored plan, actual and Difference; **Shared History** filters by record type, person and dates with readable names.
+* **Plan retention** keeps 90, 180, 365 (default) or 730 days of plans and meeting notes, cleaned once a day with no external scheduler.
+* Details: [docs/CLOUD_ARCHITECTURE.md](docs/CLOUD_ARCHITECTURE.md) (Stage 8E), [docs/ADMINISTRATION.md](docs/ADMINISTRATION.md) section 12, [docs/QA_EXECUTION.md](docs/QA_EXECUTION.md) section 14, [docs/DEPLOYMENT_PLAN.md](docs/DEPLOYMENT_PLAN.md).
+

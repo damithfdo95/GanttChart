@@ -133,7 +133,7 @@ export class RegistryRoom extends DurableObject<Env> {
   }
 
   /** Stage 8D: a Team Member event of the workspace for the administrative trail (actor from the Worker's verified principal). */
-  async recordMemberEvent(input: { tenantId: string; action: Extract<AuditAction, `member.${string}`>; actor: AuditActor; userId?: string | null; meta?: Record<string, string | number | boolean | null> }): Promise<void> {
+  async recordMemberEvent(input: { tenantId: string; action: Extract<AuditAction, `member.${string}` | `notification.${string}` | `branding.${string}`>; actor: AuditActor; userId?: string | null; meta?: Record<string, string | number | boolean | null> }): Promise<void> {
     this.store.recordMemberEvent({ ...input, now: this.now() });
   }
 

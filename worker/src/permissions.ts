@@ -57,6 +57,11 @@ export type Action =
   | 'tenant.transferOwnership'
   | 'team.view'
   | 'assignments.manage'
+  // Stage 8E
+  | 'notifications.manage'
+  | 'notifications.ack'
+  | 'branding.manage'
+  | 'maintenance.run'
   // shared workspace data (web mode only)
   | 'data.read'
   | 'data.write'
@@ -105,6 +110,14 @@ export function can(principal: Principal | null, action: Action): boolean {
       return p.isOwner && p.storageMode === 'web' && p.tenantStatus === 'active';
     case 'assignments.manage':
       return p.role === 'admin' && p.storageMode === 'web' && p.tenantStatus === 'active';
+    case 'notifications.manage':
+    case 'branding.manage':
+      return p.role === 'admin' && p.storageMode === 'web' && p.tenantStatus === 'active';
+    case 'notifications.ack':
+      // Any member who may read the shared workspace closes their OWN notifications.
+      return workspaceIsShared(p);
+    case 'maintenance.run':
+      return p.role === 'admin' && workspaceIsShared(p);
     case 'audit.tenant':
       // The Admin reads their OWN workspace's administrative history; a User never does.
       return p.role === 'admin' && tenantReadable(p);

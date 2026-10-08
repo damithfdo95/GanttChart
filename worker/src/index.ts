@@ -16,6 +16,9 @@
 
 import { businessDate } from '../../shared/businessTime';
 import { accountRoleOf, memberRoleOf, memberRoleWord } from '../../shared/members';
+import { parseNotificationInput } from '../../shared/notifications';
+import { isDateString } from '../../shared/notifications';
+import { isRecordKind, type RecordKind } from '../../shared/protocol';
 import { AuthError, DEV_IDENTITY_COOKIE, authenticate, type VerifiedIdentity } from './auth';
 import { isWorkerPath } from '../../shared/routes';
 import { can, toPrincipalDto, workspaceRoleOf, type Action, type MemberPrincipal, type Principal } from './permissions';
@@ -205,6 +208,19 @@ const MEMBER_STATUS: Record<string, number> = {
   failed: 500,
 };
 
+const NOTIFICATION_STATUS: Record<string, number> = {
+  notification_not_found: 404,
+  notification_member_not_found: 400,
+  not_addressed: 403,
+  invalid_occurrence: 409,
+  archived: 409,
+  failed: 500,
+};
+
+function notificationProblem(error: string): Response {
+  return problem(NOTIFICATION_STATUS[error] ?? 400, error);
+}
+
 function memberProblem(error: string): Response {
   return problem(MEMBER_STATUS[error] ?? 409, error);
 }
@@ -369,7 +385,31 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     const limit = Math.min(500, Math.max(1, Number(url.searchParams.get('limit') ?? 100) || 100));
     const beforeRaw = url.searchParams.get('before');
     const before = beforeRaw === null ? undefined : (revisionParam(beforeRaw) ?? undefined);
-    return json(await roomFor(ctx, p).listRevisions(p.tenantId, limit, before));
+    // Optional narrowing (all applied by the server, so a page is a page of the filtered list). Bad values are refused, never ignored.
+    const filter: { kind?: RecordKind; actor?: string; from?: string; to?: string } = {};
+    const kind = url.searchParams.get('kind');
+    if (kind !== null && kind !== '') {
+      if (!isRecordKind(kind)) return problem(400, 'invalid_kind');
+      filter.kind = kind;
+    }
+    const actor = url.searchParams.get('actor');
+    if (actor !== null && actor !== '') {
+      if (actor.length > 254 || /[\u0000-\u001f]/.test(actor)) return problem(400, 'invalid_actor');
+      filter.actor = actor;
+    }
+    // Dates are business-time (Asia/Tokyo, UTC+9, no daylight saving) calendar days: [from 00:00, to + 1 day 00:00).
+    const dayStart = (date: string): string => new Date(Date.parse(`${date}T00:00:00+09:00`)).toISOString();
+    const from = url.searchParams.get('from');
+    if (from !== null && from !== '') {
+      if (!isDateString(from)) return problem(400, 'invalid_date');
+      filter.from = dayStart(from);
+    }
+    const to = url.searchParams.get('to');
+    if (to !== null && to !== '') {
+      if (!isDateString(to)) return problem(400, 'invalid_date');
+      filter.to = new Date(Date.parse(dayStart(to)) + 86_400_000).toISOString();
+    }
+    return json(await roomFor(ctx, p).listRevisions(p.tenantId, limit, before, filter));
   }
 
   const rev = /^\/api\/revisions\/([^/]+)(\/restore)?$/.exec(path);
@@ -397,6 +437,89 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     const denial = need(ctx, 'users.manage');
     if (denial !== null) return denial;
     return json({ users: await ctx.registry.listUsers(p.tenantId) });
+  }
+
+  // ---- Scheduled notifications (SV administers; everybody closes their own) -----------------------
+
+  if (path === '/api/tenant/notifications' && method === 'POST') {
+    const denial = need(ctx, 'notifications.manage');
+    if (denial !== null) return denial;
+    const body = await readJson(ctx);
+    if (!body.ok) return body.response;
+    const fields = parseNotificationInput(body.body);
+    if (!fields.ok) return problem(400, fields.error);
+    const saved = await roomFor(ctx, p).saveNotification(p.tenantId, { fields: fields.value, actor: { userId: p.userId, email: p.email } });
+    if (!saved.ok) return notificationProblem(saved.error);
+    await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: 'notification.created', actor: actorOf(p), meta: { title: fields.value.title, recurrence: fields.value.recurrence } });
+    return json({ id: saved.id }, 201);
+  }
+
+  const notificationRoute = /^\/api\/tenant\/notifications\/([^/]+)(?:\/(ack))?$/.exec(path);
+  if (notificationRoute !== null) {
+    const id = decodeURIComponent(notificationRoute[1]);
+    if (!/^ntf_[A-Za-z0-9_.:-]{1,190}$/.test(id)) return problem(400, 'invalid_notification_id');
+    if (notificationRoute[2] === 'ack' && method === 'POST') {
+      const denial = need(ctx, 'notifications.ack');
+      if (denial !== null) return denial;
+      const body = await readJson(ctx);
+      if (!body.ok) return body.response;
+      if (typeof body.body.occurrence !== 'string') return problem(400, 'invalid_occurrence');
+      // The person is the verified caller; the clock is the server's (a development header may move it, never in production).
+      const devNow = ctx.env.ENVIRONMENT === 'development' ? Number(ctx.request.headers.get('x-dev-now')) : NaN;
+      const nowMs = Number.isFinite(devNow) && devNow > 0 ? devNow : Date.now();
+      const done = await roomFor(ctx, p).acknowledgeNotification(p.tenantId, { userId: p.userId, role: workspaceRoleOf(p) ?? 'viewer', notificationId: id, occurrence: body.body.occurrence, nowMs, email: p.email });
+      return done.ok ? json({ created: done.created }) : notificationProblem(done.error);
+    }
+    if (notificationRoute[2] === undefined && method === 'PATCH') {
+      const denial = need(ctx, 'notifications.manage');
+      if (denial !== null) return denial;
+      const body = await readJson(ctx);
+      if (!body.ok) return body.response;
+      const fields = parseNotificationInput(body.body);
+      if (!fields.ok) return problem(400, fields.error);
+      const saved = await roomFor(ctx, p).saveNotification(p.tenantId, { id, fields: fields.value, actor: { userId: p.userId, email: p.email } });
+      if (!saved.ok) return notificationProblem(saved.error);
+      await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: `notification.${saved.action}`, actor: actorOf(p), meta: { title: fields.value.title, recurrence: fields.value.recurrence } });
+      return json({ id: saved.id, action: saved.action });
+    }
+    if (notificationRoute[2] === undefined && method === 'DELETE') {
+      const denial = need(ctx, 'notifications.manage');
+      if (denial !== null) return denial;
+      const gone = await roomFor(ctx, p).deleteNotification(p.tenantId, { id, actor: { email: p.email } });
+      if (!gone.ok) return notificationProblem(gone.error);
+      await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: 'notification.deleted', actor: actorOf(p), meta: { title: gone.title } });
+      return json({ deleted: true });
+    }
+  }
+
+  // ---- Workspace logo (SV) ---------------------------------------------------------------
+
+  if (path === '/api/tenant/branding' && method === 'PUT') {
+    const denial = need(ctx, 'branding.manage');
+    if (denial !== null) return denial;
+    const body = await readJson(ctx);
+    if (!body.ok) return body.response;
+    const set = await roomFor(ctx, p).setBranding(p.tenantId, { mime: String(body.body.mime ?? ''), data: String(body.body.data ?? ''), actor: { userId: p.userId, email: p.email } });
+    if (!set.ok) return problem(set.error === 'logo_too_large' ? 413 : 400, set.error);
+    await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: 'branding.updated', actor: actorOf(p), meta: { bytes: set.bytes } });
+    return json({ bytes: set.bytes });
+  }
+  if (path === '/api/tenant/branding' && method === 'DELETE') {
+    const denial = need(ctx, 'branding.manage');
+    if (denial !== null) return denial;
+    const gone = await roomFor(ctx, p).removeBranding(p.tenantId, { actor: { email: p.email } });
+    if (!gone.ok) return problem(409, gone.error);
+    if (gone.removed) await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: 'branding.removed', actor: actorOf(p) });
+    return json({ removed: gone.removed });
+  }
+
+  // ---- Housekeeping of meeting history (an SV opening Meeting History; at most once a business day) ----
+  if (path === '/api/tenant/retention' && method === 'POST') {
+    const denial = need(ctx, 'maintenance.run');
+    if (denial !== null) return denial;
+    const body = await readJson(ctx);
+    if (!body.ok) return body.response;
+    return json(await roomFor(ctx, p).runRetention(p.tenantId));
   }
 
   // ---- Team Members: profiles (the people directory) and the accounts linked to them ----

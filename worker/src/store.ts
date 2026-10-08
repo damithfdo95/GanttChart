@@ -79,6 +79,19 @@ export interface RevisionInfo {
   puts: number;
   deletes: number;
   summary: Array<{ kind: RecordKind; puts: number; deletes: number }>;
+  /** The first few records this revision changed (so a screen can name them); set by `listRevisions`. */
+  changed?: Array<{ kind: RecordKind; id: string }>;
+}
+
+/** Optional narrowing of the history list. Every field is applied in SQL, so a page is still a page of the filtered list. */
+export interface RevisionFilter {
+  /** Only revisions that changed this kind of record. */
+  kind?: RecordKind;
+  /** Only revisions made by this actor (their email, as recorded). */
+  actor?: string;
+  /** ISO instants: committed at or after `from` and before `to`. */
+  from?: string;
+  to?: string;
 }
 
 export type ChangesSince =
@@ -342,16 +355,47 @@ export class WorkspaceStore {
   }
 
   /** Newest-first list of retained revisions (metadata only). */
-  listRevisions(limit = 100, before?: number): RevisionInfo[] {
+  listRevisions(limit = 100, before?: number, filter: RevisionFilter = {}): RevisionInfo[] {
+    const where = ['rev < ?'];
+    const args: Array<string | number> = [before ?? Number.MAX_SAFE_INTEGER];
+    if (filter.kind !== undefined) {
+      // `summary` is JSON written by this class ({"kind":"scope","puts":1,...}); the kind is one of our own constants, never free text.
+      where.push('summary LIKE ?');
+      args.push(`%"kind":"${filter.kind}"%`);
+    }
+    if (filter.actor !== undefined) {
+      where.push('actor = ?');
+      args.push(filter.actor);
+    }
+    if (filter.from !== undefined) {
+      where.push('committed_at >= ?');
+      args.push(filter.from);
+    }
+    if (filter.to !== undefined) {
+      where.push('committed_at < ?');
+      args.push(filter.to);
+    }
     const rows = this.storage.sql
       .exec<{ rev: number; committed_at: string; actor: string; reason: string; puts: number; deletes: number; summary: string }>(
         `SELECT rev, committed_at, actor, reason, puts, deletes, summary FROM revisions
-          WHERE rev < ? ORDER BY rev DESC LIMIT ?`,
-        before ?? Number.MAX_SAFE_INTEGER,
+          WHERE ${where.join(' AND ')} ORDER BY rev DESC LIMIT ?`,
+        ...args,
         Math.min(Math.max(1, limit), 500),
       )
       .toArray();
+    // The first few records each revision changed, in one query for the whole page.
+    const changed = new Map<number, Array<{ kind: RecordKind; id: string }>>();
+    if (rows.length > 0) {
+      const marks = rows.map(() => '?').join(',');
+      const keys = this.storage.sql.exec<{ rev: number; kind: RecordKind; id: string }>(`SELECT rev, kind, id FROM record_history WHERE rev IN (${marks}) ORDER BY rev DESC, kind, id LIMIT 3000`, ...rows.map((r) => r.rev)).toArray();
+      for (const k of keys) {
+        const list = changed.get(k.rev) ?? [];
+        if (list.length < 6 && (filter.kind === undefined || k.kind === filter.kind)) list.push({ kind: k.kind, id: k.id });
+        changed.set(k.rev, list);
+      }
+    }
     return rows.map((r) => ({
+      changed: changed.get(r.rev) ?? [],
       revision: r.rev,
       committedAt: r.committed_at,
       actor: r.actor,

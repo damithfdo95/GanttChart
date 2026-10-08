@@ -335,5 +335,12 @@ Rollback: the Stage 8C Worker would treat the two new kinds as unknown opaque re
 
 ### Deferred
 
-XLSX import, device inventory, AI risk scoring, external trackers, weighted capacity planning, notifications, logo upload, cross-tenant analytics, forecasting, charts, a
+XLSX import, device inventory, AI risk scoring, external trackers, weighted capacity planning, email/push notifications, per-tenant timezone, SVG logos, cross-tenant analytics, forecasting, charts, a
 global test-case library, and automatic roll-up of case results into the aggregate numbers.
+
+## 14. Stage 8E: Meeting History and Shared History
+
+* **Meeting View -> History** (SV): pick a date (previous/next business day or any calendar date). Per project: Plan (Morning target; the revised value is shown if it changed), Actual, **Difference = Actual - Plan**, Pass/Fail/Blocked, remaining at the
+  end of that day (against the current Total), tomorrow's plan, scope plans, the day's notes. Totals use the same rows as the per-project lines. Scope rows show plans only (no per-scope actuals exist). A 14-day plan-vs-actual strip sits below.
+* Days older than the retention period (Settings -> Data retention) show a clear message; days with nothing stored show an empty state.
+* **Shared History** (Settings): filter by record type, person and date range; pages stay stable while filtering; entries show names, not ids. It remains the *QA data* history and is separate from Meeting History and from the administrative audit.

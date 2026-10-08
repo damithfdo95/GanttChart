@@ -53,6 +53,9 @@ export const META_KEY_COLLECTION = {
   caseResults: 'caseResults',
   dailyPlans: 'dailyPlans',
   meetingNotes: 'meetingNotes',
+  notifications: 'notifications',
+  notificationAcks: 'notificationAcks',
+  brandings: 'brandings',
 } as const;
 export const META_KEY_PERSISTENCE_META = 'persistenceMeta';
 export const META_KEY_STORAGE_MIGRATION = 'storageMigration';

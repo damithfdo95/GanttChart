@@ -393,3 +393,15 @@ editing all day, a save every ~20 s each): 43,200 rows written (43%), ≈720 DO 
 * After deploying check: (1) Test Management -> Scopes: type a Total on a scope; the Dashboard Total for that project becomes the sum and its field is read-only; (2) Team Members: add a profile without a login,
   then Create login for it and confirm there is still one row for that person; change a Tester to SV and back (the person is signed out and in again with the new role); (3) Gantt -> Meeting View: enter today's
   plan, open the Evening view, enter tomorrow's plan; (4) as a Tester: no Meeting View, no Test Management, other people's emails are not in the Team Members data.
+
+## Stage 8E rollout notes (notifications, logo, meeting history, retention)
+
+* **No Cloudflare change** and **no Wrangler migration tag**; no registry schema change. Three additive record kinds (`notification`, `notificationAck`, `branding`) are opaque JSON in the existing record table. Deploy like any code release:
+  `npm run build`, `cd worker && npm run validate`, then `npx wrangler deploy --env=""` (done by the operator, never by this repository's tooling).
+* **No data migration.** Without definitions nothing is shown; without a logo the text mark is used; `planRetentionDays` defaults to 365, so after deployment the first housekeeping run removes plans and notes older than 365 days. If longer is needed, an SV should raise the setting to 730
+  (and take a backup) before the first run, which happens when the daily alarm fires or an SV opens Meeting History.
+* **Rollback.** The Stage 8D Worker does not know the three kinds: it would reject commits that contain them and ignore the new endpoints. Stored records stay. Roll forward rather than back once notifications exist.
+  Pruned plans are not recoverable except from a backup.
+* **Free plan.** No new request per page view; an acknowledgment is one small write per person per occurrence; housekeeping is at most one batch of deletes per workspace per day; the logo is at most 256 KiB once.
+* After deploying check: (1) Settings -> Notifications: create a daily notification for everyone a couple of minutes ahead; as a Tester the banner appears and stays until Close, and is still closed after reload; (2) Settings -> Workspace logo: upload a PNG, check the shell and the Meeting header,
+  confirm a Tester cannot change it; (3) Meeting View -> History: open yesterday; (4) Settings -> Shared History: filter by record type and person; (5) Data retention shows 365 days.

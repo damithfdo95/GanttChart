@@ -174,6 +174,8 @@ export function diffWorkspaces(prev: CanonicalWorkspace | null, next: CanonicalW
       !jsonEquals(prevParts?.collections.testCases ?? [], nextParts.collections.testCases) ||
       !jsonEquals(prevParts?.collections.dailyPlans ?? [], nextParts.collections.dailyPlans) ||
       !jsonEquals(prevParts?.collections.meetingNotes ?? [], nextParts.collections.meetingNotes) ||
+      !jsonEquals(prevParts?.collections.notifications ?? [], nextParts.collections.notifications) ||
+      !jsonEquals(prevParts?.collections.brandings ?? [], nextParts.collections.brandings) ||
       prev.app.language !== next.app.language ||
       prev.app.projectNameEn !== next.app.projectNameEn ||
       prev.app.projectNameJa !== next.app.projectNameJa ||

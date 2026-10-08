@@ -19,6 +19,8 @@ import { ATTENDANCE_STATUSES, REVIEW_PERIOD_TYPES, REVIEW_STATUSES } from '../..
 import { checkCycle } from '../../../shared/qaRules';
 import { checkCaseResult, checkScope, checkTestCase } from '../../../shared/testManagement';
 import { checkDailyPlan, checkMeetingNote } from '../../../shared/meeting';
+import { checkNotification, checkNotificationAck } from '../../../shared/notifications';
+import { usableBranding } from '../../../shared/branding';
 import { DEFAULT_REPORT_TEMPLATES } from '../reporting/template';
 import { DEFAULT_PROGRESS_RULES } from '../reporting/progress';
 import { hasRecoveryPayload, stashCorruptedRaw } from './corruption';
@@ -81,6 +83,9 @@ export function defaultReportsState(): ReportsState {
     caseResults: [],
     dailyPlans: [],
     meetingNotes: [],
+    notifications: [],
+    notificationAcks: [],
+    brandings: [],
   };
 }
 
@@ -482,7 +487,11 @@ export function isReportsState(v: unknown): v is ReportsState {
     (s.caseResults === undefined || (Array.isArray(s.caseResults) && s.caseResults.every((c) => checkCaseResult(c).ok))) &&
     // Stage 8D meeting plans and notes are optional too.
     (s.dailyPlans === undefined || (Array.isArray(s.dailyPlans) && s.dailyPlans.every((c) => checkDailyPlan(c).ok))) &&
-    (s.meetingNotes === undefined || (Array.isArray(s.meetingNotes) && s.meetingNotes.every((c) => checkMeetingNote(c).ok)))
+    (s.meetingNotes === undefined || (Array.isArray(s.meetingNotes) && s.meetingNotes.every((c) => checkMeetingNote(c).ok))) &&
+    // Stage 8E notifications and logo are optional too.
+    (s.notifications === undefined || (Array.isArray(s.notifications) && s.notifications.every((c) => checkNotification(c).ok))) &&
+    (s.notificationAcks === undefined || (Array.isArray(s.notificationAcks) && s.notificationAcks.every((c) => checkNotificationAck(c).ok))) &&
+    (s.brandings === undefined || (Array.isArray(s.brandings) && s.brandings.every((c) => usableBranding(c) !== null)))
   );
 }
 
@@ -542,6 +551,10 @@ export function normalizeReportsState(state: ReportsState): ReportsState {
     // Stage 8D: malformed plans and notes are filtered (never repaired).
     dailyPlans: (state.dailyPlans ?? []).filter((c) => checkDailyPlan(c).ok),
     meetingNotes: (state.meetingNotes ?? []).filter((c) => checkMeetingNote(c).ok),
+    // Stage 8E: damaged definitions, acknowledgments and logos are ignored, never repaired (a bad logo simply falls back).
+    notifications: (state.notifications ?? []).filter((c) => checkNotification(c).ok),
+    notificationAcks: (state.notificationAcks ?? []).filter((c) => checkNotificationAck(c).ok),
+    brandings: (state.brandings ?? []).filter((c) => usableBranding(c) !== null).slice(0, 1),
   };
 }
 

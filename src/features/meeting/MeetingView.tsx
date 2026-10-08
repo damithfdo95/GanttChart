@@ -9,6 +9,8 @@ import { assigneeLabel, compactNames } from '../../domain/people';
 import { buildMeeting, confirmMorning, nextBusinessDate, setNote, setPlan, type MeetingProjectRow, type MeetingScopeRow, type NoteField } from '../../domain/meeting';
 import { useBusinessToday, usePeopleDirectory } from '../testManagement/useTestManagement';
 import { MeetingGantt } from './MeetingGantt';
+import { MeetingHistory } from './MeetingHistory';
+import { BrandMark } from '../branding/BrandMark';
 import { MeetingRiskBadge, MeetingRiskList, NoteBox, PlanInput } from './MeetingParts';
 import type { Language, ProjectRecord } from '../../types';
 
@@ -40,6 +42,7 @@ function MeetingBoard({ initialSession }: { initialSession: MeetingSession }) {
   const tomorrow = useMemo(() => nextBusinessDate(today), [today]);
   const [session, setSession] = useState<MeetingSession>(initialSession);
   const [presenting, setPresenting] = useState(false);
+  const [history, setHistory] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const directory = usePeopleDirectory(null);
@@ -125,7 +128,8 @@ function MeetingBoard({ initialSession }: { initialSession: MeetingSession }) {
     <div className={`app mt-board${presenting ? ' mt-present' : ''}`}>
       <header className="mt-head">
         <div>
-          <h1>{t(lang, evening ? 'mt.evening' : 'mt.morning')}</h1>
+          <BrandMark lang={lang} className="brand-logo brand-logo-large" />
+          <h1>{t(lang, history ? 'mth.title' : evening ? 'mt.evening' : 'mt.morning')}</h1>
           <p className="mt-date">
             <span className="sr-only">{t(lang, 'mt.date')}: </span>
             {todayEpoch === null ? today : formatDateDisplay(todayEpoch, lang)}
@@ -134,10 +138,13 @@ function MeetingBoard({ initialSession }: { initialSession: MeetingSession }) {
         <div className="mt-controls">
           <div className="view-toggle" role="tablist" aria-label={t(lang, 'mt.title')}>
             {(['morning', 'evening'] as const).map((id) => (
-              <button key={id} type="button" role="tab" aria-selected={session === id} className={session === id ? 'active' : undefined} onClick={() => setSession(id)}>
+              <button key={id} type="button" role="tab" aria-selected={!history && session === id} className={!history && session === id ? 'active' : undefined} onClick={() => { setHistory(false); setSession(id); }}>
                 {t(lang, id === 'morning' ? 'mt.morning' : 'mt.evening')}
               </button>
             ))}
+            <button type="button" role="tab" aria-selected={history} className={history ? 'active' : undefined} onClick={() => { setHistory(true); setPresenting(false); }}>
+              {t(lang, 'mth.tab')}
+            </button>
           </div>
           <button type="button" className="btn" onClick={() => setPresenting((v) => !v)} aria-pressed={presenting}>
             {t(lang, presenting ? 'mt.exitPresent' : 'mt.present')}
@@ -145,6 +152,10 @@ function MeetingBoard({ initialSession }: { initialSession: MeetingSession }) {
         </div>
       </header>
 
+      {history ? (
+        <MeetingHistory lang={lang} />
+      ) : (
+        <>
       {message === null ? null : (
         <p className="data-controls-message ok" role="status">
           {message}
@@ -338,6 +349,8 @@ function MeetingBoard({ initialSession }: { initialSession: MeetingSession }) {
           </>
         )}
       </section>
+        </>
+      )}
     </div>
   );
 }

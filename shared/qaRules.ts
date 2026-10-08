@@ -13,7 +13,9 @@ import type { Role } from './protocol';
 import { testerCommitError } from './testerRules';
 import { testManagementCommitError } from './testManagement';
 import { memberCommitError } from './members';
-import { meetingCommitError } from './meeting';
+import { RETENTION_CHOICES, meetingCommitError } from './meeting';
+import { notificationCommitError } from './notifications';
+import { brandingCommitError } from './branding';
 
 // ---- cycles ------------------------------------------------------------------
 
@@ -218,11 +220,18 @@ export function qaCommitError(input: QaCommitInput): string | null {
     if (p.kind !== 'settings') continue;
     const next = asObject(p.json);
     if (next !== null && next.toolName !== undefined && cleanToolName(next.toolName) !== next.toolName) return 'settings_invalid_tool_name';
+    if (next !== null && next.planRetentionDays !== undefined && !(RETENTION_CHOICES as readonly number[]).includes(next.planRetentionDays as number)) return 'settings_invalid_retention';
   }
 
   // Scopes, test cases and their results: references, uniqueness, who may change what.
   const testManagement = testManagementCommitError({ puts, deletes, view, isSv: isAdmin, userId: input.userId, today: input.today ?? '' });
   if (testManagement !== null) return testManagement;
+
+  // Scheduled notifications and the workspace logo: SV-only definitions with server-stamped actors; acknowledgments are written by the server only.
+  const notificationRefused = notificationCommitError({ puts, deletes, view, isSv: isAdmin, userId: input.userId });
+  if (notificationRefused !== null) return notificationRefused;
+  const brandingRefused = brandingCommitError({ puts, deletes, isSv: isAdmin, userId: input.userId });
+  if (brandingRefused !== null) return brandingRefused;
 
   // The team meeting's plans and notes (an SV's records): what they refer to.
   const meetingRefused = meetingCommitError({ puts, deletes, view, isSv: isAdmin });

@@ -164,3 +164,13 @@ export function meetingCommitError(input: MeetingCommitInput): string | null {
   }
   return null;
 }
+
+/** How many days of plans and notes a workspace may keep (Stage 8E); the SV picks one in Settings. */
+export const RETENTION_CHOICES = [90, 180, 365, 730] as const;
+export const DEFAULT_PLAN_RETENTION_DAYS = 365;
+
+/** The oldest calendar day (YYYY-MM-DD) whose plans and notes are still kept: today minus the retention days. Older days are removed (strictly before it). */
+export function retentionCutoff(today: string, retentionDays: number): string {
+  const epoch = Math.floor(Date.parse(`${today}T00:00:00.000Z`) / 86_400_000) - retentionDays;
+  return new Date(epoch * 86_400_000).toISOString().slice(0, 10);
+}

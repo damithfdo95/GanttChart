@@ -53,6 +53,9 @@ export function emptySharedState(local: ReportsState): ReportsState {
     caseResults: [],
     dailyPlans: [],
     meetingNotes: [],
+    notifications: [],
+    notificationAcks: [],
+    brandings: [],
     activeProjectId: null,
   };
 }

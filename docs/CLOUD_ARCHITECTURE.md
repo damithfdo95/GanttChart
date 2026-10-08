@@ -748,3 +748,53 @@ See [ADMINISTRATION.md](ADMINISTRATION.md) §9 for the permission matrix.
   and a failure between them leaves the safer state (a disabled login, a role that matches the account); every step is idempotent and an SV can repeat it.
 * **Cost.** No new background work, alarm or storage engine. Nothing is written on open; plans are one small record per project/scope/day.
 * Tests: `worker/test/workers/stage8d-members.test.ts`, `worker/test/workers/stage8d-meeting.test.ts`, `worker/test/stage8d-rules.test.ts`, `src/test/stage8d*.test.ts`.
+
+## Stage 8E: persistent notifications, workspace logo, meeting history, plan retention
+
+All of it lives in the existing per-workspace Durable Object (SQLite) and the existing Worker. **No new Cloudflare resource, binding, cron, queue, R2/D1/KV or migration tag** - nothing here needs a Cloudflare change.
+
+### Scheduled in-system notifications
+
+* **Definition, occurrence and acknowledgment are three different things.** A *definition* (`notification` record, id `ntf_<uuid>`) holds the title, plain-text message, recurrence, time, audience, enabled flag and who created/changed it.
+  An *occurrence* is **derived** from the definition and the clock - it is never stored - and is keyed `YYYY-MM-DDTHH:mm` (business time). An *acknowledgment* (`notificationAck` record, id `na_<notificationId>_<occurrenceKey>_<userId>`)
+  says "this person closed this occurrence".
+* **Recurrence** (`shared/notifications.ts`): daily; weekly on chosen ISO weekdays (Mon = 1); monthly on a day of the month (a day the month does not have - 29/30/31 - falls on the **last day** of that month); yearly on month + day
+  (29 February falls on 28 February in a common year). Optional first and last day. The schedule is pure date arithmetic, so it is exactly testable.
+* **Business time.** Always Asia/Tokyo (UTC+9, no daylight saving) - `shared/businessTime.ts` (`businessClock`, `businessMomentMs`). A 09:00 reminder is due at 00:00 UTC. One timezone for the whole workspace; per-tenant timezones are deferred.
+* **Missed occurrences.** Only the **latest due occurrence** of each definition is ever shown (`latestDue` / `dueFor`). Someone away for a week sees one banner per notification, not seven. A future occurrence is never shown.
+* **Acknowledgment is per person.** Closing a banner records one ack for the *verified caller* and hides that occurrence for them only; the next occurrence appears again. Acks are written **only** by
+  `POST /api/tenant/notifications/:id/ack` (the person comes from the authenticated principal, never from the body or a sync commit - a commit containing an ack is rejected with `ack_requires_api`). The server checks that the definition exists and is enabled,
+  addresses the caller, and that the occurrence is real and **already due by the server clock** (within a 370-day look-back). Re-closing is idempotent. If recording fails the banner stays and offers *Try again*.
+* **Audience.** All / SV only / Testers only / specific Team Members. A removed (inactive) member receives nothing. A Tester connection is never sent a definition that does not address them, nor anyone else acks (`visibleFor` / `viewFor`);
+  if an edit stops addressing someone, their copy receives a delete.
+* **Administration** is SV-only (`notifications.manage`) under Settings -> Notifications, through `POST/PATCH/DELETE /api/tenant/notifications[/:id]` (actor stamped by the server). Create, edit, enable, disable and delete are written to the
+  administrative audit (`notification.*`); **acknowledgments are not audited**.
+* **Pruning.** An ack is removable only when it is older than 90 days **and** the definition current latest occurrence is newer than it (or the definition is gone) - so the ack that keeps today notification closed is never pruned
+  (a yearly notification closed eleven months ago stays closed). See `ackIsPrunable`.
+* **Local mode** has no teammates or server: team notifications are disabled and Settings says so.
+* Messages and titles are plain text: stored as typed, rendered as text, control characters refused.
+
+### Workspace logo
+
+* One small record `branding` (id `branding`) holding `{mime, data (base64), bytes, updatedAt, updatedByUserId}`. It is **not** part of `settings`, so editing settings never copies the image into settings history.
+* **Allowed:** PNG, JPEG, WebP. **SVG and everything else is refused.** The browser resizes to at most 512 px on the longest side and re-encodes (WebP quality ladder, then PNG) to fit. The server validates again, whatever the browser did:
+  declared MIME in the allow-list, strict base64, the **real magic bytes must match the declared type**, decoded size <= **262,144 bytes (256 KiB hard maximum)** and base64 <= 349,528 characters. Errors: `logo_invalid_type`, `logo_type_mismatch`, `logo_invalid_data`, `logo_too_large` (HTTP 413).
+* Stored in the same DO SQLite as everything else (no R2). Rendered with an `<img>` from a `data:` URL (an image never executes), with alt text, in the app shell and the Meeting header; **not** on the public landing page.
+  A missing or damaged record falls back to the text mark; nothing breaks.
+* SV: `PUT/DELETE /api/tenant/branding` (`branding.manage`, audited as `branding.updated` / `branding.removed`). Testers can see it, not change it (API and socket both refuse). It is included in backups and restored with the restoring SV recorded as author.
+
+### Meeting History and Shared History
+
+* **Meeting History** (Gantt -> Meeting View -> History, SV only) shows a past business day *as stored*: Plan = the Morning target kept for that day (scope plans win over the project plan), Actual = the project recorded Today Execution,
+  **Difference = Actual - Plan over the same set of rows** (a project with a plan but no result counts 0 actual). Scope rows show plans only - results are not recorded per scope, so none are invented. Remaining-at-end is measured against the current Total.
+  No assignee is shown (assignments are not stored per day). Separate from QA Shared History.
+* **Shared History** (Settings, SV only) gains server-side filters on `GET /api/revisions`: `kind`, `actor` (email), `from` / `to` (business days, inclusive). Filters are applied in SQL **before** the cursor, so the `before=` cursor stays stable (no repeats or gaps);
+  bad values are refused with 400. Each revision carries the first few records it changed so the screen shows names (project, scope, member, plan date, notification title) and people (display name), never raw ids.
+
+### Plan retention
+
+* `ReportSettings.planRetentionDays`, choices **90 / 180 / 365 / 730, default 365** (any other value is refused by the server). Applies to `dailyPlan` and `meetingNote` records only: those dated before *today - N days* are deleted,
+  together with prunable acknowledgments. **Never** touched: today and future plans, projects, scopes, test cases, results, people, the administrative audit.
+* **Trigger without cron.** At most **once per business day**, guarded by a stored date (`retention-last-run`). It is attempted from the DO existing daily alarm, after a plan / note / ack is saved, and when an SV opens Meeting History.
+  Ordinary reads and connections never run it. Local mode applies the same cutoff to the device own plans and notes. Opening a day older than the window shows "outside the retention period".
+* Cost: a few indexed deletes a day, chunked by 400, run through the same server-change path as everything else.

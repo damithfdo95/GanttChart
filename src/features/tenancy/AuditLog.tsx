@@ -100,6 +100,12 @@ export function detailsText(row: Pick<AdminAuditDto, 'action' | 'meta'>, lang: L
       return m.memberRole === 'sv' ? t(lang, 'tenancy.role.sv') : t(lang, `tenancy.access.${m.access === 'viewer' ? 'viewer' : 'editor'}` as TranslationKey);
     case 'owner.transferred':
       return `${String(m.from ?? '')} → ${String(m.to ?? '')}`;
+    case 'notification.created':
+    case 'notification.updated':
+    case 'notification.enabled':
+    case 'notification.disabled':
+    case 'notification.deleted':
+      return typeof m.title === 'string' ? m.title : '';
     case 'member.role_changed':
       return `${t(lang, m.from === 'sv' ? 'tenancy.role.sv' : 'tenancy.role.tester')} → ${t(lang, m.to === 'sv' ? 'tenancy.role.sv' : 'tenancy.role.tester')}`;
     case 'member.created':

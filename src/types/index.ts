@@ -9,12 +9,14 @@ export type Language = 'en' | 'ja';
 import type { CycleRecord, CycleStatus } from '../../shared/qaRules';
 import type { CaseResult, TestCase, TestScope } from '../../shared/testManagement';
 import type { DailyTeamPlan, MeetingNote } from '../../shared/meeting';
+import type { NotificationAck, NotificationDef } from '../../shared/notifications';
+import type { BrandingRecord } from '../../shared/branding';
 
 /** A QA test cycle / release grouping test executions (projects). See shared/qaRules.ts. */
 export type Cycle = CycleRecord;
 export type { CycleStatus };
 export type { CaseResult, TestCase, TestScope };
-export type { DailyTeamPlan, MeetingNote };
+export type { DailyTeamPlan, MeetingNote, NotificationAck, NotificationDef, BrandingRecord };
 
 export interface BilingualName {
   nameEn?: string;
@@ -725,6 +727,8 @@ export interface ReportSettings {
   autoBackup?: AutoBackupSettings;
   /** This workspace's own name for the tool, shown after sign-in (Stage 8B). Absent = the platform name. */
   toolName?: string;
+  /** Stage 8E: how many days of meeting plans and notes are kept (90, 180, 365 or 730). Absent = 365. */
+  planRetentionDays?: number;
 }
 
 export interface ReportsState {
@@ -781,6 +785,10 @@ export interface ReportsState {
   /** Team meeting (Stage 8D): the SV's plan per day, project and optional scope, and the day's meeting notes. Optional: older data has none. */
   dailyPlans?: DailyTeamPlan[];
   meetingNotes?: MeetingNote[];
+  /** Stage 8E: scheduled notification definitions (the audience's share), the signed-in person's own acknowledgments, and the workspace logo (at most one). */
+  notifications?: NotificationDef[];
+  notificationAcks?: NotificationAck[];
+  brandings?: BrandingRecord[];
 }
 
 // ---- Tester assignments & QA review workspace (V6.7) ----

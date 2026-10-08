@@ -10,6 +10,8 @@ import { MIGRATION_FAILURE_LABEL_KEY, readMigrationFailureRecord } from '../../l
 import { WorkspacePanel } from '../tenancy/WorkspacePanel';
 import { DataBackup } from './DataBackup';
 import { WorkspaceAppearance } from './WorkspaceAppearance';
+import { DataRetention, WorkspaceLogo } from './WorkspaceBranding';
+import { NotificationsSettings } from '../notifications/NotificationsSettings';
 import { useSharedSync } from '../../app/shared-sync';
 import { unlinkDevice } from '../../lib/sync/device';
 import { createBackupPayload } from '../../lib/backup/backup';
@@ -308,6 +310,9 @@ export function Settings() {
       </section>
 
       <WorkspaceAppearance />
+      <WorkspaceLogo />
+      <NotificationsSettings />
+      <DataRetention />
 
       <DataBackup />
 

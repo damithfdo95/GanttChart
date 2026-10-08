@@ -36,6 +36,7 @@ import { downloadBinaryFile, downloadTextFile, escapeHtml } from '../../lib/expo
 import { printHtml } from '../../lib/export/print';
 import { createBackupPayload, parseBackupPayload } from '../../lib/backup/backup';
 import { sanitizeRestoredAccountLinks } from '../../lib/backup/restoreLinks';
+import { useTenant } from '../../app/tenant-context';
 import { persistWorkspaceAsync } from '../../lib/storage/db/persistenceBackend';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -50,6 +51,7 @@ interface DatasetConfig {
 export function ReportsExport() {
   const app = useAppStateCtx();
   const guard = useSharedGuard();
+  const { principal } = useTenant();
   const reportsApi = useReportsStateCtx();
   const lang = app.state.language;
   const settings = reportsApi.state.settings;
@@ -393,7 +395,7 @@ export function ReportsExport() {
         // healthy IndexedDB mode the database copy would win on reload,
         // silently reverting the restore.
         // A file never creates or changes a login link: people with a login keep the link this workspace has now.
-        const restored = sanitizeRestoredAccountLinks(result.data.reportsState, reportsApi.state);
+        const restored = sanitizeRestoredAccountLinks(result.data.reportsState, reportsApi.state, principal?.userId ?? null);
         const saved = await persistWorkspaceAsync(result.data.appState, restored, {
           reason: 'import',
           forceRevision: true,

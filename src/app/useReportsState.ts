@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import type {
   AppState,
   AttendanceRecord,
+  BrandingRecord,
   Cycle,
   DailyReport,
   DailyTopic,
@@ -66,6 +67,8 @@ export interface ReportsStateApi {
   setRcsMembers: (members: RcsMember[]) => void;
   /** Test Management (Stage 8C): transform scopes, cases and results in ONE state update (one commit, however many records change). */
   updateTestManagement: (fn: (tm: TestManagementState) => TestManagementState) => void;
+  /** Local storage only: set or clear the workspace logo (in a shared workspace the server writes it through its own endpoint). */
+  setBrandings: (brandings: BrandingRecord[]) => void;
   /** Change the team meeting's plans and notes as ONE update (one commit to the shared workspace). */
   updateMeeting: (fn: (m: MeetingState) => MeetingState) => void;
   /** Review records (V6.7): save one review (same tester+period updates in place). */
@@ -223,6 +226,10 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
     });
   }, []);
 
+  const setBrandingsAction = useCallback((brandings: BrandingRecord[]): void => {
+    setState((prev) => ({ ...prev, brandings }));
+  }, []);
+
   const updateMeetingAction = useCallback((fn: (m: MeetingState) => MeetingState): void => {
     setState((prev) => {
       const before: MeetingState = { dailyPlans: prev.dailyPlans ?? [], meetingNotes: prev.meetingNotes ?? [] };
@@ -292,6 +299,7 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
     setRcsMembers: setRcsMembersAction,
     updateTestManagement: updateTestManagementAction,
     updateMeeting: updateMeetingAction,
+    setBrandings: setBrandingsAction,
     upsertReview: upsertReviewAction,
     removeReview: removeReviewAction,
     upsertMember: upsertMemberAction,

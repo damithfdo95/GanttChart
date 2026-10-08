@@ -3654,3 +3654,13 @@ body.mt-presenting .app-nav, body.mt-presenting .gantt-mode, body.mt-presenting 
 .mt-present .mt-summary dd { font-size: 2.2em; }
 .mt-present .mt-table { font-size: 1.1em; }
 .tm-warning-line { display: block; }
+
+/* ---- Stage 8E: notifications, logo ---- */
+.brand-logo { height: 28px; width: auto; max-width: 140px; object-fit: contain; margin-right: 10px; align-self: center; }
+.brand-logo-large { height: 72px; max-width: 240px; margin: 0; }
+.branding-preview { margin: 8px 0; min-height: 40px; display: flex; align-items: center; }
+.nt-banner { margin: 8px 16px; border: 2px solid var(--info-border); background: var(--info-bg); color: var(--info-fg); border-radius: var(--radius); padding: 8px 12px; }
+.nt-banner ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.nt-item { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
+.nt-message { margin: 2px 0; white-space: pre-wrap; }
+.nt-form { max-width: 640px; }

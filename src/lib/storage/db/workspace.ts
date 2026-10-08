@@ -16,6 +16,9 @@ import type {
   TestScope,
   DailyTeamPlan,
   MeetingNote,
+  NotificationAck,
+  NotificationDef,
+  BrandingRecord,
   DailyActualSnapshot,
   DailyReport,
   DailyTopic,
@@ -66,6 +69,9 @@ export interface WorkspaceCollections {
   caseResults: CaseResult[];
   dailyPlans: DailyTeamPlan[];
   meetingNotes: MeetingNote[];
+  notifications: NotificationDef[];
+  notificationAcks: NotificationAck[];
+  brandings: BrandingRecord[];
 }
 
 /** The complete split of a workspace into IndexedDB-shaped records. */
@@ -123,6 +129,9 @@ export function splitWorkspace(appState: unknown, reports: ReportsState): { appS
         caseResults: reports.caseResults ?? [],
         dailyPlans: reports.dailyPlans ?? [],
         meetingNotes: reports.meetingNotes ?? [],
+        notifications: reports.notifications ?? [],
+        notificationAcks: reports.notificationAcks ?? [],
+        brandings: reports.brandings ?? [],
       },
     },
   };
@@ -160,6 +169,9 @@ export function assembleReportsState(parts: WorkspaceParts): ReportsState {
     caseResults: parts.collections.caseResults,
     dailyPlans: parts.collections.dailyPlans,
     meetingNotes: parts.collections.meetingNotes,
+    notifications: parts.collections.notifications,
+    notificationAcks: parts.collections.notificationAcks,
+    brandings: parts.collections.brandings,
   };
 }
 

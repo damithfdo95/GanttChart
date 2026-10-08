@@ -108,6 +108,13 @@ class FakeCloud implements TenancyApi {
   reactivateMember = async () => { throw new Error('unused'); };
   provisionAccount = async () => { throw new Error('unused'); };
   assignMember = async () => { throw new Error('unused'); };
+  createNotification = async () => { throw new Error('unused'); };
+  updateNotification = async () => { throw new Error('unused'); };
+  deleteNotification = async () => { throw new Error('unused'); };
+  acknowledgeNotification = async () => { throw new Error('unused'); };
+  setLogo = async () => { throw new Error('unused'); };
+  removeLogo = async () => { throw new Error('unused'); };
+  runRetention = async () => { throw new Error('unused'); };
   team = async () => { throw new Error('unused'); };
   assignTester = async () => { throw new Error('unused'); };
   tenantAudit = async () => { throw new Error('unused'); };
