@@ -32,7 +32,7 @@ export interface TesterCommitInput {
 }
 
 /** The kinds of record a Tester never receives (SV-only information). */
-export const SV_ONLY_KINDS: ReadonlySet<string> = new Set(['review', 'identityAudit', 'externalIdentity', 'report', 'topic']);
+export const SV_ONLY_KINDS: ReadonlySet<string> = new Set(['review', 'identityAudit', 'externalIdentity', 'report', 'topic', 'dailyPlan', 'meetingNote']);
 
 /** Fields of `inputs` a Tester's change may touch. The cumulative fields are derived from the daily entries. */
 const DERIVED_INPUT_FIELDS = ['casesCompleted', 'casesPassed', 'casesFailed', 'casesNotApplicable', 'spoAssigned', 'casesBlocked', 'casesRetest', 'casesQuestioned', 'dailyActuals'] as const;

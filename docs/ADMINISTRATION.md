@@ -292,3 +292,78 @@ the Morning/Evening Meeting Gantt, per-test-case execution, Excel import, weight
   clean-up described in QA_EXECUTION.md §12; the profile id is no longer shown anywhere.
 * **Shared History** records scope, case, assignment and result changes as ordinary QA revisions (SV only, as before); the administrative audit trail is
   unchanged and contains no test content.
+
+## 11. Stage 8D: Team Members as the one people directory
+
+### The model
+
+* A **Team Member profile** (the `member` record) is a person of this workspace: a stable internal id (never shown), display name, optional **email** (normalised,
+  unique among the workspace's profiles), intended role (SV / Tester), start and end dates, name history, and a lifecycle (**Active** / **Removed**).
+* A **login account** (the registry user) is the sign-in identity: account id, email, internal role (`admin` = SV, `user` = Tester), status (enabled / disabled), workspace.
+* They are **separate**. A profile may exist with no login ("Not linked"); an account is linked to at most one profile by a server-set link. Names never link anything.
+* Every person picked anywhere in the application is a profile from this directory (dropdowns store the stable id, show the name). "Removed from the team" and "login
+  disabled" are different states; the Team Members screen shows both.
+
+| Rule | Where |
+|---|---|
+| Profile id unique | server (`nextMemberId`) |
+| Linked account id unique per workspace | server (`linkMember`, `ensureMemberProfile`) |
+| Normalised email unique per workspace, when present | server API and `memberCommitError` for ordinary commits |
+| A login email is unique on the platform, and in a managed organisation domain | registry (unchanged) |
+| A profile email may repeat across workspaces; it only becomes a login in one | by design |
+
+### Creating people
+
+| Flow | How |
+|---|---|
+| Profile only | Team Members -> Add: name, optional email, role, "Profile only". No account is created. |
+| Profile + login | the same form with "Create a login account now" (email required, managed domain). |
+| Existing profile -> login later | More -> Create login: the account is created for the profile's email and role and the **same profile** is linked; assignments made for the profile become usable. |
+| Add by email an existing profile already has | the profile is linked, not duplicated. A profile that only has the same NAME is never linked. A removed profile must be reactivated first. |
+| Older accounts with no profile | the screen lists them; Create profile, or link to an unlinked profile (profiles whose email differs are not offered). |
+
+### People without a login
+
+They appear in every relevant dropdown (marked "no login yet") so work can be planned for them. A business assignment names the profile; **execution rights are decided by
+the account only**, so it grants nothing until a login exists. When the login is linked, the same assignment records are stamped with the account id in the same commit (nothing
+is duplicated), and the person can record results in exactly those scopes.
+
+### Dropdown rules
+
+`selectableMembers` (one function): ACTIVE profiles (not removed, end date not passed), optionally of one intended role. Tester pickers list every active Tester, linked or not;
+SV pickers list SVs; removed profiles never appear in a new pick, but an existing record keeps showing its person. Labels are display name, then email, then "Former member";
+the option value is the stable id. Person fields converted this stage: the project owner (`ownerMemberId`; older projects keep their text). Attendance, tickets, performance,
+reviews, assignments and Today's Execution already stored profile ids; an external ticket reporter stays free text on purpose.
+
+### Role changes
+
+SVs can change a Team Member between **SV and Tester** at any time (More -> Change role). The same profile and account are kept; the account's role changes on the server, the
+profile follows, and the person's live connections are closed with a role-changed code so they sign back in with the new permissions (the browser reloads by itself when nothing is
+waiting to be sent). History is never rewritten. The **Owner SV cannot be demoted, removed or disabled** (the registry database also refuses it), nobody changes their own role, and
+a person without a login can have their intended role changed; a login created later gets it.
+
+### Removal and reactivation
+
+Removal is always **deactivation**: the profile stays with everything that refers to it (attendance, tickets, performance, assignments, case results, history). It leaves the new-pick
+lists. If the profile has a login, the login is disabled in the same action, live connections are closed and reconnecting is refused. Reactivation brings back the same identity; a
+disabled login is re-enabled only when the SV says so, and a login cannot be switched on while its person is removed. A profile with no login and no references may still be deleted
+for good from its details form.
+
+### Audit and history
+
+Administrative events go to the workspace's administrative audit trail with the actor from the verified caller: Team Member added / updated / role changed / removed /
+reactivated / login linked (plus the existing created / disabled / reactivated / ownership events). They are not shown to the Super Admin. Meeting plans, notes and Totals are QA Shared
+History, not the audit trail.
+
+### Tester view and privacy
+
+A Tester sees only their own profile on Team Members. The roster still arrives so names can be shown, but **other people's email addresses are removed on the server** from the
+snapshot, live changes and export; their own is kept.
+
+### Local storage
+
+Local storage has no logins: Team Members shows profiles only (add, edit, role intent, remove, reactivate). Nothing pretends to be a login.
+
+### Restore and import
+
+Restoring a backup or importing a project never creates or changes a login link (see `docs/QA_EXECUTION.md` section 13). Restoring an older revision keeps today's links.

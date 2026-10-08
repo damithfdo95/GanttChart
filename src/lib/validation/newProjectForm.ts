@@ -27,7 +27,10 @@ export interface NewProjectForm {
   /** Single name; written to both nameEn and nameJa (refinable later). */
   name: string;
   description: string;
+  /** Free-text owner of a project made before Stage 8D (kept so the model stays complete); new projects use ownerMemberId. */
   owner: string;
+  /** The owner as a Team Member (profile id from the directory); '' = no owner. */
+  ownerMemberId: string;
   /** Lifecycle status; default "todo" = Scheduled (created, not started). */
   status: ProjectLifecycleStatus;
   totalCases: string;
@@ -68,6 +71,7 @@ export function defaultNewProjectForm(startDate: string): NewProjectForm {
     name: '',
     description: '',
     owner: '',
+    ownerMemberId: '',
     status: 'todo',
     totalCases: '',
     currentTesters: '8',

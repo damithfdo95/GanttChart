@@ -1,3 +1,5 @@
+import { selectableMembers } from '../../domain/teamMembers';
+import { businessDate } from '../../../shared/businessTime';
 import { useMemo, useState } from 'react';
 import type { PerformanceRecordSource, ProjectRecord, TesterDailyPerformance } from '../../types';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
@@ -82,7 +84,7 @@ export function PerformanceTab() {
   const ownMember = members.find((m) => m.id === access.ownMemberId) ?? null;
   /** A Tester changes only their own rows (the server enforces the same). */
   const isOwnRow = (record: TesterDailyPerformance): boolean => !tester || (access.ownMemberId !== null && record.memberId === access.ownMemberId);
-  const activeMembers = useMemo(() => members.filter((member) => member.active), [members]);
+  const activeMembers = useMemo(() => selectableMembers(members, { today: businessDate() }), [members]);
 
   // Full evidence across ALL projects (Done included — §22).
   const allRecords = useMemo(

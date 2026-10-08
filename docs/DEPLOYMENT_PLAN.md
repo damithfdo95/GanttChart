@@ -383,3 +383,13 @@ editing all day, a save every ~20 s each): 43,200 rows written (43%), ≈720 DO 
   Tester); roll forward rather than back once test management data exists. The rule from Stage 8B (do not roll back to Stage 8A after a second SV) still applies.
 * After deploying check: (1) the header shows your Tool Name or "QA Management", never the old label; (2) as an SV, Test Management -> add a scope and a few cases,
   assign a Tester to one scope; (3) sign in as that Tester: My Testing lists only that scope, results save; (4) other scopes are not visible to them.
+
+## Stage 8D rollout notes (Total Test Cases, Team Members directory, team meeting)
+
+* **No Cloudflare change** and **no Wrangler migration tag**; no registry schema change. Deploy like any code release: `npm run build`, `cd worker && npm run validate`, then `npx wrangler deploy --env=""`.
+* **No data migration.** Everything is optional: scopes have no Total until an SV types one (the project keeps its own Total), profiles have no email until one is added, and there are no plans or notes until
+  the first meeting. Existing Testers, links and assignments are untouched. Accounts without a profile are listed on Team Members for an SV to give one.
+* **Rollback.** The Stage 8C Worker does not know the two new record kinds, the email rules or the member endpoints; roll forward rather than back once profiles carry emails or plans exist.
+* After deploying check: (1) Test Management -> Scopes: type a Total on a scope; the Dashboard Total for that project becomes the sum and its field is read-only; (2) Team Members: add a profile without a login,
+  then Create login for it and confirm there is still one row for that person; change a Tester to SV and back (the person is signed out and in again with the new role); (3) Gantt -> Meeting View: enter today's
+  plan, open the Evening view, enter tomorrow's plan; (4) as a Tester: no Meeting View, no Test Management, other people's emails are not in the Team Members data.

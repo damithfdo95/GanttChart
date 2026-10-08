@@ -1,20 +1,20 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { memberLabel } from '../../domain/people';
 import type { Language, RcsMember, RcsMemberNameHistory } from '../../types';
 import { t } from '../../i18n';
-import { formatDate, todayEpochDays } from '../../lib/dates/dates';
 import { Field } from '../../components/Field';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
-import { nameHistoryEntryLabel, nextMemberId, normalizeMemberNameHistory } from '../../domain/members';
+import { useTenant } from '../../app/tenant-context';
+import { normalizeMemberNameHistory } from '../../domain/members';
+import { emailTaken, isLinked, normalizeMemberEmail } from '../../domain/teamMembers';
 import { hasMemberReferences, memberReferenceScope } from '../../domain/identityResolution';
 import { validateRcsMember } from '../../lib/validation/validateMember';
+import { errorKey } from '../tenancy/format';
 import { IdentityResolutionCenter } from './IdentityResolutionCenter';
 
 interface MemberDraft {
-  id: string;
   name: string;
-  team: string;
-  role: string;
+  email: string;
   startDate: string;
   endDate: string;
   nameHistory: RcsMemberNameHistory[];
@@ -22,150 +22,119 @@ interface MemberDraft {
 
 function draftFromMember(member: RcsMember): MemberDraft {
   return {
-    id: member.id,
     name: member.name,
-    team: member.team,
-    role: member.role,
+    email: member.email ?? '',
     startDate: member.startDate,
     endDate: member.endDate ?? '',
-    nameHistory: (member.nameHistory ?? []).map((entry) => ({
-      name: entry.name,
-      fromDate: entry.fromDate ?? '',
-      toDate: entry.toDate ?? '',
-    })),
+    nameHistory: (member.nameHistory ?? []).map((entry) => ({ name: entry.name, fromDate: entry.fromDate ?? '', toDate: entry.toDate ?? '' })),
   };
 }
 
 /**
- * RCS Member Master workspace (V6.8): the stable roster behind every
- * assignment, execution record and review. Member IDs are permanent —
- * editing a member never regenerates its id, and deactivating a member
- * never removes it from historical records.
+ * Team Member profile details and identity resolution. The LIST of people (and adding, removing, role changes, logins) is the
+ * Team Members directory; this opens one profile to edit what the directory does not show: dates, the previous names that older
+ * records still use, and (while there is no login) the email.
  *
- * V6.9-A: the form edits the member's name history (validated), the table
- * shows each member's historical names, deletion is blocked for members
- * with identity references (deactivation is recommended instead), and the
- * Identity Resolution Center manages legacy attendance/ticket identities.
+ * In Web storage a save goes through the server (so it is recorded in the administrative trail and checked there); in Local storage it
+ * changes the workspace directly. The member id is permanent and is never shown or edited.
  */
-export function RcsMembersTab() {
+export function RcsMembersTab({ editMemberId = null, onClose }: { editMemberId?: string | null; onClose?: () => void }) {
   const app = useAppStateCtx();
   const reportsApi = useReportsStateCtx();
+  const { api } = useTenant();
   const lang: Language = app.state.language;
   const members = reportsApi.state.rcsMembers ?? [];
-  const today = formatDate(todayEpochDays());
-
-  const suggestedId = useMemo(() => nextMemberId(members), [members]);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<MemberDraft>(() => ({
-    id: suggestedId,
-    name: '',
-    team: 'RCS',
-    role: 'Tester',
-    startDate: today,
-    endDate: '',
-    nameHistory: [],
-  }));
+  const member = editMemberId === null ? undefined : members.find((m) => m.id === editMemberId);
+  const [draft, setDraft] = useState<MemberDraft | null>(null);
+  const [draftFor, setDraftFor] = useState<string | null>(null);
   const [errors, setErrors] = useState<ReturnType<typeof validateRcsMember>['errors']>({});
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const startEdit = (member: RcsMember): void => {
-    setEditingId(member.id);
+  // A different profile was chosen: start its draft.
+  if (member !== undefined && draftFor !== member.id) {
     setDraft(draftFromMember(member));
+    setDraftFor(member.id);
     setErrors({});
-  };
-
-  const startAdd = (): void => {
-    setEditingId(null);
-    setDraft({ id: nextMemberId(members), name: '', team: 'RCS', role: 'Tester', startDate: today, endDate: '', nameHistory: [] });
-    setErrors({});
-  };
+    setEmailError(null);
+    setSaved(null);
+  }
+  if (member === undefined && draftFor !== null) {
+    setDraft(null);
+    setDraftFor(null);
+  }
 
   const setHistoryEntry = (index: number, patch: Partial<RcsMemberNameHistory>): void => {
-    setDraft((prev) => ({
-      ...prev,
-      nameHistory: prev.nameHistory.map((entry, i) => (i === index ? { ...entry, ...patch } : entry)),
-    }));
+    setDraft((prev) => (prev === null ? prev : { ...prev, nameHistory: prev.nameHistory.map((entry, i) => (i === index ? { ...entry, ...patch } : entry)) }));
   };
+  const addHistoryEntry = (): void => setDraft((prev) => (prev === null ? prev : { ...prev, nameHistory: [...prev.nameHistory, { name: '', fromDate: '', toDate: '' }] }));
+  const removeHistoryEntry = (index: number): void => setDraft((prev) => (prev === null ? prev : { ...prev, nameHistory: prev.nameHistory.filter((_, i) => i !== index) }));
 
-  const addHistoryEntry = (): void => {
-    setDraft((prev) => ({ ...prev, nameHistory: [...prev.nameHistory, { name: '', fromDate: '', toDate: '' }] }));
-  };
-
-  const removeHistoryEntry = (index: number): void => {
-    setDraft((prev) => ({ ...prev, nameHistory: prev.nameHistory.filter((_, i) => i !== index) }));
-  };
-
-  const handleSubmit = (): void => {
-    const candidate = {
-      id: draft.id.trim(),
-      name: draft.name.trim(),
-      team: draft.team.trim(),
-      role: draft.role.trim(),
-      startDate: draft.startDate,
-      endDate: draft.endDate === '' ? undefined : draft.endDate,
-      nameHistory: normalizeMemberNameHistory(draft.nameHistory),
-    };
-    const outcome = validateRcsMember(candidate, members, editingId ?? undefined);
+  const handleSubmit = async (): Promise<void> => {
+    if (member === undefined || draft === null) return;
+    const history = normalizeMemberNameHistory(draft.nameHistory);
+    const candidate = { id: member.id, name: draft.name.trim(), team: member.team, role: member.role, startDate: draft.startDate, endDate: draft.endDate === '' ? undefined : draft.endDate, nameHistory: history };
+    const outcome = validateRcsMember(candidate, members, member.id);
     if (!outcome.isValid) {
       setErrors(outcome.errors);
       return;
     }
     setErrors({});
-    const existing = members.find((member) => member.id === candidate.id);
-    reportsApi.upsertMember({
-      id: candidate.id,
-      name: candidate.name,
-      team: candidate.team,
-      role: candidate.role,
-      startDate: candidate.startDate,
-      endDate: candidate.endDate,
-      // Editing never changes the id, so active state survives edits.
-      active: existing !== undefined ? existing.active : true,
-      nameHistory: candidate.nameHistory,
-    });
-    startAdd();
-  };
-
-  const toggleActive = (member: RcsMember): void => {
-    reportsApi.upsertMember({ ...member, active: !member.active });
-  };
-
-  /**
-   * V6.9-A §29: deleting a member with identity references would destroy
-   * historical identity. Such members are deactivated instead — the
-   * supervisor confirms, and nothing is cascade-deleted. Unreferenced
-   * members use the normal delete confirmation.
-   */
-  const handleRemove = (member: RcsMember): void => {
-    const referenced = hasMemberReferences(
-      member.id,
-      memberReferenceScope({
-        attendance: reportsApi.state.attendance,
-        testerAssignments: reportsApi.state.testerAssignments,
-        projects: reportsApi.state.projects,
-        reviews: reportsApi.state.reviews,
-      }),
-    );
-    if (referenced) {
-      const proceed = window.confirm(
-        t(lang, 'members.referencedCannotDelete', { name: memberLabel(lang, member) }),
-      );
-      if (!proceed) return;
-      if (member.active) {
-        reportsApi.upsertMember({ ...member, active: false });
-        if (editingId === member.id) startAdd();
+    let email: string | null | undefined;
+    if (!isLinked(member)) {
+      email = draft.email.trim() === '' ? null : normalizeMemberEmail(draft.email);
+      if (draft.email.trim() !== '' && email === null) {
+        setEmailError(t(lang, 'tenancy.error.invalid_email'));
+        return;
+      }
+      if (email !== null && emailTaken(members, email, member.id)) {
+        setEmailError(t(lang, 'tenancy.error.member_email_taken'));
+        return;
+      }
+    }
+    setEmailError(null);
+    if (api !== null) {
+      setBusy(true);
+      try {
+        await api.editMember(member.id, {
+          displayName: candidate.name,
+          startDate: candidate.startDate,
+          endDate: candidate.endDate ?? null,
+          nameHistory: history.map((h) => ({ name: h.name, ...(h.fromDate === undefined ? {} : { fromDate: h.fromDate }), ...(h.toDate === undefined ? {} : { toDate: h.toDate }) })),
+          ...(email === undefined ? {} : { email }),
+        });
+        setSaved(t(lang, 'dir.edit.saved'));
+      } catch (e) {
+        setEmailError(t(lang, errorKey(e)));
+      } finally {
+        setBusy(false);
       }
       return;
     }
+    const { email: _e, ...rest } = member;
+    reportsApi.upsertMember({ ...rest, name: candidate.name, startDate: candidate.startDate, endDate: candidate.endDate, nameHistory: history, ...(email === undefined ? (member.email === undefined ? {} : { email: member.email }) : email === null ? {} : { email }) });
+    setSaved(t(lang, 'dir.edit.saved'));
+  };
+
+  /** A profile that nothing refers to and that has no login may be deleted for good; anything else is removed from use instead. */
+  const referenced =
+    member === undefined
+      ? true
+      : hasMemberReferences(member.id, memberReferenceScope({ attendance: reportsApi.state.attendance, testerAssignments: reportsApi.state.testerAssignments, projects: reportsApi.state.projects, reviews: reportsApi.state.reviews }));
+  const canDelete = member !== undefined && !isLinked(member) && !referenced;
+
+  const handleDelete = (): void => {
+    if (member === undefined || !canDelete) return;
     if (window.confirm(t(lang, 'members.confirmDelete'))) {
       reportsApi.removeMember(member.id);
-      if (editingId === member.id) startAdd();
+      onClose?.();
     }
   };
 
   /**
-   * Ticket identity resolution routes the ACTIVE project's tickets through
-   * the app-state editing surface so the write-back stays authoritative;
-   * all other projects go through the reports registry directly.
+   * Ticket identity resolution routes the ACTIVE project's tickets through the app-state editing surface so the write-back stays
+   * authoritative; all other projects go through the reports registry directly.
    */
   const handleSetProjectTickets = (projectRecordId: string, tickets: import('../../types').BugTicket[]): void => {
     if (projectRecordId === reportsApi.state.activeProjectId) {
@@ -177,22 +146,10 @@ export function RcsMembersTab() {
     reportsApi.updateProject(projectRecordId, { inputs: { ...project.inputs, bugTickets: tickets } });
   };
 
-  const sorted = useMemo(
-    () => [...members].sort((a, b) => a.id.localeCompare(b.id)),
-    [members],
-  );
-
   const historyErrors = errors.nameHistoryEntries ?? {};
 
   return (
     <div className="app">
-      <header className="app-header">
-        <div className="app-title-group">
-          <h1>{t(lang, 'members.title')}</h1>
-          <span className="app-subtitle">{t(lang, 'members.subtitle')}</span>
-        </div>
-      </header>
-
       <IdentityResolutionCenter
         lang={lang}
         attendance={reportsApi.state.attendance}
@@ -206,163 +163,78 @@ export function RcsMembersTab() {
         onAppendAudit={reportsApi.appendIdentityAudit}
       />
 
-      <section className="dr-section">
-        <h2>{editingId === null ? t(lang, 'members.addMember') : `${t(lang, 'members.editMember')} — ${editingId}`}</h2>
-        <form
-          className="input-grid"
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSubmit();
-          }}
-        >
-          {/* The profile id is internal plumbing: generated, never typed and never shown. */}
-          <Field label={t(lang, 'members.name')} error={errors.name !== undefined ? t(lang, errors.name) : undefined}>
-            <input
-              className="input"
-              type="text"
-              value={draft.name}
-              onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))}
-            />
-          </Field>
-          {/* Team is internal-only now (kept for exports/legacy data); new members default to RCS. */}
-          <Field label={t(lang, 'members.role')} error={errors.role !== undefined ? t(lang, errors.role) : undefined}>
-            <input
-              className="input"
-              type="text"
-              value={draft.role}
-              onChange={(e) => setDraft((prev) => ({ ...prev, role: e.target.value }))}
-            />
-          </Field>
-          <Field label={t(lang, 'members.startDate')} error={errors.startDate !== undefined ? t(lang, errors.startDate) : undefined}>
-            <input
-              className="input"
-              type="date"
-              value={draft.startDate}
-              onChange={(e) => setDraft((prev) => ({ ...prev, startDate: e.target.value }))}
-            />
-          </Field>
-          <Field label={t(lang, 'members.endDate')} error={errors.endDate !== undefined ? t(lang, errors.endDate) : undefined}>
-            <input
-              className="input"
-              type="date"
-              value={draft.endDate}
-              onChange={(e) => setDraft((prev) => ({ ...prev, endDate: e.target.value }))}
-            />
-          </Field>
+      {member === undefined || draft === null ? null : (
+        <section className="dr-section" aria-labelledby="profile-edit-title">
+          <h2 id="profile-edit-title">
+            {t(lang, 'dir.edit.title')} — {memberLabel(lang, member)}
+          </h2>
+          <form
+            className="input-grid"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleSubmit();
+            }}
+          >
+            <Field label={t(lang, 'members.name')} error={errors.name !== undefined ? t(lang, errors.name) : undefined}>
+              <input className="input" type="text" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+            </Field>
+            <Field label={t(lang, 'dir.email')} error={emailError ?? undefined}>
+              <input className="input" type="email" value={draft.email} disabled={isLinked(member)} onChange={(e) => setDraft({ ...draft, email: e.target.value })} />
+              {isLinked(member) ? <span className="link-help">{t(lang, 'dir.edit.emailLocked')}</span> : null}
+            </Field>
+            <Field label={t(lang, 'members.startDate')} error={errors.startDate !== undefined ? t(lang, errors.startDate) : undefined}>
+              <input className="input" type="date" value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} />
+            </Field>
+            <Field label={t(lang, 'members.endDate')} error={errors.endDate !== undefined ? t(lang, errors.endDate) : undefined}>
+              <input className="input" type="date" value={draft.endDate} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} />
+            </Field>
 
-          {/* V6.9-A: name history editor — previous names resolve to the same stable id. */}
-          <fieldset className="npf-section members-history-section">
-            <legend>{t(lang, 'members.nameHistory')}</legend>
-            {draft.nameHistory.length === 0 ? (
-              <p className="dr-empty">{t(lang, 'members.nameHistoryNone')}</p>
-            ) : (
-              draft.nameHistory.map((entry, index) => (
-                <div key={index} className="members-history-row">
-                  <input
-                    className="table-input"
-                    type="text"
-                    aria-label={t(lang, 'members.name')}
-                    value={entry.name}
-                    onChange={(e) => setHistoryEntry(index, { name: e.target.value })}
-                  />
-                  <input
-                    className="table-input input-date"
-                    type="date"
-                    aria-label={t(lang, 'members.nameHistoryFrom')}
-                    value={entry.fromDate}
-                    onChange={(e) => setHistoryEntry(index, { fromDate: e.target.value })}
-                  />
-                  <input
-                    className="table-input input-date"
-                    type="date"
-                    aria-label={t(lang, 'members.nameHistoryTo')}
-                    value={entry.toDate}
-                    onChange={(e) => setHistoryEntry(index, { toDate: e.target.value })}
-                  />
-                  <button
-                    type="button"
-                    className="btn-row-remove"
-                    aria-label={t(lang, 'buttons.remove')}
-                    title={t(lang, 'buttons.remove')}
-                    onClick={() => removeHistoryEntry(index)}
-                  >
-                    ×
-                  </button>
-                  {historyErrors[index] !== undefined ? (
-                    <p className="field-error">{t(lang, historyErrors[index])}</p>
-                  ) : null}
-                </div>
-              ))
-            )}
+            {/* V6.9-A: name history editor - previous names resolve to the same stable id. */}
+            <fieldset className="npf-section members-history-section">
+              <legend>{t(lang, 'members.nameHistory')}</legend>
+              {draft.nameHistory.length === 0 ? (
+                <p className="dr-empty">{t(lang, 'members.nameHistoryNone')}</p>
+              ) : (
+                draft.nameHistory.map((entry, index) => (
+                  <div key={index} className="members-history-row">
+                    <input className="table-input" type="text" aria-label={t(lang, 'members.name')} value={entry.name} onChange={(e) => setHistoryEntry(index, { name: e.target.value })} />
+                    <input className="table-input input-date" type="date" aria-label={t(lang, 'members.nameHistoryFrom')} value={entry.fromDate} onChange={(e) => setHistoryEntry(index, { fromDate: e.target.value })} />
+                    <input className="table-input input-date" type="date" aria-label={t(lang, 'members.nameHistoryTo')} value={entry.toDate} onChange={(e) => setHistoryEntry(index, { toDate: e.target.value })} />
+                    <button type="button" className="btn-row-remove" aria-label={t(lang, 'buttons.remove')} title={t(lang, 'buttons.remove')} onClick={() => removeHistoryEntry(index)}>
+                      ×
+                    </button>
+                    {historyErrors[index] !== undefined ? <p className="field-error">{t(lang, historyErrors[index])}</p> : null}
+                  </div>
+                ))
+              )}
+              <div className="dr-button-row">
+                <button type="button" className="btn btn-ghost" onClick={addHistoryEntry}>
+                  {t(lang, 'members.nameHistoryAdd')}
+                </button>
+              </div>
+            </fieldset>
+
             <div className="dr-button-row">
-              <button type="button" className="btn btn-ghost" onClick={addHistoryEntry}>
-                {t(lang, 'members.nameHistoryAdd')}
+              <button type="submit" className="btn btn-primary" disabled={busy}>
+                {t(lang, 'dir.actions.save')}
               </button>
-            </div>
-          </fieldset>
-
-          <div className="dr-button-row">
-            <button type="submit" className="btn">
-              {t(lang, 'members.saveMember')}
-            </button>
-            {editingId !== null ? (
-              <button type="button" className="btn btn-ghost" onClick={startAdd}>
+              <button type="button" className="btn btn-ghost" onClick={onClose}>
                 {t(lang, 'buttons.close')}
               </button>
-            ) : null}
-          </div>
-        </form>
-      </section>
-
-      <section className="dr-section">
-        <h2>{t(lang, 'members.title')}</h2>
-        {sorted.length === 0 ? (
-          <p className="dr-empty">{t(lang, 'members.none')}</p>
-        ) : (
-          <div className="table-wrap">
-            <table className="dr-table">
-              <thead>
-                <tr>
-                  <th scope="col">{t(lang, 'members.name')}</th>
-                  <th scope="col">{t(lang, 'members.role')}</th>
-                  <th scope="col">{t(lang, 'members.startDate')}</th>
-                  <th scope="col">{t(lang, 'members.endDate')}</th>
-                  <th scope="col">{t(lang, 'members.status')}</th>
-                  <th scope="col">{t(lang, 'members.nameHistory')}</th>
-                  <th scope="col">{t(lang, 'columns.actions')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((member) => (
-                  <tr key={member.id} className={editingId === member.id ? 'row-selected' : undefined}>
-                    <td>{member.name}</td>
-                    <td>{member.role}</td>
-                    <td>{member.startDate}</td>
-                    <td>{member.endDate ?? '—'}</td>
-                    <td>{member.active ? t(lang, 'members.active') : t(lang, 'members.inactive')}</td>
-                    <td className="note-cell">
-                      {(member.nameHistory ?? []).length === 0
-                        ? t(lang, 'members.nameHistoryNone')
-                        : (member.nameHistory ?? []).map((entry) => nameHistoryEntryLabel(entry)).join(' / ')}
-                    </td>
-                    <td className="dr-row-actions">
-                      <button type="button" className="btn" onClick={() => toggleActive(member)}>
-                        {member.active ? t(lang, 'members.setInactive') : t(lang, 'members.setActive')}
-                      </button>
-                      <button type="button" className="btn" onClick={() => startEdit(member)}>
-                        {t(lang, 'buttons.edit')}
-                      </button>
-                      <button type="button" className="btn btn-danger" onClick={() => handleRemove(member)}>
-                        {t(lang, 'buttons.remove')}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+              {canDelete ? (
+                <button type="button" className="btn btn-danger" onClick={handleDelete}>
+                  {t(lang, 'buttons.remove')}
+                </button>
+              ) : null}
+            </div>
+            {saved === null ? null : (
+              <p className="data-controls-message ok" role="status">
+                {saved}
+              </p>
+            )}
+          </form>
+        </section>
+      )}
     </div>
   );
 }

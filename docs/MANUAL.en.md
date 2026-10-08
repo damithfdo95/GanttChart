@@ -413,3 +413,10 @@ In the shared (web) version the two roles are **SV** (manages the workspace; the
 The screen list in section 3 is the SV's. The old **RCS Members** screen is now part of **Team Members**; **History** and **Settings** are SV-only;
 Export / Import / Reset are under **Settings → Data & Backup**. A Tester sees Dashboard (Operator section and Today's Execution), Projects / Test
 Executions (read-only), Gantt (read-only), Tickets, Performance (their own rows) and **My Team Member Profile**. Details: `docs/ADMINISTRATION.md`.
+
+
+### Stage 8D: Total Test Cases, Team Members and the team meeting
+
+* **Total Test Cases** is typed by an SV on **Test Management -> Scopes**. The project total is the sum of its scopes; you do not have to register every test case. A warning appears if more cases are registered than the total.
+* **Team Members** is the one list of people. Add a person with or without a login; create the login later and the same person is linked. SVs can change a role (SV / Tester), remove or reactivate a person.
+* **Meeting View** (SV): **Gantt -> Meeting View**, or **Open Morning Meeting / Open Evening Meeting** on the Dashboard. Morning shows today's plan for the whole team; Evening shows plan against actual and lets you prepare tomorrow's plan. **Present** hides the editing controls.

@@ -15,6 +15,7 @@
  */
 
 import { businessDate } from '../../shared/businessTime';
+import { accountRoleOf, memberRoleOf, memberRoleWord } from '../../shared/members';
 import { AuthError, DEV_IDENTITY_COOKIE, authenticate, type VerifiedIdentity } from './auth';
 import { isWorkerPath } from '../../shared/routes';
 import { can, toPrincipalDto, workspaceRoleOf, type Action, type MemberPrincipal, type Principal } from './permissions';
@@ -33,6 +34,7 @@ import {
   isTenantId,
   isUserId,
   normalizeEmail,
+  parseDisplayName,
   type AuditActor,
   type DenyReason,
   type TenantListQuery,
@@ -183,6 +185,28 @@ const REGISTRY_STATUS: Record<RegistryError, number> = {
 
 function registryProblem(error: RegistryError): Response {
   return problem(REGISTRY_STATUS[error] ?? 400, error);
+}
+
+const MEMBER_STATUS: Record<string, number> = {
+  member_not_found: 404,
+  member_email_taken: 409,
+  member_email_locked: 409,
+  member_email_mismatch: 409,
+  member_already_linked: 409,
+  account_already_linked: 409,
+  member_inactive: 409,
+  member_removed: 409,
+  member_not_tester: 409,
+  member_linked: 409,
+  project_not_found: 404,
+  scope_not_found: 404,
+  scope_archived: 409,
+  archived: 409,
+  failed: 500,
+};
+
+function memberProblem(error: string): Response {
+  return problem(MEMBER_STATUS[error] ?? 409, error);
 }
 
 // ---- entry ---------------------------------------------------------------------
@@ -375,6 +399,11 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     return json({ users: await ctx.registry.listUsers(p.tenantId) });
   }
 
+  // ---- Team Members: profiles (the people directory) and the accounts linked to them ----
+  //
+  // A profile is a person of this workspace; an account is a login identity. They are separate: a profile may have no account, and
+  // an SV decides every link. Nothing here ever links by display name; the tenant is always the principal's.
+
   if (path === '/api/tenant/users' && method === 'POST') {
     const denial = need(ctx, 'users.manage');
     if (denial !== null) return denial;
@@ -384,6 +413,13 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     // The only roles a member can be created with. The words are the product's (SV / Tester), never the internal ones.
     const wanted = body.body.role === undefined ? 'tester' : body.body.role;
     if (wanted !== 'sv' && wanted !== 'tester') return problem(400, 'invalid_role');
+    // Someone who is already in the directory (same normalised email) is LINKED, never duplicated; a removed profile must be reactivated first.
+    const wantedEmail = normalizeEmail(body.body.email);
+    if (wantedEmail !== null) {
+      const same = (await roomFor(ctx, p).listMembers(p.tenantId)).find((m) => m.email === wantedEmail);
+      // (a profile that already has an account makes the registry answer email_taken, as before)
+      if (same !== undefined && !same.active && same.userId === undefined) return problem(409, 'member_removed');
+    }
     const result = await ctx.registry.createUser({
       tenantId: p.tenantId, // from the principal, never from the body
       email: String(body.body.email ?? ''),
@@ -394,24 +430,65 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
       actor: actorOf(p), // from the principal, never from the body
     });
     if (!result.ok) return registryProblem(result.error);
-    // The account's Team Member profile (the roster entry attendance, performance and tickets refer to), linked by account id.
-    let profile: 'created' | 'existing' | 'failed' = 'failed';
+    // The account's Team Member profile (the roster entry attendance, performance and tickets refer to): an existing one with this email, else a new one.
+    let profile: 'created' | 'linked' | 'existing' | 'failed' = 'failed';
+    let memberId: string | null = null;
     try {
       const made = await roomFor(ctx, p).ensureMemberProfile(p.tenantId, {
         userId: result.value.id,
         name: result.value.displayName ?? result.value.email,
+        email: result.value.email,
         role: result.value.role === 'admin' ? 'SV' : 'Tester',
         today: businessDate(),
         actor: p.email,
       });
-      if (made.ok) profile = made.created ? 'created' : 'existing';
+      if (made.ok) {
+        profile = made.linked ? 'linked' : made.created ? 'created' : 'existing';
+        memberId = made.memberId;
+        if (made.linked) await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: 'member.account_linked', actor: actorOf(p), userId: result.value.id, meta: { how: 'email' } });
+      }
     } catch {
       profile = 'failed'; // the account exists; an SV can link a roster entry to it from Team Members
     }
-    return json({ user: result.value, profile }, 201);
+    return json({ user: result.value, profile, memberId }, 201);
   }
 
-  // Link an older roster-only member to an account of this workspace (an SV's decision; never guessed from names).
+  // Create a Team Member PROFILE, with or without a login account.
+  if (path === '/api/tenant/members' && method === 'POST') {
+    const denial = need(ctx, 'users.manage');
+    if (denial !== null) return denial;
+    const body = await readJson(ctx);
+    if (!body.ok) return body.response;
+    const name = parseDisplayName(body.body.displayName);
+    if (!name.ok || name.value === null) return problem(400, 'invalid_display_name');
+    const wanted = body.body.role === undefined ? 'tester' : body.body.role;
+    if (wanted !== 'sv' && wanted !== 'tester') return problem(400, 'invalid_role');
+    let email: string | undefined;
+    if (body.body.email !== undefined && body.body.email !== null && String(body.body.email).trim() !== '') {
+      const e = normalizeEmail(body.body.email);
+      if (e === null) return problem(400, 'invalid_email');
+      email = e;
+    }
+    const withAccount = body.body.createAccount === true;
+    if (withAccount && email === undefined) return problem(400, 'email_required_for_account');
+    const access = (body.body.access ?? 'editor') as UserAccess;
+    const roleWord = wanted === 'sv' ? 'SV' : 'Tester';
+    const room = roomFor(ctx, p);
+    const made = await room.createMemberProfile(p.tenantId, { name: name.value, ...(email === undefined ? {} : { email }), role: roleWord, today: businessDate(), actor: p.email });
+    if (!made.ok) return memberProblem(made.error);
+    await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: 'member.created', actor: actorOf(p), meta: { name: name.value, memberRole: wanted, withAccount } });
+    if (!withAccount) return json({ memberId: made.memberId, user: null }, 201);
+    const account = await ctx.registry.createUser({ tenantId: p.tenantId, email: email as string, displayName: name.value, role: wanted === 'sv' ? 'admin' : 'user', access, reserved: ctx.superAdmins, actor: actorOf(p) });
+    if (!account.ok) {
+      await room.discardMemberProfile(p.tenantId, made.memberId, p.email); // nothing refers to it yet
+      return registryProblem(account.error);
+    }
+    const linked = await room.linkMember(p.tenantId, { memberId: made.memberId, userId: account.value.id, email: account.value.email, role: roleWord, actor: p.email });
+    if (linked.ok) await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: 'member.account_linked', actor: actorOf(p), userId: account.value.id, meta: { how: 'created', name: name.value } });
+    return json({ memberId: made.memberId, user: account.value, linked: linked.ok }, 201);
+  }
+
+  // Link an existing profile to an existing account of this workspace (an SV's decision; never guessed from names).
   if (path === '/api/tenant/members/link' && method === 'POST') {
     const denial = need(ctx, 'users.manage');
     if (denial !== null) return denial;
@@ -423,8 +500,9 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     if (!isUserId(userId)) return problem(400, 'invalid_user_id');
     const account = await ctx.registry.getUser(p.tenantId, userId);
     if (account === null) return problem(404, 'user_not_found');
-    const linked = await roomFor(ctx, p).linkMember(p.tenantId, { memberId, userId, actor: p.email });
-    if (!linked.ok) return problem(linked.error === 'member_not_found' ? 404 : 409, linked.error);
+    const linked = await roomFor(ctx, p).linkMember(p.tenantId, { memberId, userId, email: account.email, role: account.role === 'admin' ? 'SV' : 'Tester', actor: p.email });
+    if (!linked.ok) return memberProblem(linked.error);
+    if (linked.created) await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: 'member.account_linked', actor: actorOf(p), userId, meta: { how: 'existing', assignments: linked.assignments } });
     return json(linked);
   }
 
@@ -440,11 +518,165 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     const made = await roomFor(ctx, p).ensureMemberProfile(p.tenantId, {
       userId: account.id,
       name: account.displayName ?? account.email,
+      email: account.email,
       role: account.role === 'admin' ? 'SV' : 'Tester',
       today: businessDate(),
       actor: p.email,
     });
-    return made.ok ? json(made, made.created ? 201 : 200) : problem(409, made.error);
+    if (!made.ok) return memberProblem(made.error);
+    if (made.created) await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: 'member.created', actor: actorOf(p), userId: account.id, meta: { name: account.displayName ?? account.email, memberRole: account.role === 'admin' ? 'sv' : 'tester', withAccount: true } });
+    if (made.linked) await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: 'member.account_linked', actor: actorOf(p), userId: account.id, meta: { how: 'email' } });
+    return json(made, made.created ? 201 : 200);
+  }
+
+  const memberRoute = /^\/api\/tenant\/members\/([^/]+)(?:\/(account|role|remove|reactivate))?$/.exec(path);
+  if (memberRoute !== null && memberRoute[1] !== 'link' && memberRoute[1] !== 'profile') {
+    const memberId = decodeURIComponent(memberRoute[1]);
+    const action = memberRoute[2];
+    const denial = need(ctx, 'users.manage');
+    if (denial !== null) return denial;
+    if (memberId.length === 0 || memberId.length > 100) return problem(400, 'invalid_member_id');
+    // The body (and any tenant the request tries to name) is checked before anything is looked up.
+    const parsed = await readJson(ctx);
+    if (!parsed.ok) return parsed.response;
+    const room = roomFor(ctx, p);
+    const found = await room.readMember(p.tenantId, memberId); // another workspace's id is simply unknown here
+    if (found === null) return problem(404, 'member_not_found');
+    const actor = actorOf(p);
+
+    // Edit the profile: display name, team and (while there is no account) the email.
+    if (action === undefined && method === 'PATCH') {
+      const body = parsed;
+      const input: { name?: string; team?: string; email?: string | null; startDate?: string; endDate?: string | null; nameHistory?: Array<{ name: string; fromDate?: string; toDate?: string }> } = {};
+      const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
+      if (body.body.startDate !== undefined) {
+        if (!isDate(body.body.startDate)) return problem(400, 'invalid_date');
+        input.startDate = body.body.startDate;
+      }
+      if (body.body.endDate !== undefined) {
+        if (body.body.endDate !== null && !isDate(body.body.endDate)) return problem(400, 'invalid_date');
+        input.endDate = body.body.endDate;
+      }
+      if (body.body.nameHistory !== undefined) {
+        if (!Array.isArray(body.body.nameHistory) || body.body.nameHistory.length > 20) return problem(400, 'invalid_name_history');
+        const history: Array<{ name: string; fromDate?: string; toDate?: string }> = [];
+        for (const e of body.body.nameHistory as unknown[]) {
+          const o = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
+          const n = o === null ? null : parseDisplayName(o.name);
+          if (o === null || n === null || !n.ok || n.value === null) return problem(400, 'invalid_name_history');
+          if (o.fromDate !== undefined && !isDate(o.fromDate)) return problem(400, 'invalid_date');
+          if (o.toDate !== undefined && !isDate(o.toDate)) return problem(400, 'invalid_date');
+          history.push({ name: n.value, ...(o.fromDate === undefined ? {} : { fromDate: o.fromDate as string }), ...(o.toDate === undefined ? {} : { toDate: o.toDate as string }) });
+        }
+        input.nameHistory = history;
+      }
+      if (body.body.displayName !== undefined) {
+        const n = parseDisplayName(body.body.displayName);
+        if (!n.ok || n.value === null) return problem(400, 'invalid_display_name');
+        input.name = n.value;
+      }
+      if (body.body.team !== undefined) {
+        if (typeof body.body.team !== 'string' || body.body.team.trim() === '' || body.body.team.length > 80) return problem(400, 'invalid_team');
+        input.team = body.body.team.trim();
+      }
+      if (body.body.email !== undefined) {
+        if (body.body.email === null || String(body.body.email).trim() === '') input.email = null;
+        else {
+          const e = normalizeEmail(body.body.email);
+          if (e === null) return problem(400, 'invalid_email');
+          input.email = e;
+        }
+      }
+      const edited = await room.editMemberProfile(p.tenantId, { memberId, ...input, today: businessDate(), actor: p.email });
+      if (!edited.ok) return memberProblem(edited.error);
+      if (edited.changed) await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: 'member.updated', actor, userId: found.userId ?? null, meta: { name: input.name ?? found.name, fields: edited.fields.join(',') } });
+      return json({ memberId, changed: edited.changed });
+    }
+
+    // Provision a login account for a profile that has none; the profile becomes the linked one (no duplicate).
+    if (action === 'account' && method === 'POST') {
+      const body = parsed;
+      if (found.userId !== undefined) return problem(409, 'member_already_linked');
+      if (!found.active) return problem(409, 'member_inactive');
+      if (found.email === undefined) return problem(400, 'email_required_for_account');
+      const intended = memberRoleOf(found.role);
+      if (intended === null) return problem(400, 'role_required_for_account');
+      const access = (body.body.access ?? 'editor') as UserAccess;
+      const account = await ctx.registry.createUser({ tenantId: p.tenantId, email: found.email, displayName: found.name, role: accountRoleOf(intended), access, reserved: ctx.superAdmins, actor });
+      if (!account.ok) return registryProblem(account.error);
+      const linked = await room.linkMember(p.tenantId, { memberId, userId: account.value.id, email: account.value.email, role: memberRoleWord(intended), actor: p.email });
+      if (linked.ok) await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: 'member.account_linked', actor, userId: account.value.id, meta: { how: 'created', name: found.name, assignments: linked.assignments } });
+      return json({ memberId, user: account.value, linked: linked.ok, assignments: linked.ok ? linked.assignments : 0 }, 201);
+    }
+
+    // Change the role: SV <-> Tester. A linked profile changes its ACCOUNT's role (the Owner and yourself are protected).
+    if (action === 'role' && method === 'POST') {
+      const body = parsed;
+      const wanted = body.body.role;
+      if (wanted !== 'sv' && wanted !== 'tester') return problem(400, 'invalid_role');
+      const word = memberRoleWord(wanted);
+      let disconnected = true;
+      if (found.userId !== undefined) {
+        const changed = await ctx.registry.changeRole({ tenantId: p.tenantId, userId: found.userId, role: accountRoleOf(wanted), actor });
+        if (!changed.ok) return registryProblem(changed.error);
+        const set = await room.setMemberRole(p.tenantId, { memberId, role: word, actor: p.email });
+        if (!set.ok) return memberProblem(set.error);
+        // The person's live connections are ended, so the next one is authorised as the new role (the next request already is).
+        try {
+          await room.disconnectUser(p.tenantId, found.userId, CLOSE_CODES.roleChanged, 'role changed');
+        } catch {
+          disconnected = false; // reported; the session-expiry check still bounds the connection
+        }
+      } else {
+        const set = await room.setMemberRole(p.tenantId, { memberId, role: word, actor: p.email });
+        if (!set.ok) return memberProblem(set.error);
+        if (set.changed) await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: 'member.role_changed', actor, meta: { name: found.name, from: memberRoleOf(found.role) ?? '', to: wanted, linked: false } });
+      }
+      return json({ memberId, role: wanted, disconnected });
+    }
+
+    // Remove from active use. History stays; a linked account is disabled in the same action and its connections are closed.
+    if (action === 'remove' && method === 'POST') {
+      let disconnected = true;
+      let accountDisabled = false;
+      if (found.userId !== undefined) {
+        const off = await ctx.registry.updateUser({ tenantId: p.tenantId, userId: found.userId, status: 'disabled', actor });
+        if (!off.ok) return registryProblem(off.error);
+        accountDisabled = true;
+      }
+      const set = await room.setMemberActive(p.tenantId, { memberId, active: false, today: businessDate(), actor: p.email });
+      if (!set.ok) return memberProblem(set.error);
+      if (found.userId !== undefined) {
+        try {
+          await room.disconnectUser(p.tenantId, found.userId, CLOSE_CODES.accessRevoked, 'member removed');
+        } catch {
+          disconnected = false;
+        }
+      }
+      if (set.changed) await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: 'member.removed', actor, userId: found.userId ?? null, meta: { name: found.name, accountDisabled } });
+      return json({ memberId, accountDisabled, disconnected });
+    }
+
+    // Bring a removed profile back (the same identity). A disabled account is re-enabled only when asked for explicitly.
+    if (action === 'reactivate' && method === 'POST') {
+      const body = parsed;
+      const set = await room.setMemberActive(p.tenantId, { memberId, active: true, today: businessDate(), actor: p.email });
+      if (!set.ok) return memberProblem(set.error);
+      let accountReactivated = false;
+      let accountStillDisabled = false;
+      if (found.userId !== undefined) {
+        const account = await ctx.registry.getUser(p.tenantId, found.userId);
+        if (account !== null && account.status === 'disabled') {
+          if (body.body.reactivateAccount === true) {
+            const on = await ctx.registry.updateUser({ tenantId: p.tenantId, userId: found.userId, status: 'enabled', actor });
+            if (!on.ok) return registryProblem(on.error);
+            accountReactivated = true;
+          } else accountStillDisabled = true;
+        }
+      }
+      if (set.changed) await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: 'member.reactivated', actor, userId: found.userId ?? null, meta: { name: found.name, accountReactivated } });
+      return json({ memberId, accountReactivated, accountStillDisabled });
+    }
   }
 
   const userRoute = /^\/api\/tenant\/users\/([^/]+)$/.exec(path);
@@ -454,6 +686,11 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     if (!isUserId(userRoute[1])) return problem(400, 'invalid_user_id');
     const body = await readJson(ctx);
     if (!body.ok) return body.response;
+    if (body.body.status === 'enabled') {
+      // A login must not be switched on while the person is removed from the directory: reactivate the Team Member instead.
+      const profile = (await roomFor(ctx, p).listMembers(p.tenantId)).find((m) => m.userId === userRoute[1]);
+      if (profile !== undefined && !profile.active) return problem(409, 'member_removed');
+    }
     const result = await ctx.registry.updateUser({
       tenantId: p.tenantId,
       userId: userRoute[1],
@@ -519,10 +756,25 @@ async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
     const body = await readJson(ctx);
     if (!body.ok) return body.response;
     const projectId = body.body.projectId;
-    const userId = body.body.userId;
+    let userId = body.body.userId;
     const scopeId = body.body.scopeId;
     if (typeof projectId !== 'string' || projectId.length === 0 || projectId.length > 100) return problem(400, 'invalid_project_id');
     if (scopeId !== undefined && (typeof scopeId !== 'string' || !/^[A-Za-z0-9_.:-]{1,200}$/.test(scopeId))) return problem(400, 'invalid_scope_id');
+    // A Team Member may be named instead of an account. A linked member resolves to THEIR account; one without an account gets a
+    // business assignment that becomes usable when the account is linked (it grants nothing until then).
+    if (userId === undefined && body.body.memberId !== undefined) {
+      const memberId = body.body.memberId;
+      if (typeof memberId !== 'string' || memberId.length === 0 || memberId.length > 100) return problem(400, 'invalid_member_id');
+      const target = await roomFor(ctx, p).readMember(p.tenantId, memberId);
+      if (target === null) return problem(404, 'member_not_found');
+      if (!target.active) return problem(409, 'member_inactive');
+      if (memberRoleOf(target.role) !== 'tester') return problem(409, 'member_not_tester');
+      if (target.userId === undefined) {
+        const made = await roomFor(ctx, p).assignMember(p.tenantId, { memberId, projectId, ...(typeof scopeId === 'string' ? { scopeId } : {}), today: businessDate(), actor: p.email });
+        return made.ok ? json({ ...made, linked: false }, made.created ? 201 : 200) : memberProblem(made.error);
+      }
+      userId = target.userId;
+    }
     if (!isUserId(userId)) return problem(400, 'invalid_user_id');
     // The account must be a Tester of THIS workspace (the tenant is the principal's, never the request's) and must be enabled.
     const tester = await ctx.registry.getTester(p.tenantId, userId);

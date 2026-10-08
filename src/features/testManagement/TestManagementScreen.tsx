@@ -5,7 +5,8 @@ import { useConfirm } from '../../components/ConfirmDialog';
 import { resolveBilingualName, t, type TranslationKey } from '../../i18n';
 import { ApiError } from '../../lib/tenancy/api';
 import { dictionaries } from '../../i18n/dictionaries';
-import { compactNames, userLabel } from '../../domain/people';
+import { assigneeLabel, compactNames, userLabel } from '../../domain/people';
+import { personOptionText, personOptions, selectableMembers } from '../../domain/teamMembers';
 import {
   CASE_PRIORITIES,
   buildBulkCases,
@@ -17,7 +18,9 @@ import {
   newTestCase,
   parseBulkCases,
   projectOverview,
-  scopeAssigneeIds,
+  projectTotals,
+  detailedCoverage,
+  scopeAssignees,
   setCaseStatus,
   setScopeStatus,
   sortCases,
@@ -32,7 +35,7 @@ import {
 } from '../../domain/testManagement';
 import { useTesters } from '../cycles/parts';
 import { ExecutionTable } from './ExecutionTable';
-import { SummaryBlock, pct } from './SummaryParts';
+import { RegisteredWarning, ScopeTotalInput, SummaryBlock, TotalsPanel, pct } from './SummaryParts';
 import { useBusinessToday, usePeopleDirectory, useTestManagement } from './useTestManagement';
 import type { Language, ProjectRecord } from '../../types';
 
@@ -124,6 +127,8 @@ function OverviewTab({ lang, project, onOpen }: { lang: Language; project: Proje
   const today = useBusinessToday();
   const { directory } = useDirectory();
   const overview = useMemo(() => projectOverview(project.projectId, tm.state), [project.projectId, tm.state]);
+  const totals = useMemo(() => projectTotals(project, tm.scopes, tm.testCases), [project, tm.scopes, tm.testCases]);
+  const totalOf = (scopeId: string) => totals.scopes.find((r) => r.scope.id === scopeId);
   const assignments = tm.reports.state.testerAssignments ?? [];
   if (overview.rows.length === 0) {
     return (
@@ -135,11 +140,14 @@ function OverviewTab({ lang, project, onOpen }: { lang: Language; project: Proje
       </section>
     );
   }
-  const people = (scope: TestScope): string => compactNames(scopeAssigneeIds(scope, assignments, today).map((id) => userLabel(lang, id, directory)));
+  const people = (scope: TestScope): string => compactNames(scopeAssignees(scope, assignments, today).map((who) => assigneeLabel(lang, who, directory)));
   return (
     <section className="dr-section">
       <h2>{t(lang, 'tm.overview.title')}</h2>
       <p className="link-help">{t(lang, 'tm.overview.sourceNote')}</p>
+      <TotalsPanel lang={lang} totals={totals} completed={project.inputs.casesCompleted} />
+      <h3>{t(lang, 'tm.overview.detailTitle')}</h3>
+      <p className="link-help">{t(lang, 'tm.overview.detailNote', { registered: totals.registered })}</p>
       <SummaryBlock lang={lang} summary={overview.total} />
       <div className="tenancy-table-wrap">
         <table className="tenancy-table">
@@ -148,10 +156,10 @@ function OverviewTab({ lang, project, onOpen }: { lang: Language; project: Proje
             <tr>
               <th scope="col">{t(lang, 'tm.col.scope')}</th>
               <th scope="col">{t(lang, 'tm.col.testers')}</th>
-              <th scope="col">{t(lang, 'tm.sum.total')}</th>
+              <th scope="col">{t(lang, 'tm.col.totalCases')}</th>
+              <th scope="col">{t(lang, 'tm.col.registered')}</th>
               <th scope="col">{t(lang, 'tm.sum.completed')}</th>
-              <th scope="col">{t(lang, 'tm.sum.remaining')}</th>
-              <th scope="col">{t(lang, 'tm.sum.progress')}</th>
+              <th scope="col">{t(lang, 'tm.col.coverage')}</th>
               <th scope="col">{t(lang, 'tm.sum.passRate')}</th>
               <th scope="col">{t(lang, 'tm.sum.fail')}</th>
               <th scope="col">{t(lang, 'tm.sum.blocked')}</th>
@@ -166,10 +174,13 @@ function OverviewTab({ lang, project, onOpen }: { lang: Language; project: Proje
                   {scope.status === 'archived' ? <span>{t(lang, 'tm.status.archived')}</span> : null}
                 </th>
                 <td>{people(scope) || '—'}</td>
-                <td>{summary.total}</td>
+                <td>{totalOf(scope.id)?.total ?? '—'}</td>
+                <td>
+                  {summary.total}
+                  {totalOf(scope.id)?.overRegistered === true ? <span title={t(lang, 'tm.total.warnOverHint')}> ⚠</span> : null}
+                </td>
                 <td>{summary.completed}</td>
-                <td>{summary.remaining}</td>
-                <td>{pct(summary.progress)}</td>
+                <td>{pct(detailedCoverage(summary.completed, summary.total))}</td>
                 <td>{pct(summary.passRate)}</td>
                 <td>{summary.fail}</td>
                 <td>{summary.blocked}</td>
@@ -204,7 +215,7 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
   const confirm = useConfirm();
   const { api } = useTenant();
   const today = useBusinessToday();
-  const { testers, directory } = useDirectory();
+  const { directory } = useDirectory();
   const scopes = useMemo(() => sortScopes(tm.scopes.filter((s) => s.projectId === project.projectId)), [tm.scopes, project.projectId]);
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [name, setName] = useState('');
@@ -249,6 +260,20 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
     }
   };
 
+  /** An SV types the Total Test Cases of a scope: one record changes, one revision, nothing else is recalculated by hand. */
+  const setTotal = (scope: TestScope, next: number | null): void => {
+    let failed: string | null = null;
+    tm.update((state) => {
+      const made = editScope(state, scope.id, { totalTestCases: next }, new Date().toISOString());
+      if (!made.ok) {
+        failed = made.error;
+        return state;
+      }
+      return { ...state, scopes: state.scopes.map((x) => (x.id === made.value.id ? made.value : x)) };
+    });
+    setNote(failed === null ? null : { kind: 'error', text: errorText(lang, failed) });
+  };
+
   const archive = async (scope: TestScope, archive: boolean): Promise<void> => {
     if (archive) {
       const ok = await confirm({ title: t(lang, 'tm.scope.archiveTitle', { name: scope.name }), body: <p>{t(lang, 'tm.scope.archiveBody')}</p>, confirmLabel: t(lang, 'tm.scope.archive'), cancelLabel: t(lang, 'tenancy.cancel'), severity: 'warning' });
@@ -265,12 +290,13 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
   };
 
   const assign = async (scope: TestScope): Promise<void> => {
-    const userId = pick[scope.id];
-    if (userId === undefined || userId === '' || api === null) return;
+    const memberId = pick[scope.id];
+    if (memberId === undefined || memberId === '' || api === null) return;
     setBusy(true);
     setNote(null);
     try {
-      await api.assignTester(project.projectId, userId, scope.id);
+      // A Team Member, linked to a login or not: the server resolves which (nothing is duplicated when a login is linked later).
+      await api.assignMember(project.projectId, memberId, scope.id);
       setPick((p) => ({ ...p, [scope.id]: '' }));
       setNote({ kind: 'ok', text: t(lang, 'tm.assign.done') });
     } catch (e) {
@@ -285,8 +311,11 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
     if (a !== undefined) tm.reports.upsertTesterAssignment({ ...a, active: false, endDate: today });
   };
 
-  const scopeAssignments = (scope: TestScope) => assignments.filter((a) => a.userId !== undefined && a.projectId === project.projectId && a.scopeId === scope.id && a.active && (a.endDate === undefined || a.endDate === '' || a.endDate >= today));
-  const wholeProject = assignments.filter((a) => a.userId !== undefined && a.projectId === project.projectId && a.scopeId === undefined && a.active && (a.endDate === undefined || a.endDate === '' || a.endDate >= today));
+  const current = (a: (typeof assignments)[number]): boolean => a.active && (a.endDate === undefined || a.endDate === '' || a.endDate >= today);
+  const scopeAssignments = (scope: TestScope) => assignments.filter((a) => (a.userId !== undefined || a.memberId !== undefined) && a.projectId === project.projectId && a.scopeId === scope.id && current(a));
+  const wholeProject = assignments.filter((a) => (a.userId !== undefined || a.memberId !== undefined) && a.projectId === project.projectId && a.scopeId === undefined && current(a));
+  const assignedKeys = (scope: TestScope): Set<string> => new Set([...scopeAssignments(scope), ...wholeProject].flatMap((a) => [a.userId, a.memberId].filter((x): x is string => x !== undefined)));
+  const testerOptions = personOptions(lang, selectableMembers(tm.reports.state.rcsMembers ?? [], { role: 'tester', today }), today);
 
   return (
     <section className="dr-section">
@@ -297,6 +326,8 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
         </button>
       </div>
       <p className="dr-summary">{t(lang, 'tm.scope.help')}</p>
+      <p className="link-help">{t(lang, 'tm.total.help')}</p>
+      <RegisteredWarning lang={lang} totals={projectTotals(project, tm.scopes, tm.testCases)} />
       <Notice note={note} />
       {editing === null ? null : (
         <form
@@ -341,7 +372,8 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
             <thead>
               <tr>
                 <th scope="col">{t(lang, 'tm.col.scope')}</th>
-                <th scope="col">{t(lang, 'tm.sum.total')}</th>
+                <th scope="col">{t(lang, 'tm.col.totalCases')}</th>
+                <th scope="col">{t(lang, 'tm.col.registered')}</th>
                 <th scope="col">{t(lang, 'tm.col.testers')}</th>
                 <th scope="col">{t(lang, 'tm.col.status')}</th>
                 <th scope="col">
@@ -359,13 +391,24 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
                       <strong>{scope.name}</strong>
                       {scope.code === undefined ? null : <span>{scope.code}</span>}
                     </th>
-                    <td>{count}</td>
+                    <td>
+                      <ScopeTotalInput lang={lang} value={scope.totalTestCases} label={`${t(lang, 'tm.total.input')}: ${scope.name}`} onCommit={(next) => setTotal(scope, next)} />
+                    </td>
+                    <td>
+                      {count}
+                      {scope.totalTestCases !== undefined && count > scope.totalTestCases ? (
+                        <div className="tm-warning" role="status">
+                          <span aria-hidden="true">⚠ </span>
+                          {t(lang, 'tm.total.warnOver', { registered: count, total: scope.totalTestCases })}
+                        </div>
+                      ) : null}
+                    </td>
                     <td>
                       {mine.length === 0 && wholeProject.length === 0 ? <span>{t(lang, 'tm.empty.noTesters')}</span> : null}
                       <ul className="cc-people">
                         {mine.map((a) => (
                           <li key={a.id}>
-                            {userLabel(lang, a.userId, directory)}{' '}
+                            {assigneeLabel(lang, a, directory)}{' '}
                             <button type="button" className="btn btn-ghost" onClick={() => endAssignment(a.id)}>
                               {t(lang, 'tm.assign.end')}
                             </button>
@@ -373,19 +416,19 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
                         ))}
                         {wholeProject.map((a) => (
                           <li key={a.id}>
-                            {userLabel(lang, a.userId, directory)} <small>({t(lang, 'tm.assign.wholeProject')})</small>
+                            {assigneeLabel(lang, a, directory)} <small>({t(lang, 'tm.assign.wholeProject')})</small>
                           </li>
                         ))}
                       </ul>
-                      {scope.status === 'active' && testers !== null ? (
+                      {scope.status === 'active' && api !== null ? (
                         <span className="tenancy-link-row">
                           <select className="input" value={pick[scope.id] ?? ''} aria-label={`${t(lang, 'tm.assign.choose')}: ${scope.name}`} onChange={(e) => setPick((p) => ({ ...p, [scope.id]: e.target.value }))}>
                             <option value="">{t(lang, 'tm.assign.choose')}</option>
-                            {testers
-                              .filter((x) => x.status !== 'disabled')
+                            {testerOptions
+                              .filter((x) => !assignedKeys(scope).has(x.memberId) && (x.userId === null || !assignedKeys(scope).has(x.userId)))
                               .map((x) => (
-                                <option key={x.id} value={x.id}>
-                                  {userLabel(lang, x.id, directory)}
+                                <option key={x.memberId} value={x.memberId}>
+                                  {personOptionText(lang, x)}
                                 </option>
                               ))}
                           </select>

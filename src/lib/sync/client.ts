@@ -45,6 +45,7 @@ export type SyncStatus =
   | 'access-revoked' // an administrator removed this person's access, or deactivated the workspace
   | 'storage-moved' // the administrator moved the workspace back to local storage
   | 'tenant-deleted' // the workspace was permanently deleted
+  | 'role-changed' // an SV changed this person's role (SV / Tester): the page must reload to continue with the new permissions
   | 'error' // the server refused something unexpected
   | 'stopped';
 
@@ -171,6 +172,7 @@ const CLOSE_SESSION_EXPIRED = 4401;
 const CLOSE_ACCESS_REVOKED = 4403;
 const CLOSE_STORAGE_MOVED = 4410;
 const CLOSE_TENANT_DELETED = 4411;
+const CLOSE_ROLE_CHANGED = 4412;
 
 /** Close codes after which reconnecting is pointless (and, for revoked access, unwelcome). */
 const TERMINAL_CLOSE: Readonly<Record<number, SyncStatus>> = {
@@ -178,6 +180,7 @@ const TERMINAL_CLOSE: Readonly<Record<number, SyncStatus>> = {
   [CLOSE_ACCESS_REVOKED]: 'access-revoked',
   [CLOSE_STORAGE_MOVED]: 'storage-moved',
   [CLOSE_TENANT_DELETED]: 'tenant-deleted',
+  [CLOSE_ROLE_CHANGED]: 'role-changed',
 };
 const CLOSE_HEARTBEAT = 4000;
 const CLOSE_COMMIT_TIMEOUT = 4001;

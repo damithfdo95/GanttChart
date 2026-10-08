@@ -14,6 +14,7 @@ import type {
   TesterProjectAssignment,
   TesterReview,
 } from '../types';
+import type { MeetingState } from '../domain/meeting/state';
 import { loadReportsState } from '../lib/storage/reports';
 import { removeProjectFromRegistry } from '../domain/projects/lifecycle';
 import type { TestManagementState } from '../domain/testManagement';
@@ -65,6 +66,8 @@ export interface ReportsStateApi {
   setRcsMembers: (members: RcsMember[]) => void;
   /** Test Management (Stage 8C): transform scopes, cases and results in ONE state update (one commit, however many records change). */
   updateTestManagement: (fn: (tm: TestManagementState) => TestManagementState) => void;
+  /** Change the team meeting's plans and notes as ONE update (one commit to the shared workspace). */
+  updateMeeting: (fn: (m: MeetingState) => MeetingState) => void;
   /** Review records (V6.7): save one review (same tester+period updates in place). */
   upsertReview: (review: TesterReview) => void;
   /** Review records (V6.7): remove one by id. */
@@ -174,6 +177,7 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
         scopes: (prev.scopes ?? []).filter(gone),
         testCases: (prev.testCases ?? []).filter(gone),
         caseResults: (prev.caseResults ?? []).filter(gone),
+        dailyPlans: (prev.dailyPlans ?? []).filter(gone),
         projects: removal.projects,
         reports: removal.reports,
         activeProjectId: removal.nextActiveProjectId,
@@ -216,6 +220,15 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
       const after = fn(before);
       if (after.scopes === before.scopes && after.testCases === before.testCases && after.caseResults === before.caseResults) return prev;
       return { ...prev, scopes: after.scopes, testCases: after.testCases, caseResults: after.caseResults };
+    });
+  }, []);
+
+  const updateMeetingAction = useCallback((fn: (m: MeetingState) => MeetingState): void => {
+    setState((prev) => {
+      const before: MeetingState = { dailyPlans: prev.dailyPlans ?? [], meetingNotes: prev.meetingNotes ?? [] };
+      const after = fn(before);
+      if (after.dailyPlans === before.dailyPlans && after.meetingNotes === before.meetingNotes) return prev;
+      return { ...prev, dailyPlans: after.dailyPlans, meetingNotes: after.meetingNotes };
     });
   }, []);
 
@@ -278,6 +291,7 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
     upsertCycle: upsertCycleAction,
     setRcsMembers: setRcsMembersAction,
     updateTestManagement: updateTestManagementAction,
+    updateMeeting: updateMeetingAction,
     upsertReview: upsertReviewAction,
     removeReview: removeReviewAction,
     upsertMember: upsertMemberAction,

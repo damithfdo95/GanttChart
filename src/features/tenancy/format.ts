@@ -28,6 +28,21 @@ const KNOWN_ERRORS: ReadonlySet<string> = new Set([
   'account_already_linked',
   'invalid_user_id',
   'invalid_member_id',
+  // Stage 8D: Team Member profiles and logins
+  'member_email_taken',
+  'member_email_locked',
+  'member_email_mismatch',
+  'member_inactive',
+  'member_removed',
+  'member_not_tester',
+  'member_linked',
+  'email_required_for_account',
+  'role_required_for_account',
+  'invalid_team',
+  'archived',
+  'project_not_found',
+  'scope_not_found',
+  'scope_archived',
 ]);
 
 /** A server error code -> a translated message. Unknown codes get the generic message (and never the raw server text). */

@@ -25,6 +25,8 @@ export const RECORD_KINDS = [
   'scope',
   'testCase',
   'caseResult',
+  'dailyPlan',
+  'meetingNote',
   'settings',
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];

@@ -73,6 +73,12 @@ export function rosterLabel(lang: Language, memberId: string | null | undefined,
   return m === undefined ? t(lang, 'people.former') : memberLabel(lang, m);
 }
 
+/** An assignee is an account (`userId`) or a Team Member without an account yet (`memberId`); either way the person's name, never an id. */
+export function assigneeLabel(lang: Language, who: { userId?: string; memberId?: string }, directory: PeopleDirectory): string {
+  if (who.userId !== undefined) return userLabel(lang, who.userId, directory);
+  return rosterLabel(lang, who.memberId, directory.members);
+}
+
 /** "A, B +2" for a list of labels (a compact human form for many assigned people). */
 export function compactNames(labels: readonly string[], max = 3): string {
   const unique = [...new Set(labels)];

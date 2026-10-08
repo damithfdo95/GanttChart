@@ -733,6 +733,58 @@ export class RegistryStore {
   }
 
   /**
+   * Change an account's role: SV <-> Tester (Stage 8D). Scoped by tenant AND user id. The Owner SV is protected (the database
+   * trigger refuses it too), nobody changes their own role, and the internal roles stay `admin` (SV) / `user` (Tester). A demoted SV
+   * becomes an editor Tester; history written under the old role is never rewritten. The caller closes the person's live connections
+   * so the next one is authorised as the new role.
+   */
+  changeRole(input: { tenantId: string; userId: string; role: 'admin' | 'user'; actor: AuditActor; now: string }): Reg<UserRow> {
+    if (input.role !== 'admin' && input.role !== 'user') return fail('invalid_input');
+    const user = this.getUserInTenant(input.tenantId, input.userId);
+    if (user === null) return fail('not_found');
+    if (user.id === this.ownerIdOf(input.tenantId)) return fail('owner_protected');
+    if (input.actor.userId !== null && input.actor.userId === user.id) return fail('same_person');
+    if (user.role === input.role) return ok(user);
+    return this.storage.transactionSync(() => {
+      this.storage.sql.exec(`UPDATE users SET role = ?, access = 'editor', updated_at = ? WHERE id = ? AND tenant_id = ?`, input.role, input.now, input.userId, input.tenantId);
+      this.appendAudit({
+        at: input.now,
+        action: 'member.role_changed',
+        actor: input.actor,
+        tenantId: input.tenantId,
+        targetType: 'user',
+        targetId: user.id,
+        targetEmail: user.email,
+        meta: { from: user.role === 'admin' ? 'sv' : 'tester', to: input.role === 'admin' ? 'sv' : 'tester' },
+      });
+      return ok(this.getUserInTenant(input.tenantId, input.userId)!);
+    });
+  }
+
+  /**
+   * A Team Member event that happens in the workspace (profile created / edited / removed / reactivated, account linked). Only the
+   * Worker calls this, with the actor from its verified principal; the tenant is the caller's. Content-free: names, counts, levels.
+   */
+  recordMemberEvent(input: {
+    tenantId: string;
+    action: Extract<AuditAction, `member.${string}`>;
+    actor: AuditActor;
+    userId?: string | null;
+    meta?: Record<string, string | number | boolean | null>;
+    now: string;
+  }): void {
+    const user = input.userId === undefined || input.userId === null ? null : this.getUserInTenant(input.tenantId, input.userId);
+    this.appendAudit({
+      at: input.now,
+      action: input.action,
+      actor: input.actor,
+      tenantId: input.tenantId,
+      ...(user === null ? {} : { targetType: 'user' as const, targetId: user.id, targetEmail: user.email }),
+      meta: input.meta,
+    });
+  }
+
+  /**
    * Hand the ownership to another enabled SV of the same workspace. ONE statement on ONE row: there is no moment
    * with zero or two owners, and the database refuses a target that is not an enabled SV of this workspace. Only the
    * current Owner may do it.

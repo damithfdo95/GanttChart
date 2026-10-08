@@ -1,3 +1,5 @@
+import { selectableMembers } from '../../domain/teamMembers';
+import { businessDate } from '../../../shared/businessTime';
 import type { AttendanceRecord, AttendanceStatus, Language, RcsMember } from '../../types';
 import { memberLabel as personNameOf } from '../../domain/people';
 import { NON_ATTENDING_STATUSES } from '../../types';
@@ -44,10 +46,6 @@ interface AttendanceSectionProps {
  * identity next to the original recorded name — history is never rewritten.
  */
 export function AttendanceSection({ records, members = [], lang, summary, readOnly, onAdd, onUpdate, onRemove }: AttendanceSectionProps) {
-  const selectableMembers = [...members].sort((a, b) => {
-    if (a.active !== b.active) return a.active ? -1 : 1; // active first
-    return a.id.localeCompare(b.id);
-  });
   const memberById = new Map(members.map((member) => [member.id, member]));
   return (
     <section className="dr-section">
@@ -111,7 +109,7 @@ export function AttendanceSection({ records, members = [], lang, summary, readOn
                         }}
                       >
                         <option value="">{t(lang, 'attendance.memberOther')}</option>
-                        {selectableMembers.map((member) => (
+                        {selectableMembers(members, { today: businessDate(), keep: record.memberId === undefined ? [] : [record.memberId] }).map((member) => (
                           <option key={member.id} value={member.id}>
                             {personNameOf(lang, member)}
                             {member.active ? '' : ` (${t(lang, 'members.inactive')})`}

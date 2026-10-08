@@ -8,11 +8,13 @@ export type Language = 'en' | 'ja';
  */
 import type { CycleRecord, CycleStatus } from '../../shared/qaRules';
 import type { CaseResult, TestCase, TestScope } from '../../shared/testManagement';
+import type { DailyTeamPlan, MeetingNote } from '../../shared/meeting';
 
 /** A QA test cycle / release grouping test executions (projects). See shared/qaRules.ts. */
 export type Cycle = CycleRecord;
 export type { CycleStatus };
 export type { CaseResult, TestCase, TestScope };
+export type { DailyTeamPlan, MeetingNote };
 
 export interface BilingualName {
   nameEn?: string;
@@ -222,6 +224,14 @@ export interface RcsMember {
    * links an older roster entry to an account); absent for roster-only members. Never typed, edited or guessed from names.
    */
   userId?: string;
+  /**
+   * Stage 8D: the person's organisation email, normalised (lower case). Optional - a profile may exist before it has one - and unique
+   * among the workspace's profiles. It is the key that links the profile to a login account; display names never are. Once the
+   * profile is linked it follows the account and cannot be edited here.
+   */
+  email?: string;
+  /** Stage 8D: when the profile was removed from active use (informational; `active` and `endDate` carry the rule). */
+  removedAt?: string;
 }
 
 // ---- Bug tracking & tester performance (V6.6) ----
@@ -768,6 +778,9 @@ export interface ReportsState {
   scopes?: TestScope[];
   testCases?: TestCase[];
   caseResults?: CaseResult[];
+  /** Team meeting (Stage 8D): the SV's plan per day, project and optional scope, and the day's meeting notes. Optional: older data has none. */
+  dailyPlans?: DailyTeamPlan[];
+  meetingNotes?: MeetingNote[];
 }
 
 // ---- Tester assignments & QA review workspace (V6.7) ----
@@ -885,8 +898,13 @@ export interface ProjectRecord {
   inputs: QaInputs;
   /** Optional free-text description (V6.2). Metadata only — never used in calculations. */
   description?: string;
-  /** Optional project owner (V6.2). Metadata only. */
+  /** Optional project owner (V6.2): free text. Kept as written for projects made before Stage 8D and as a name snapshot; metadata only. */
   owner?: string;
+  /**
+   * Stage 8D: the project owner as a Team Member (the profile's stable id, never shown). Chosen from the Team Members directory, so the
+   * owner is a real person of this workspace and not a typed name. Absent on older projects, which keep their free-text `owner`.
+   */
+  ownerMemberId?: string;
   /**
    * The test cycle / release this execution belongs to (Stage 8A). At most one; absent or null =
    * not in any cycle (every project created before cycles existed). Never used in calculations.

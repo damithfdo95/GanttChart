@@ -37,6 +37,7 @@ import { DEMO_STATE } from '../../lib/storage/storage';
 import { createBackupPayload } from '../../lib/backup/backup';
 import { createProjectBackupPayload, importProjectIntoRegistry } from '../../lib/backup/projectBackup';
 import { detectImportFile } from '../../lib/backup/importFile';
+import { sanitizeRestoredAccountLinks } from '../../lib/backup/restoreLinks';
 import { downloadTextFile } from '../../lib/export/download';
 
 const LIFECYCLE_KEY: Record<ProjectLifecycleStatus, TranslationKey> = {
@@ -287,7 +288,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
   // ---- V6.3: project export / workspace export / import / delete ----
 
   const handleExportProject = (project: ProjectRecord): void => {
-    const payload = createProjectBackupPayload(project, reportsApi.state.reports, undefined, { scopes: reportsApi.state.scopes, testCases: reportsApi.state.testCases, caseResults: reportsApi.state.caseResults });
+    const payload = createProjectBackupPayload(project, reportsApi.state.reports, undefined, { scopes: reportsApi.state.scopes, testCases: reportsApi.state.testCases, caseResults: reportsApi.state.caseResults }, reportsApi.state.dailyPlans);
     downloadTextFile(
       `ganttchart-project-${project.projectId}-${today}.json`,
       'application/json',
@@ -318,7 +319,8 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
         // A full backup replaces the WHOLE shared workspace for everyone: administrators only, typed confirmation.
         if (!guard.confirmReplace()) return;
         app.replaceState(result.data.appState);
-        reportsApi.replaceReportsState(result.data.reportsState);
+        // A file never creates or changes a login link: people with a login keep the link this workspace has now.
+        reportsApi.replaceReportsState(sanitizeRestoredAccountLinks(result.data.reportsState, reportsApi.state));
         setImportMessage({ kind: 'ok', text: t(lang, 'import.backupOk') });
         return;
       }
@@ -337,6 +339,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
         }
         const merged = importProjectIntoRegistry(reportsApi.state.projects, reportsApi.state.reports, result.data, {
           existing: { scopes: reportsApi.state.scopes, testCases: reportsApi.state.testCases },
+          members: reportsApi.state.rcsMembers ?? [],
           // In a shared workspace the restored results are attributed to the person restoring them; in plain local use they stay as exported.
           ...(access.userId === null ? {} : { actor: access.userId }),
         });
@@ -344,6 +347,10 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
         const added = merged.testManagement;
         if (added.scopes.length + added.testCases.length + added.caseResults.length > 0) {
           reportsApi.updateTestManagement((tm) => ({ scopes: [...tm.scopes, ...added.scopes], testCases: [...tm.testCases, ...added.testCases], caseResults: [...tm.caseResults, ...added.caseResults] }));
+        }
+        if (merged.dailyPlans.length > 0) {
+          const planned = merged.dailyPlans;
+          reportsApi.updateMeeting((m) => ({ ...m, dailyPlans: [...m.dailyPlans.filter((p) => !planned.some((q) => q.id === p.id)), ...planned] }));
         }
         for (const report of merged.newReports) reportsApi.upsertReport(report);
         activateProjectRecord(reportsApi, app, merged.importedProject);

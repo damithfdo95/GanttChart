@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useTenant } from '../../app/tenant-context';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
 import { ownMemberOf } from '../../app/access';
@@ -11,7 +11,8 @@ import type { PrincipalDto, StorageMode } from '../../../shared/tenancy';
 import type { TenancyApi } from '../../lib/tenancy/api';
 import type { Language, ProjectRecord, RcsMember, TesterProjectAssignment } from '../../types';
 import { AuditLog } from './AuditLog';
-import { StatusBadge, UsersManager } from './UsersManager';
+import { StatusBadge } from './UsersManager';
+import { TeamDirectory } from './TeamDirectory';
 import { TesterWorkload } from './TesterWorkload';
 
 /** What each storage mode means, in plain words. Used wherever a person decides or wonders. */
@@ -43,12 +44,28 @@ export function TeamScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
   if (principal.role === 'user') {
     return <MyProfile lang={lang} principal={principal} members={members} projects={reports.state.projects} assignments={reports.state.testerAssignments ?? []} />;
   }
+  return <SvTeam lang={lang} principal={principal} api={api} members={members} onOpenSettings={onOpenSettings} />;
+}
+
+function SvTeam({ lang, principal, api, members, onOpenSettings }: { lang: Language; principal: PrincipalDto; api: TenancyApi; members: readonly RcsMember[]; onOpenSettings: () => void }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const reports = useReportsStateCtx();
   return (
     <>
-      <TeamView lang={lang} principal={principal} api={api} members={members} onOpenSettings={onOpenSettings} />
+      <TeamView
+        lang={lang}
+        principal={principal}
+        api={api}
+        members={members}
+        assignments={reports.state.testerAssignments ?? []}
+        projects={reports.state.projects}
+        onUpsertMember={reports.upsertMember}
+        onOpenSettings={onOpenSettings}
+        onEditDetails={setEditing}
+      />
       {principal.role === 'admin' ? <LegacyPlaceholderNotice lang={lang} /> : null}
       {principal.role === 'admin' && principal.tenant?.storageMode === 'web' ? <TesterWorkload lang={lang} /> : null}
-      {principal.role === 'admin' ? <RcsMembersTab /> : null}
+      {principal.role === 'admin' ? <RcsMembersTab editMemberId={editing} onClose={() => setEditing(null)} /> : null}
     </>
   );
 }
@@ -124,7 +141,28 @@ export function MyProfile({
 }
 
 /** The SV's screen itself, independent of app state so it can be rendered and tested on its own. */
-export function TeamView({ lang, principal, api, members = [], onOpenSettings }: { lang: Language; principal: PrincipalDto; api: TenancyApi; members?: readonly RcsMember[]; onOpenSettings: () => void }) {
+export function TeamView({
+  lang,
+  principal,
+  api,
+  members = [],
+  assignments = [],
+  projects = [],
+  onUpsertMember,
+  onOpenSettings,
+  onEditDetails,
+}: {
+  lang: Language;
+  principal: PrincipalDto;
+  api: TenancyApi;
+  members?: readonly RcsMember[];
+  assignments?: readonly TesterProjectAssignment[];
+  projects?: readonly ProjectRecord[];
+  onUpsertMember?: (member: RcsMember) => void;
+  onOpenSettings: () => void;
+  onEditDetails?: (memberId: string) => void;
+}) {
+  const directoryProps = { members, assignments, projects, ...(onUpsertMember === undefined ? {} : { onUpsertMember }) };
   const loadAudit = useCallback(() => api.tenantAudit(), [api]);
   if (principal.tenant === null || principal.role !== 'admin') return null;
   const tenant = principal.tenant;
@@ -139,7 +177,7 @@ export function TeamView({ lang, principal, api, members = [], onOpenSettings }:
       </header>
       {tenant.storageMode === 'web' ? (
         <>
-          <UsersManager lang={lang} api={api} members={members} currentUserId={principal.userId} />
+          <TeamDirectory lang={lang} api={api} {...directoryProps} currentUserId={principal.userId} {...(onEditDetails === undefined ? {} : { onEditDetails })} />
           <AuditLog lang={lang} load={loadAudit} title={t(lang, 'tenancy.audit.workspaceTitle')} emptyKey="tenancy.audit.empty" />
         </>
       ) : (
@@ -155,6 +193,7 @@ export function TeamView({ lang, principal, api, members = [], onOpenSettings }:
               {t(lang, 'team.openStorageSettings')}
             </button>
           </section>
+          <TeamDirectory lang={lang} api={null} {...directoryProps} currentUserId={principal.userId} {...(onEditDetails === undefined ? {} : { onEditDetails })} />
           <AuditLog lang={lang} load={loadAudit} title={t(lang, 'tenancy.audit.workspaceTitle')} emptyKey="tenancy.audit.empty" />
         </>
       )}

@@ -67,6 +67,20 @@ export interface TenancyApi {
   cancelDeletion(): Promise<TenantDto>;
   /** Hand the workspace's ownership to another enabled SV (the Owner SV only; the typed word is checked by the server too). */
   transferOwnership(userId: string): Promise<{ owner: UserDto; previous: UserDto }>;
+  /** Create a Team Member profile, with or without a login account (SV). The email is required only for an account. */
+  createMember(input: { displayName: string; email?: string; role: 'sv' | 'tester'; createAccount?: boolean; access?: UserAccess }): Promise<{ memberId: string; user: UserDto | null; linked?: boolean }>;
+  /** Edit a profile: name, team and (while there is no account) email. */
+  editMember(memberId: string, patch: { displayName?: string; team?: string; email?: string | null; startDate?: string; endDate?: string | null; nameHistory?: Array<{ name: string; fromDate?: string; toDate?: string }> }): Promise<{ memberId: string; changed: boolean }>;
+  /** Change a Team Member's role. For a linked member this changes the account's role and ends their live connections. */
+  setMemberRole(memberId: string, role: 'sv' | 'tester'): Promise<{ memberId: string; role: 'sv' | 'tester'; disconnected: boolean }>;
+  /** Remove a Team Member from active use (history stays); a linked account is disabled in the same action. */
+  removeMember(memberId: string): Promise<{ memberId: string; accountDisabled: boolean; disconnected: boolean }>;
+  /** Bring a removed Team Member back; a disabled account is re-enabled only when asked. */
+  reactivateMember(memberId: string, reactivateAccount: boolean): Promise<{ memberId: string; accountReactivated: boolean; accountStillDisabled: boolean }>;
+  /** Create the login account for a profile that has none; the profile becomes the linked one. */
+  provisionAccount(memberId: string, access?: UserAccess): Promise<{ memberId: string; user: UserDto; linked: boolean; assignments: number }>;
+  /** Assign a Team Member (linked or not) to a project, or one scope of it. */
+  assignMember(projectId: string, memberId: string, scopeId?: string): Promise<{ created: boolean; linked?: boolean }>;
   /** Link an older roster-only member to an account of this workspace (SV). */
   linkMember(memberId: string, userId: string): Promise<{ memberId: string }>;
   /** Give an account that predates Team Member profiles its profile (SV). */
@@ -135,6 +149,13 @@ export function createTenancyApi(fetchFn: FetchLike = (i, init) => fetch(i, init
       (await call<{ user: UserDto }>('POST', '/api/tenant/users', { email, access, role, ...(displayName === undefined || displayName.trim() === '' ? {} : { displayName }) })).user,
     transferOwnership: (userId) => call('POST', '/api/tenant/owner', { userId, confirm: TRANSFER_OWNERSHIP_CONFIRMATION }),
     linkMember: (memberId, userId) => call('POST', '/api/tenant/members/link', { memberId, userId }),
+    createMember: (input) => call('POST', '/api/tenant/members', input),
+    editMember: (memberId, patch) => call('PATCH', `/api/tenant/members/${encodeURIComponent(memberId)}`, patch),
+    setMemberRole: (memberId, role) => call('POST', `/api/tenant/members/${encodeURIComponent(memberId)}/role`, { role }),
+    removeMember: (memberId) => call('POST', `/api/tenant/members/${encodeURIComponent(memberId)}/remove`, {}),
+    reactivateMember: (memberId, reactivateAccount) => call('POST', `/api/tenant/members/${encodeURIComponent(memberId)}/reactivate`, { reactivateAccount }),
+    provisionAccount: (memberId, access) => call('POST', `/api/tenant/members/${encodeURIComponent(memberId)}/account`, access === undefined ? {} : { access }),
+    assignMember: (projectId, memberId, scopeId) => call('POST', '/api/tenant/assignments', { projectId, memberId, ...(scopeId === undefined ? {} : { scopeId }) }),
     createProfile: (userId) => call('POST', '/api/tenant/members/profile', { userId }),
     updateUser: (userId, patch) => call('PATCH', `/api/tenant/users/${encodeURIComponent(userId)}`, patch),
     requestDeletion: async () => (await call<{ tenant: TenantDto }>('POST', '/api/tenant/deletion-request', { confirm: REQUEST_DELETION_CONFIRMATION })).tenant,

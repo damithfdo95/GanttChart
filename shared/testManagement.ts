@@ -52,11 +52,18 @@ export interface TestScope {
   /** Short code ("ECO"). Unique within the project; used to suggest case keys. Never a primary key. */
   code?: string;
   description?: string;
+  /**
+   * Stage 8D: the AUTHORITATIVE Total Test Cases of this scope, typed by an SV. Independent of how many detailed Test Cases are
+   * registered (those may be fewer, equal, or - with a warning - more). Absent = not set. Integer 0..TOTAL_TEST_CASES_MAX.
+   */
+  totalTestCases?: number;
   status: ScopeStatus;
   order: number;
   createdAt: string;
   updatedAt: string;
 }
+
+export const TOTAL_TEST_CASES_MAX = 1_000_000;
 
 export interface TestCase {
   id: string;
@@ -160,6 +167,7 @@ export function checkScope(raw: unknown): Check<TestScope> {
   if (!text(raw.name, TM_LIMITS.scopeName) || raw.name.trim() === '') return { ok: false, error: 'scope_invalid_name' };
   if (raw.code !== undefined && normalizeScopeCode(raw.code) !== raw.code) return { ok: false, error: 'scope_invalid_code' };
   if (raw.description !== undefined && !text(raw.description, TM_LIMITS.scopeDescription)) return { ok: false, error: 'scope_invalid_description' };
+  if (raw.totalTestCases !== undefined && !(typeof raw.totalTestCases === 'number' && Number.isInteger(raw.totalTestCases) && raw.totalTestCases >= 0 && raw.totalTestCases <= TOTAL_TEST_CASES_MAX)) return { ok: false, error: 'scope_invalid_total' };
   if (typeof raw.status !== 'string' || !(SCOPE_STATUSES as readonly string[]).includes(raw.status)) return { ok: false, error: 'scope_invalid_status' };
   if (!orderOk(raw.order)) return { ok: false, error: 'scope_invalid_order' };
   if (!stamp(raw.createdAt) || !stamp(raw.updatedAt)) return { ok: false, error: 'scope_invalid_timestamp' };

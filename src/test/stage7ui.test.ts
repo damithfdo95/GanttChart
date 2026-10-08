@@ -154,13 +154,14 @@ describe('Team / Users', () => {
     expect(html).toContain('Adding Team Members is available when this workspace uses Web storage.');
     expect(html).toContain('collaboration with other people is not possible');
     expect(html).toContain('Open storage settings');
-    expect(html).not.toContain('Add Member');
-    expect(html).not.toContain('type="email"');
+    // Local storage keeps profiles (no login exists to create): the form offers no login choice and no login-state columns.
+    expect(html).not.toContain('Login account');
+    expect(html).not.toContain('Create a login');
   });
 
   it('Web mode shows the Users manager (add form) and the administration history', () => {
     const html = render(createElement(TeamView, { lang: 'en', principal: principal('admin'), api: fakeApi, onOpenSettings: () => undefined }));
-    expect(html).toContain('Add Member');
+    expect(html).toContain('Add Team Member');
     expect(html).toContain('type="email"');
     expect(html).toContain('Administration history');
     expect(html).not.toContain('role-selector');
@@ -172,7 +173,7 @@ describe('Team / Users', () => {
 
   it('the add form has no tenant selector and offers only the two product roles: email, name, SV or Tester, access level', () => {
     const html = render(createElement(TeamView, { lang: 'en', principal: principal('admin'), api: fakeApi, onOpenSettings: () => undefined }));
-    expect((html.match(/<select/g) ?? []).length).toBe(2); // role and access level
+    expect((html.match(/<select/g) ?? []).length).toBe(2); // role of the new member and the status filter (the access level appears only when a Tester login is chosen)
     expect(html).toContain('value="sv"');
     expect(html).toContain('value="tester"');
     expect(html).not.toMatch(/value="(admin|user|super_admin)"/);
@@ -388,8 +389,8 @@ describe('Testers (the QA-facing name of the User role)', () => {
 
   it('the add form explains the flow: organization email, optional name, signs in later with that address, no code, no password, no selector', () => {
     const html = render(createElement(TeamView, { lang: 'en', principal: principal('admin'), api: fakeApi, onOpenSettings: () => undefined }));
-    expect(html).toContain('Add Member');
-    expect(html).toContain('Display name (optional)');
+    expect(html).toContain('Add Team Member');
+    expect(html).toContain('Display name');
     expect(html).toContain('there is no invitation code, password or workspace chooser');
     expect(html).toContain('there is no workspace selection');
     expect(html).not.toMatch(/<select[^>]*tenant/i);

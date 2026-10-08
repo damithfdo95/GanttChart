@@ -58,6 +58,8 @@ export const CLOSE_CODES = {
   accessRevoked: 4403,
   storageMoved: 4410,
   tenantDeleted: 4411,
+  /** The person's role (SV / Tester) was changed: the connection is ended so the next one is authorised as the new role. */
+  roleChanged: 4412,
 } as const;
 
 // ---- email identity ----
@@ -221,6 +223,13 @@ export const AUDIT_ACTIONS = [
   'user.reactivated',
   'user.access_changed',
   'owner.transferred',
+  // Stage 8D: Team Member profiles and the accounts linked to them (workspace-level; never shown to the Super Admin).
+  'member.created',
+  'member.updated',
+  'member.role_changed',
+  'member.removed',
+  'member.reactivated',
+  'member.account_linked',
   'storage.migration_uploaded',
   'storage.web_activated',
   'storage.local_activated',
@@ -228,7 +237,7 @@ export const AUDIT_ACTIONS = [
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 /** What the Super Admin sees: platform-level events only. Account events inside a workspace stay with that workspace's Admin. */
-export const PLATFORM_AUDIT_ACTIONS: readonly AuditAction[] = AUDIT_ACTIONS.filter((a) => !a.startsWith('user.') && a !== 'owner.transferred');
+export const PLATFORM_AUDIT_ACTIONS: readonly AuditAction[] = AUDIT_ACTIONS.filter((a) => !a.startsWith('user.') && !a.startsWith('member.') && a !== 'owner.transferred');
 
 export interface AuditActor {
   userId: string | null;

@@ -12,6 +12,8 @@
 import type { Role } from './protocol';
 import { testerCommitError } from './testerRules';
 import { testManagementCommitError } from './testManagement';
+import { memberCommitError } from './members';
+import { meetingCommitError } from './meeting';
 
 // ---- cycles ------------------------------------------------------------------
 
@@ -222,6 +224,14 @@ export function qaCommitError(input: QaCommitInput): string | null {
   const testManagement = testManagementCommitError({ puts, deletes, view, isSv: isAdmin, userId: input.userId, today: input.today ?? '' });
   if (testManagement !== null) return testManagement;
 
+  // The team meeting's plans and notes (an SV's records): what they refer to.
+  const meetingRefused = meetingCommitError({ puts, deletes, view, isSv: isAdmin });
+  if (meetingRefused !== null) return meetingRefused;
+
+  // Team Member profiles: unique normalised email, and a linked profile's email / role / active state belong to its account.
+  const memberRefused = memberCommitError({ puts, deletes, view });
+  if (memberRefused !== null) return memberRefused;
+
   // A Team Member's link to a registry account is set by the server only (the assignment endpoint's twin).
   for (const p of puts) {
     if (p.kind !== 'member') continue;
@@ -272,6 +282,13 @@ export function qaCommitError(input: QaCommitInput): string | null {
           if (status === null) return 'project_cycle_not_found';
           if (status === 'archived') return 'project_cycle_archived';
         }
+      }
+      // Stage 8D: the project owner is a Team Member of THIS workspace, never an id from somewhere else.
+      if (next.ownerMemberId !== undefined && next.ownerMemberId !== prev?.ownerMemberId) {
+        const owner = next.ownerMemberId;
+        if (typeof owner !== 'string' || !ID_SHAPE.test(owner)) return 'project_invalid_owner';
+        const known = view.get('member', owner) !== null || puts.some((q) => q.kind === 'member' && q.id === owner);
+        if (!known) return 'project_owner_not_found';
       }
       const problem = projectExecutionError(prevJson, p.json);
       if (problem !== null) return problem;

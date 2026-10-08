@@ -35,6 +35,7 @@ import { toCsv, csvValueFromCell } from '../../lib/export/csv';
 import { downloadBinaryFile, downloadTextFile, escapeHtml } from '../../lib/export/download';
 import { printHtml } from '../../lib/export/print';
 import { createBackupPayload, parseBackupPayload } from '../../lib/backup/backup';
+import { sanitizeRestoredAccountLinks } from '../../lib/backup/restoreLinks';
 import { persistWorkspaceAsync } from '../../lib/storage/db/persistenceBackend';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -391,7 +392,9 @@ export function ReportsExport() {
         // the next startup into a false "recovery required" state — and in
         // healthy IndexedDB mode the database copy would win on reload,
         // silently reverting the restore.
-        const saved = await persistWorkspaceAsync(result.data.appState, result.data.reportsState, {
+        // A file never creates or changes a login link: people with a login keep the link this workspace has now.
+        const restored = sanitizeRestoredAccountLinks(result.data.reportsState, reportsApi.state);
+        const saved = await persistWorkspaceAsync(result.data.appState, restored, {
           reason: 'import',
           forceRevision: true,
         });
@@ -402,7 +405,7 @@ export function ReportsExport() {
         // Refresh the in-memory state to the restored workspace (same pattern
         // as Clear All Local Data) — no reload required.
         app.replaceState(result.data.appState);
-        reportsApi.replaceReportsState(result.data.reportsState);
+        reportsApi.replaceReportsState(restored);
         setMessage({ kind: 'ok', text: t(lang, 'reports.importOk') });
       })();
     };

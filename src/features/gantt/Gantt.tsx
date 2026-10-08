@@ -13,6 +13,7 @@ import { SectionCard } from '../../components/SectionCard';
 import { MetricCard } from '../../components/MetricCard';
 import { MultiDayTimeline } from '../../components/MultiDayTimeline';
 import { GanttChartView } from '../../components/GanttChartView';
+import { MeetingView, type MeetingSession } from '../meeting/MeetingView';
 
 const LIFECYCLE_KEY: Record<ProjectLifecycleStatus, TranslationKey> = {
   todo: 'overall.todo',
@@ -39,11 +40,43 @@ interface GanttProps {
 }
 
 /**
- * Gantt — detailed scheduling and resource planning for one selected project.
+ * Gantt: the SV chooses between the Planning View (below: edit one project's schedule) and the Meeting View (Stage 8D: the whole team's
+ * Morning / Evening presentation). A Tester has only the read-only Planning View.
+ */
+export function Gantt({ focusProjectId, onFocusHandled, meeting = null, onMeetingHandled }: GanttProps & { meeting?: MeetingSession | null; onMeetingHandled?: () => void }) {
+  const app = useAppStateCtx();
+  const lang = app.state.language;
+  const isTester = useAccess().isTester;
+  const [mode, setMode] = useState<'planning' | 'meeting'>(meeting === null ? 'planning' : 'meeting');
+  const [session, setSession] = useState<MeetingSession>(meeting ?? 'morning');
+  // The Dashboard's "Open Morning / Evening Meeting" lands here already in the Meeting View.
+  useEffect(() => {
+    if (meeting === null || isTester) return;
+    setMode('meeting');
+    setSession(meeting);
+    onMeetingHandled?.();
+  }, [meeting, isTester, onMeetingHandled]);
+  if (isTester) return <GanttPlanning focusProjectId={focusProjectId} onFocusHandled={onFocusHandled} />;
+  return (
+    <>
+      <div className="view-toggle gantt-mode" role="tablist" aria-label={t(lang, 'nav.gantt')}>
+        {(['planning', 'meeting'] as const).map((id) => (
+          <button key={id} type="button" role="tab" aria-selected={mode === id} className={mode === id ? 'active' : undefined} onClick={() => setMode(id)}>
+            {t(lang, id === 'planning' ? 'mt.planningView' : 'mt.meetingView')}
+          </button>
+        ))}
+      </div>
+      {mode === 'meeting' ? <MeetingView key={session} initialSession={session} /> : <GanttPlanning focusProjectId={focusProjectId} onFocusHandled={onFocusHandled} />}
+    </>
+  );
+}
+
+/**
+ * Planning View — detailed scheduling and resource planning for one selected project.
  * Project selection and status filtering live here; Done projects stay out of
  * the way but are never deleted.
  */
-export function Gantt({ focusProjectId, onFocusHandled }: GanttProps) {
+function GanttPlanning({ focusProjectId, onFocusHandled }: GanttProps) {
   const app = useAppStateCtx();
   const reportsApi = useReportsStateCtx();
   const lang = app.state.language;

@@ -3,6 +3,7 @@ import type { ProjectLifecycleStatus } from '../types';
 import { useAppStateCtx, useReportsStateCtx, activateProjectRecord } from '../app/state-contexts';
 import { t, type TranslationKey } from '../i18n';
 import { newProjectRecord } from '../domain/projects';
+import { personOptions, selectableMembers } from '../domain/teamMembers';
 import {
   defaultNewProjectForm,
   validateNewProjectForm,
@@ -162,10 +163,12 @@ export function NewProjectForm({ open, onClose, onCreated }: NewProjectFormProps
       nowIso,
       reportsApi.state.projects,
     );
+    // The owner is a Team Member of this workspace (a dropdown, never typed); the name is kept alongside as a snapshot for exports.
+    const ownerMember = (reportsApi.state.rcsMembers ?? []).find((m) => m.id === form.ownerMemberId);
     reportsApi.addProject({
       ...record,
       description: form.description.trim(),
-      owner: form.owner.trim(),
+      ...(ownerMember === undefined ? {} : { ownerMemberId: ownerMember.id, owner: ownerMember.name }),
     });
     activateProjectRecord(reportsApi, app, record);
     onCreated();
@@ -224,13 +227,14 @@ export function NewProjectForm({ open, onClose, onCreated }: NewProjectFormProps
                 />
               </Field>
               <Field label={t(lang, 'newProject.owner')}>
-                <input
-                  className="input"
-                  type="text"
-                  value={form.owner}
-                  maxLength={200}
-                  onChange={(e) => set({ owner: e.target.value })}
-                />
+                <select className="input" value={form.ownerMemberId} onChange={(e) => set({ ownerMemberId: e.target.value })}>
+                  <option value="">{t(lang, 'newProject.ownerNone')}</option>
+                  {personOptions(lang, selectableMembers(reportsApi.state.rcsMembers ?? [], { today: formatDate(todayEpochDays()) }), formatDate(todayEpochDays())).map((o) => (
+                    <option key={o.memberId} value={o.memberId}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
               </Field>
               <Field label={t(lang, 'newProject.status')}>
                 <select

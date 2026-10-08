@@ -17,9 +17,11 @@ import {
   type TestScope,
 } from '../../../shared/testManagement';
 import type { TesterProjectAssignment } from '../../types';
+import { cleanTotal } from './totals';
 
 export * from '../../../shared/testManagement';
 export { parseBulkCases, type BulkParse, type BulkRow, type BulkRowError } from './bulk';
+export * from './totals';
 
 /**
  * Test Management domain: scopes, test cases and their current results, and the summary formulas.
@@ -129,6 +131,7 @@ export const sortCases = (cases: readonly TestCase[]): TestCase[] => [...cases].
 export type TmError =
   | 'scope_invalid_name'
   | 'scope_invalid_code'
+  | 'scope_invalid_total'
   | 'scope_code_taken'
   | 'scope_not_found'
   | 'scope_archived'
@@ -146,7 +149,7 @@ const clean = (v: string | undefined): string | undefined => {
 
 export function newScope(
   state: Pick<TestManagementState, 'scopes'>,
-  input: { projectId: string; name: string; code?: string; description?: string },
+  input: { projectId: string; name: string; code?: string; description?: string; totalTestCases?: number },
   now: string,
   id: string = `scp_${crypto.randomUUID()}`,
 ): Made<TestScope> {
@@ -157,14 +160,15 @@ export function newScope(
   if (code !== undefined && state.scopes.some((s) => s.projectId === input.projectId && s.code === code)) return { ok: false, error: 'scope_code_taken' };
   const mine = state.scopes.filter((s) => s.projectId === input.projectId);
   const order = mine.reduce((m, s) => Math.max(m, s.order), 0) + 10;
-  const scope: TestScope = { id, projectId: input.projectId, name, ...(code === undefined ? {} : { code }), ...(clean(input.description) === undefined ? {} : { description: clean(input.description) }), status: 'active', order, createdAt: now, updatedAt: now };
+  if (input.totalTestCases !== undefined && cleanTotal(input.totalTestCases) === null) return { ok: false, error: 'scope_invalid_total' };
+  const scope: TestScope = { id, projectId: input.projectId, name, ...(code === undefined ? {} : { code }), ...(clean(input.description) === undefined ? {} : { description: clean(input.description) }), ...(input.totalTestCases === undefined ? {} : { totalTestCases: input.totalTestCases }), status: 'active', order, createdAt: now, updatedAt: now };
   return checkScope(scope).ok ? { ok: true, value: scope } : { ok: false, error: 'scope_invalid_name' };
 }
 
 export function editScope(
   state: Pick<TestManagementState, 'scopes'>,
   scopeId: string,
-  patch: { name?: string; code?: string; description?: string },
+  patch: { name?: string; code?: string; description?: string; totalTestCases?: number | null },
   now: string,
 ): Made<TestScope> {
   const prev = state.scopes.find((s) => s.id === scopeId);
@@ -179,8 +183,15 @@ export function editScope(
     code = c;
   }
   const description = patch.description === undefined ? prev.description : clean(patch.description);
-  const { code: _c, description: _d, ...rest } = prev;
-  return { ok: true, value: { ...rest, ...(code === undefined ? {} : { code }), ...(description === undefined ? {} : { description }), name, updatedAt: now } };
+  // undefined keeps the Total, null clears it, a whole number >= 0 sets it.
+  let total = prev.totalTestCases;
+  if (patch.totalTestCases === null) total = undefined;
+  else if (patch.totalTestCases !== undefined) {
+    if (cleanTotal(patch.totalTestCases) === null) return { ok: false, error: 'scope_invalid_total' };
+    total = patch.totalTestCases;
+  }
+  const { code: _c, description: _d, totalTestCases: _t, ...rest } = prev;
+  return { ok: true, value: { ...rest, ...(code === undefined ? {} : { code }), ...(description === undefined ? {} : { description }), ...(total === undefined ? {} : { totalTestCases: total }), name, updatedAt: prev.totalTestCases === total && patch.name === undefined && patch.code === undefined && patch.description === undefined ? prev.updatedAt : now } };
 }
 
 export function setScopeStatus(scope: TestScope, status: 'active' | 'archived', now: string): TestScope {
@@ -349,6 +360,29 @@ export function scopeAssigneeIds(scope: TestScope, assignments: readonly TesterP
     if (isAssignedToScope([a as unknown as Record<string, unknown>], a.userId, scope.projectId, scope.id, today)) ids.add(a.userId);
   }
   return [...ids];
+}
+
+export interface ScopeAssignee {
+  key: string;
+  userId?: string;
+  memberId?: string;
+}
+
+/**
+ * Everyone currently assigned to a scope: accounts (by `userId`) AND Team Members that have no account yet (by `memberId`), so a
+ * person without a login still shows on the scope they were assigned to. A project-level assignment (no scope) covers every scope.
+ */
+export function scopeAssignees(scope: TestScope, assignments: readonly TesterProjectAssignment[], today: string): ScopeAssignee[] {
+  const out = new Map<string, ScopeAssignee>();
+  for (const a of assignments) {
+    if (!a.active || a.projectId !== scope.projectId) continue;
+    if (a.scopeId !== undefined && a.scopeId !== '' && a.scopeId !== scope.id) continue;
+    if (a.endDate !== undefined && a.endDate !== '' && a.endDate < today) continue;
+    if (a.startDate > today) continue;
+    if (a.userId !== undefined) out.set(`u:${a.userId}`, { key: `u:${a.userId}`, userId: a.userId, ...(a.memberId === undefined ? {} : { memberId: a.memberId }) });
+    else if (a.memberId !== undefined) out.set(`m:${a.memberId}`, { key: `m:${a.memberId}`, memberId: a.memberId });
+  }
+  return [...out.values()];
 }
 
 // ---- filtering --------------------------------------------------------------------------

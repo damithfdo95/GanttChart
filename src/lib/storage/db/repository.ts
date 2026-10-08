@@ -51,6 +51,8 @@ export const META_KEY_COLLECTION = {
   scopes: 'scopes',
   testCases: 'testCases',
   caseResults: 'caseResults',
+  dailyPlans: 'dailyPlans',
+  meetingNotes: 'meetingNotes',
 } as const;
 export const META_KEY_PERSISTENCE_META = 'persistenceMeta';
 export const META_KEY_STORAGE_MIGRATION = 'storageMigration';

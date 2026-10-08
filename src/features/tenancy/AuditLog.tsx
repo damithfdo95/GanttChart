@@ -63,7 +63,7 @@ export function AuditLog({ lang, load, title, emptyKey }: { lang: Language; load
                     <br />
                     <span className="link-help">{t(lang, `tenancy.role.${row.actorRole}` as TranslationKey)}</span>
                   </td>
-                  <td>{row.targetEmail ?? (row.targetType === 'tenant' ? String(row.meta.workspaceName ?? '') : '')}</td>
+                  <td>{row.targetEmail ?? (row.targetType === 'tenant' ? String(row.meta.workspaceName ?? '') : typeof row.meta.name === 'string' ? row.meta.name : '')}</td>
                   <td>{detailsText(row, lang)}</td>
                 </tr>
               ))}
@@ -100,6 +100,10 @@ export function detailsText(row: Pick<AdminAuditDto, 'action' | 'meta'>, lang: L
       return m.memberRole === 'sv' ? t(lang, 'tenancy.role.sv') : t(lang, `tenancy.access.${m.access === 'viewer' ? 'viewer' : 'editor'}` as TranslationKey);
     case 'owner.transferred':
       return `${String(m.from ?? '')} → ${String(m.to ?? '')}`;
+    case 'member.role_changed':
+      return `${t(lang, m.from === 'sv' ? 'tenancy.role.sv' : 'tenancy.role.tester')} → ${t(lang, m.to === 'sv' ? 'tenancy.role.sv' : 'tenancy.role.tester')}`;
+    case 'member.created':
+      return t(lang, m.memberRole === 'sv' ? 'tenancy.role.sv' : 'tenancy.role.tester');
     case 'user.access_changed':
       return `${t(lang, `tenancy.access.${m.from === 'viewer' ? 'viewer' : 'editor'}` as TranslationKey)} → ${t(lang, `tenancy.access.${m.to === 'viewer' ? 'viewer' : 'editor'}` as TranslationKey)}`;
     case 'storage.migration_uploaded':

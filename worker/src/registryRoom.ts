@@ -127,6 +127,16 @@ export class RegistryRoom extends DurableObject<Env> {
     return mapReg(this.store.updateUser({ ...input, now: this.now() }), (u) => this.dto(u));
   }
 
+  /** Stage 8D: SV <-> Tester. The Owner SV and the caller themselves are protected; the caller then closes the person's connections. */
+  async changeRole(input: { tenantId: string; userId: string; role: 'admin' | 'user'; actor: AuditActor }): Promise<Reg<UserDto>> {
+    return mapReg(this.store.changeRole({ ...input, now: this.now() }), (u) => this.dto(u));
+  }
+
+  /** Stage 8D: a Team Member event of the workspace for the administrative trail (actor from the Worker's verified principal). */
+  async recordMemberEvent(input: { tenantId: string; action: Extract<AuditAction, `member.${string}`>; actor: AuditActor; userId?: string | null; meta?: Record<string, string | number | boolean | null> }): Promise<void> {
+    this.store.recordMemberEvent({ ...input, now: this.now() });
+  }
+
   /** The Owner SV hands ownership to another enabled SV of the same workspace (one atomic statement). */
   async transferOwnership(input: { tenantId: string; actor: AuditActor; toUserId: string }): Promise<Reg<{ owner: UserDto; previous: UserDto }>> {
     return mapReg(this.store.transferOwnership({ ...input, now: this.now() }), (v) => ({ owner: this.dto(v.owner), previous: this.dto(v.previous) }));

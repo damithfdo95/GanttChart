@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { readStash } from '../lib/sync/device';
 import { downloadTextFile } from '../lib/export/download';
 import { useSharedSync } from '../app/shared-sync';
@@ -16,6 +17,7 @@ const STATUS: Record<Status, { key: TranslationKey; symbol: string; tone: string
   'access-revoked': { key: 'shared.status.revoked', symbol: '⚠', tone: 'error' },
   'storage-moved': { key: 'shared.status.moved', symbol: '⚠', tone: 'error' },
   'tenant-deleted': { key: 'shared.status.deleted', symbol: '⚠', tone: 'error' },
+  'role-changed': { key: 'shared.status.roleChanged', symbol: '⚠', tone: 'error' },
   error: { key: 'shared.status.error', symbol: '⚠', tone: 'error' },
   stopped: { key: 'shared.status.stopped', symbol: '–', tone: 'saving' },
 };
@@ -47,6 +49,15 @@ export function SyncBanners() {
   const shared = useSharedSync();
   const { state } = useAppStateCtx();
   const lang = state.language;
+  // A role change ends the connection on purpose; with nothing waiting to be sent the page simply reloads into the new role.
+  const roleChanged = shared.sync?.status === 'role-changed';
+  const waiting = shared.sync?.pending ?? 0;
+  useEffect(() => {
+    if (!roleChanged || waiting > 0) return;
+    const id = window.setTimeout(() => window.location.reload(), 1500);
+    return () => window.clearTimeout(id);
+  }, [roleChanged, waiting]);
+
   if (!shared.enabled) return null;
   const status = shared.sync?.status;
 
@@ -79,6 +90,19 @@ export function SyncBanners() {
           <div className="app-banner-body">
             <strong>{t(lang, status === 'access-revoked' ? 'shared.banner.revokedTitle' : status === 'storage-moved' ? 'shared.banner.movedTitle' : 'shared.banner.deletedTitle')}</strong>
             <span>{t(lang, status === 'access-revoked' ? 'shared.banner.revokedBody' : status === 'storage-moved' ? 'shared.banner.movedBody' : 'shared.banner.deletedBody')}</span>
+          </div>
+          <div className="app-banner-actions">
+            <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>
+              {t(lang, 'shared.banner.reload')}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {status === 'role-changed' ? (
+        <div className="app-banner" role="alert">
+          <div className="app-banner-body">
+            <strong>{t(lang, 'shared.banner.roleChangedTitle')}</strong>
+            <span>{t(lang, 'shared.banner.roleChangedBody')}</span>
           </div>
           <div className="app-banner-actions">
             <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>

@@ -31,11 +31,56 @@ import {
   type ServerMessage,
 } from '../../shared/protocol';
 import { qaCommitError } from '../../shared/qaRules';
+import { memberRoleOf } from '../../shared/members';
 import { SV_ONLY_KINDS } from '../../shared/testerRules';
 import { businessDate } from '../../shared/businessTime';
 import { TM_KINDS, authorizedScopeIds, filterForTester, testerMaySee } from '../../shared/testManagementAccess';
 import { CLOSE_CODES, canonicalRecordsHash, isTenantId, recordsHaveData, summarizeRecords, validateImportRecords } from '../../shared/tenancy';
 import { WorkspaceStore, type CommitResult, type RevisionInfo } from './store';
+
+/** A Team Member profile as the Worker reads it (the fields it needs to decide; never the whole record). */
+export interface MemberInfo {
+  id: string;
+  name: string;
+  email?: string;
+  /** The word stored on the profile ("SV" / "Tester", or an older free-text role). */
+  role: string;
+  active: boolean;
+  userId?: string;
+}
+
+type LinkError = 'member_not_found' | 'member_already_linked' | 'account_already_linked' | 'member_inactive' | 'member_email_mismatch' | 'member_email_taken' | 'archived' | 'failed';
+type LinkResult = { ok: true; memberId: string; created: boolean; assignments: number } | { ok: false; error: LinkError };
+
+function toMemberInfo(id: string, o: Record<string, unknown>): MemberInfo {
+  return {
+    id,
+    name: typeof o.name === 'string' ? o.name : '',
+    ...(typeof o.email === 'string' ? { email: o.email } : {}),
+    role: typeof o.role === 'string' ? o.role : '',
+    active: o.active !== false,
+    ...(typeof o.userId === 'string' && o.userId !== '' ? { userId: o.userId } : {}),
+  };
+}
+
+/**
+ * A Tester receives the roster (names, for showing who did what) but NOT other people's email addresses: the email belongs to the
+ * directory an SV manages. Their own profile keeps its email.
+ */
+function redactMemberEmail<T extends { kind: string; json?: string }>(item: T, userId: string): T {
+  if (item.kind !== 'member' || item.json === undefined) return item;
+  try {
+    const o = JSON.parse(item.json) as Record<string, unknown>;
+    if (o.email === undefined || (userId !== '' && o.userId === userId)) return item;
+    const { email: _email, ...rest } = o;
+    return { ...item, json: JSON.stringify(rest) };
+  } catch {
+    return item;
+  }
+}
+
+/** The parts of a Team Member profile that follow its login account, and so are not undone by restoring an older revision. */
+const ACCOUNT_FIELDS = ['userId', 'email', 'role', 'active', 'endDate', 'removedAt'] as const;
 
 /** Per-connection state that survives hibernation (limit: 16 KB). */
 interface Attachment {
@@ -359,59 +404,271 @@ export class WorkspaceRoom extends DurableObject<Env> {
     return { ok: true, assignment: { id, projectId: input.projectId, userId: input.userId, ...(input.scopeId === undefined ? {} : { scopeId: input.scopeId }) }, revision: result.revision, created: true };
   }
 
-  // ---- RPC: Team Member profiles -------------------------------------------------
-
   /**
-   * Make sure the account has a Team Member profile (the RCS member record that attendance, performance and tickets point
-   * at), linked by the stable account id. The Worker has already created the account in the registry. Idempotent: an
-   * account that already has a profile gets that one back. The id follows the existing USER0001 convention.
+   * Assign a Team Member PROFILE that has no account yet to a project (or one scope of it): the business assignment exists now and
+   * becomes usable by the person automatically when their account is linked (the link stamps the account id onto it). It grants
+   * nothing until then, because execution rights are decided by account id only. Idempotent.
    */
-  async ensureMemberProfile(
+  async assignMember(
     tenantId: string,
-    input: { userId: string; name: string; role: 'SV' | 'Tester'; today: string; actor: string },
-  ): Promise<{ ok: true; memberId: string; created: boolean } | { ok: false; error: 'archived' | 'failed' }> {
+    input: { memberId: string; projectId: string; scopeId?: string; today: string; actor: string },
+  ): Promise<{ ok: true; assignment: { id: string; projectId: string; memberId: string; scopeId?: string }; revision: number; created: boolean } | { ok: false; error: 'member_not_found' | 'member_inactive' | 'member_not_tester' | 'member_linked' | 'project_not_found' | 'scope_not_found' | 'scope_archived' | 'archived' | 'failed' }> {
     this.assertTenant(tenantId);
     if (this.frozen) return { ok: false, error: 'archived' };
-    const members = this.store.recordsOfKind('member');
+    const member = this.memberRows().find((m) => m.id === input.memberId);
+    if (member === undefined) return { ok: false, error: 'member_not_found' };
+    if (member.o.active === false) return { ok: false, error: 'member_inactive' };
+    if (memberRoleOf(member.o.role) !== 'tester') return { ok: false, error: 'member_not_tester' };
+    if (typeof member.o.userId === 'string' && member.o.userId !== '') return { ok: false, error: 'member_linked' };
+    if (this.store.findProjectByStableId(input.projectId) === null) return { ok: false, error: 'project_not_found' };
+    if (input.scopeId !== undefined) {
+      const scope = this.store.recordsOfKind('scope').map((r) => JSON.parse(r.json) as { id?: string; projectId?: string; status?: string }).find((x) => x.id === input.scopeId);
+      if (scope === undefined || scope.projectId !== input.projectId) return { ok: false, error: 'scope_not_found' };
+      if (scope.status === 'archived') return { ok: false, error: 'scope_archived' };
+    }
+    const existing = this.store
+      .recordsOfKind('assignment')
+      .map((r) => ({ id: r.id, ...(JSON.parse(r.json) as { projectId?: string; memberId?: string; userId?: string; scopeId?: string; active?: boolean; endDate?: string }) }))
+      .find((a) => a.projectId === input.projectId && a.memberId === input.memberId && a.userId === undefined && (a.scopeId ?? null) === (input.scopeId ?? null) && a.active === true && (a.endDate === undefined || a.endDate === '' || a.endDate >= input.today));
+    const scopePart = input.scopeId === undefined ? {} : { scopeId: input.scopeId };
+    if (existing !== undefined) return { ok: true, assignment: { id: existing.id, projectId: input.projectId, memberId: input.memberId, ...scopePart }, revision: this.store.revision(), created: false };
+    const id = crypto.randomUUID();
+    const json = JSON.stringify({ id, projectId: input.projectId, memberId: input.memberId, testerName: typeof member.o.name === 'string' ? member.o.name : '', startDate: input.today, active: true, ...scopePart });
+    if (!this.commitServerChange('assign-member', [{ kind: 'assignment', id, json }], [], input.actor)) return { ok: false, error: 'failed' };
+    return { ok: true, assignment: { id, projectId: input.projectId, memberId: input.memberId, ...scopePart }, revision: this.store.revision(), created: true };
+  }
+
+  // ---- RPC: Team Member profiles -------------------------------------------------
+
+  /** Every profile with its parsed content (the roster records of this workspace). */
+  private memberRows(): Array<{ id: string; o: Record<string, unknown> }> {
+    const out: Array<{ id: string; o: Record<string, unknown> }> = [];
+    for (const m of this.store.recordsOfKind('member')) {
+      try {
+        const o: unknown = JSON.parse(m.json);
+        if (typeof o === 'object' && o !== null && !Array.isArray(o)) out.push({ id: m.id, o: o as Record<string, unknown> });
+      } catch {
+        /* an unreadable record is not a profile */
+      }
+    }
+    return out;
+  }
+
+  /** The next profile id, following the existing USER0001 convention (internal; never shown). */
+  private nextMemberId(): string {
     let max = 0;
-    for (const m of members) {
-      const parsed = JSON.parse(m.json) as { userId?: string };
-      if (parsed.userId === input.userId) return { ok: true, memberId: m.id, created: false };
+    for (const m of this.store.recordsOfKind('member')) {
       const n = /^USER(\d+)$/.exec(m.id);
       if (n !== null) max = Math.max(max, Number(n[1]));
     }
-    const id = `USER${String(max + 1).padStart(4, '0')}`;
-    const json = JSON.stringify({ id, name: input.name, team: 'RCS', role: input.role, startDate: input.today, active: true, userId: input.userId });
-    const committed = this.commitServerChange('member-profile', 'member', [{ kind: 'member', id, json }], input.actor);
-    return committed ? { ok: true, memberId: id, created: true } : { ok: false, error: 'failed' };
+    return `USER${String(max + 1).padStart(4, '0')}`;
+  }
+
+  /** One profile of this workspace as the Worker needs it, or null (another workspace's id is simply unknown here). */
+  async readMember(tenantId: string, memberId: string): Promise<MemberInfo | null> {
+    this.assertTenant(tenantId);
+    const row = this.memberRows().find((m) => m.id === memberId);
+    return row === undefined ? null : toMemberInfo(row.id, row.o);
+  }
+
+  /** Every profile, for the Worker's reconciliation checks (for example which unlinked profile carries an email). */
+  async listMembers(tenantId: string): Promise<MemberInfo[]> {
+    this.assertTenant(tenantId);
+    return this.memberRows().map((m) => toMemberInfo(m.id, m.o));
   }
 
   /**
-   * Link an existing roster-only member (older data, no account) to an account of this workspace. The Worker has checked
-   * the account; here the member must exist, must not already be linked, and the account must not already have a profile.
+   * Create a Team Member PROFILE (no account): a person of this workspace who can be chosen in dropdowns, assigned and reported on.
+   * The email, when given, is normalised by the Worker and must be unique among this workspace's profiles. Display names are never
+   * compared: two people may share one.
+   */
+  async createMemberProfile(
+    tenantId: string,
+    input: { name: string; email?: string; role: 'SV' | 'Tester'; team?: string; today: string; actor: string },
+  ): Promise<{ ok: true; memberId: string } | { ok: false; error: 'member_email_taken' | 'archived' | 'failed' }> {
+    this.assertTenant(tenantId);
+    if (this.frozen) return { ok: false, error: 'archived' };
+    const rows = this.memberRows();
+    if (input.email !== undefined && rows.some((m) => m.o.email === input.email)) return { ok: false, error: 'member_email_taken' };
+    const id = this.nextMemberId();
+    const json = JSON.stringify({ id, name: input.name, team: input.team ?? 'RCS', role: input.role, startDate: input.today, active: true, ...(input.email === undefined ? {} : { email: input.email }) });
+    return this.commitServerChange('member-create', [{ kind: 'member', id, json }], [], input.actor) ? { ok: true, memberId: id } : { ok: false, error: 'failed' };
+  }
+
+  /**
+   * A profile for an ACCOUNT the Worker has just created. Idempotent and never guesses:
+   *  - the account already has a profile: that one is returned;
+   *  - otherwise an UNLINKED, active profile with the same normalised email is linked (the person already existed in the directory);
+   *  - otherwise a new profile is created.
+   * A profile found by email that is removed, or already linked to someone else, is reported instead of being touched.
+   */
+  async ensureMemberProfile(
+    tenantId: string,
+    input: { userId: string; name: string; email?: string; role: 'SV' | 'Tester'; today: string; actor: string },
+  ): Promise<{ ok: true; memberId: string; created: boolean; linked: boolean } | { ok: false; error: 'archived' | 'failed' | 'member_removed' | 'member_already_linked' }> {
+    this.assertTenant(tenantId);
+    if (this.frozen) return { ok: false, error: 'archived' };
+    const rows = this.memberRows();
+    const own = rows.find((m) => m.o.userId === input.userId);
+    if (own !== undefined) return { ok: true, memberId: own.id, created: false, linked: false };
+    if (input.email !== undefined) {
+      const byEmail = rows.find((m) => m.o.email === input.email);
+      if (byEmail !== undefined) {
+        if (typeof byEmail.o.userId === 'string' && byEmail.o.userId !== '') return { ok: false, error: 'member_already_linked' };
+        if (byEmail.o.active === false) return { ok: false, error: 'member_removed' };
+        const done = this.linkRows(rows, byEmail.id, { userId: input.userId, email: input.email, role: input.role, actor: input.actor });
+        return done.ok ? { ok: true, memberId: byEmail.id, created: false, linked: true } : { ok: false, error: 'failed' };
+      }
+    }
+    const id = this.nextMemberId();
+    const json = JSON.stringify({ id, name: input.name, team: 'RCS', role: input.role, startDate: input.today, active: true, userId: input.userId, ...(input.email === undefined ? {} : { email: input.email }) });
+    return this.commitServerChange('member-profile', [{ kind: 'member', id, json }], [], input.actor) ? { ok: true, memberId: id, created: true, linked: false } : { ok: false, error: 'failed' };
+  }
+
+  /**
+   * Link an existing UNLINKED profile to an account of this workspace (an SV's explicit decision; nothing is guessed from names). The
+   * account's email becomes the profile's email (a profile that already has a DIFFERENT email is refused), the profile takes the
+   * account's real role, and every assignment that already named this person (by profile) becomes usable by the account in the SAME
+   * commit - nothing is duplicated or recreated.
    */
   async linkMember(
     tenantId: string,
-    input: { memberId: string; userId: string; actor: string },
-  ): Promise<{ ok: true; memberId: string; created: boolean } | { ok: false; error: 'member_not_found' | 'member_already_linked' | 'account_already_linked' | 'archived' | 'failed' }> {
+    input: { memberId: string; userId: string; email: string; role: 'SV' | 'Tester'; actor: string },
+  ): Promise<LinkResult> {
     this.assertTenant(tenantId);
     if (this.frozen) return { ok: false, error: 'archived' };
-    const members = this.store.recordsOfKind('member');
-    const target = members.find((m) => m.id === input.memberId);
+    return this.linkRows(this.memberRows(), input.memberId, input);
+  }
+
+  private linkRows(rows: Array<{ id: string; o: Record<string, unknown> }>, memberId: string, input: { userId: string; email: string; role: 'SV' | 'Tester'; actor: string }): LinkResult {
+    const target = rows.find((m) => m.id === memberId);
     if (target === undefined) return { ok: false, error: 'member_not_found' };
-    const parsed = JSON.parse(target.json) as Record<string, unknown>;
-    if (parsed.userId === input.userId) return { ok: true, memberId: target.id, created: false };
-    if (parsed.userId !== undefined) return { ok: false, error: 'member_already_linked' };
-    if (members.some((m) => (JSON.parse(m.json) as { userId?: string }).userId === input.userId)) return { ok: false, error: 'account_already_linked' };
-    const json = JSON.stringify({ ...parsed, userId: input.userId });
-    return this.commitServerChange('member-link', 'member', [{ kind: 'member', id: target.id, json }], input.actor) ? { ok: true, memberId: target.id, created: true } : { ok: false, error: 'failed' };
+    if (target.o.userId === input.userId) return { ok: true, memberId, created: false, assignments: 0 };
+    if (typeof target.o.userId === 'string' && target.o.userId !== '') return { ok: false, error: 'member_already_linked' };
+    if (rows.some((m) => m.o.userId === input.userId)) return { ok: false, error: 'account_already_linked' };
+    if (target.o.active === false) return { ok: false, error: 'member_inactive' };
+    if (typeof target.o.email === 'string' && target.o.email !== input.email) return { ok: false, error: 'member_email_mismatch' };
+    if (rows.some((m) => m.id !== memberId && m.o.email === input.email)) return { ok: false, error: 'member_email_taken' };
+    const puts: RecordPut[] = [{ kind: 'member', id: memberId, json: JSON.stringify({ ...target.o, userId: input.userId, email: input.email, role: input.role }) }];
+    // Assignments made for this PROFILE before it had an account now belong to the account, by stamping the account id onto them.
+    let stamped = 0;
+    for (const r of this.store.recordsOfKind('assignment')) {
+      let a: Record<string, unknown>;
+      try {
+        a = JSON.parse(r.json) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      if (a.memberId === memberId && (a.userId === undefined || a.userId === '')) {
+        puts.push({ kind: 'assignment', id: r.id, json: JSON.stringify({ ...a, userId: input.userId }) });
+        stamped += 1;
+      }
+    }
+    return this.commitServerChange('member-link', puts, [], input.actor) ? { ok: true, memberId, created: true, assignments: stamped } : { ok: false, error: 'failed' };
+  }
+
+  /** Change the intended / account role word on a profile (the account side was already changed by the Worker for a linked profile). */
+  async setMemberRole(tenantId: string, input: { memberId: string; role: 'SV' | 'Tester'; actor: string }): Promise<{ ok: true; changed: boolean } | { ok: false; error: 'member_not_found' | 'archived' | 'failed' }> {
+    this.assertTenant(tenantId);
+    if (this.frozen) return { ok: false, error: 'archived' };
+    const row = this.memberRows().find((m) => m.id === input.memberId);
+    if (row === undefined) return { ok: false, error: 'member_not_found' };
+    if (row.o.role === input.role) return { ok: true, changed: false };
+    return this.commitServerChange('member-role', [{ kind: 'member', id: row.id, json: JSON.stringify({ ...row.o, role: input.role }) }], [], input.actor) ? { ok: true, changed: true } : { ok: false, error: 'failed' };
+  }
+
+  /**
+   * Remove a profile from active use (never a deletion: attendance, tickets, performance, assignments and results keep pointing at it,
+   * so history still shows the person). Reactivating restores the same identity. The account, if any, is handled by the Worker.
+   */
+  async setMemberActive(tenantId: string, input: { memberId: string; active: boolean; today: string; actor: string }): Promise<{ ok: true; changed: boolean } | { ok: false; error: 'member_not_found' | 'archived' | 'failed' }> {
+    this.assertTenant(tenantId);
+    if (this.frozen) return { ok: false, error: 'archived' };
+    const row = this.memberRows().find((m) => m.id === input.memberId);
+    if (row === undefined) return { ok: false, error: 'member_not_found' };
+    if ((row.o.active !== false) === input.active) return { ok: true, changed: false };
+    const next: Record<string, unknown> = { ...row.o };
+    if (input.active) {
+      next.active = true;
+      delete next.endDate;
+      delete next.removedAt;
+    } else {
+      next.active = false;
+      next.removedAt = new Date().toISOString();
+      const started = typeof next.startDate === 'string' ? next.startDate : input.today;
+      next.endDate = input.today < started ? started : input.today;
+    }
+    return this.commitServerChange(input.active ? 'member-reactivate' : 'member-remove', [{ kind: 'member', id: row.id, json: JSON.stringify(next) }], [], input.actor) ? { ok: true, changed: true } : { ok: false, error: 'failed' };
+  }
+
+  /**
+   * Edit what an SV may change about a profile through the API (so it lands in the administrative trail): the display name, the team
+   * and - for a profile with NO account - the email. A name change keeps the old name in the profile's name history, so older records
+   * still resolve to the same person.
+   */
+  async editMemberProfile(
+    tenantId: string,
+    input: { memberId: string; name?: string; team?: string; email?: string | null; startDate?: string; endDate?: string | null; nameHistory?: Array<{ name: string; fromDate?: string; toDate?: string }>; today: string; actor: string },
+  ): Promise<{ ok: true; changed: boolean; fields: string[] } | { ok: false; error: 'member_not_found' | 'member_email_taken' | 'member_email_locked' | 'archived' | 'failed' }> {
+    this.assertTenant(tenantId);
+    if (this.frozen) return { ok: false, error: 'archived' };
+    const rows = this.memberRows();
+    const row = rows.find((m) => m.id === input.memberId);
+    if (row === undefined) return { ok: false, error: 'member_not_found' };
+    const linked = typeof row.o.userId === 'string' && row.o.userId !== '';
+    const next: Record<string, unknown> = { ...row.o };
+    const fields: string[] = [];
+    if (input.name !== undefined && input.name !== row.o.name) {
+      // An explicit history (the profile form sends one) is the SV's own; otherwise the old name is kept so older records still resolve.
+      const history = Array.isArray(row.o.nameHistory) ? [...(row.o.nameHistory as unknown[])] : [];
+      if (input.nameHistory === undefined && typeof row.o.name === 'string' && row.o.name !== '') history.push({ name: row.o.name, toDate: input.today });
+      next.name = input.name;
+      next.nameHistory = history;
+      fields.push('name');
+    }
+    if (input.nameHistory !== undefined && JSON.stringify(input.nameHistory) !== JSON.stringify(row.o.nameHistory ?? [])) {
+      if (input.nameHistory.length === 0) delete next.nameHistory;
+      else next.nameHistory = input.nameHistory;
+      fields.push('nameHistory');
+    }
+    if (input.startDate !== undefined && input.startDate !== row.o.startDate) {
+      next.startDate = input.startDate;
+      fields.push('startDate');
+    }
+    if (input.endDate !== undefined && (input.endDate ?? undefined) !== row.o.endDate) {
+      if (input.endDate === null) delete next.endDate;
+      else next.endDate = input.endDate;
+      fields.push('endDate');
+    }
+    if (input.team !== undefined && input.team !== row.o.team) {
+      next.team = input.team;
+      fields.push('team');
+    }
+    if (input.email !== undefined && (input.email ?? null) !== (row.o.email ?? null)) {
+      if (linked) return { ok: false, error: 'member_email_locked' };
+      if (input.email !== null && rows.some((m) => m.id !== row.id && m.o.email === input.email)) return { ok: false, error: 'member_email_taken' };
+      if (input.email === null) delete next.email;
+      else next.email = input.email;
+      fields.push('email');
+    }
+    if (fields.length === 0) return { ok: true, changed: false, fields };
+    return this.commitServerChange('member-edit', [{ kind: 'member', id: row.id, json: JSON.stringify(next) }], [], input.actor) ? { ok: true, changed: true, fields } : { ok: false, error: 'failed' };
+  }
+
+  /** Undo a profile created moments ago in the same request (the account meant to go with it could not be created). A linked profile is never deleted. */
+  async discardMemberProfile(tenantId: string, memberId: string, actor: string): Promise<boolean> {
+    this.assertTenant(tenantId);
+    const row = this.memberRows().find((m) => m.id === memberId);
+    if (row === undefined) return true;
+    if (typeof row.o.userId === 'string' && row.o.userId !== '') return false;
+    return this.commitServerChange('member-discard', [], [{ kind: 'member', id: memberId }], actor);
   }
 
   /** One server-originated revision (no client rules: the caller has already validated), pushed live to everyone connected. */
-  private commitServerChange(reason: string, _what: string, puts: RecordPut[], actor: string): boolean {
+  private commitServerChange(reason: string, puts: RecordPut[], deletes: Array<{ kind: RecordPut['kind']; id: string }>, actor: string): boolean {
     let result: CommitResult;
     try {
-      result = this.store.commit({ commitId: `${reason}-${crypto.randomUUID()}`, baseRevision: this.store.revision(), puts, deletes: [], actor, reason, now: new Date().toISOString() });
+      result = this.store.commit({ commitId: `${reason}-${crypto.randomUUID()}`, baseRevision: this.store.revision(), puts, deletes, actor, reason, now: new Date().toISOString() });
     } catch {
       return false;
     }
@@ -461,10 +718,20 @@ export class WorkspaceRoom extends DurableObject<Env> {
       const repair: RecordPut[] = [];
       for (const { m, parsed } of links) {
         const have = now.get(m.id);
-        if (have === undefined) repair.push(m);
-        else if ((JSON.parse(have.json) as { userId?: unknown }).userId !== parsed.userId) repair.push({ kind: 'member', id: m.id, json: JSON.stringify({ ...(JSON.parse(have.json) as Record<string, unknown>), userId: parsed.userId }) });
+        if (have === undefined) {
+          repair.push(m);
+          continue;
+        }
+        // What belongs to the ACCOUNT (the link, the email, the role, the active state) stays as it is now; the rest of the profile may go back.
+        const restored = JSON.parse(have.json) as Record<string, unknown>;
+        const next: Record<string, unknown> = { ...restored };
+        for (const f of ACCOUNT_FIELDS) {
+          if (parsed[f] === undefined) delete next[f];
+          else next[f] = parsed[f];
+        }
+        if (JSON.stringify(next) !== JSON.stringify(restored)) repair.push({ kind: 'member', id: m.id, json: JSON.stringify(next) });
       }
-      if (repair.length > 0 && this.commitServerChange('restore-keep-links', 'member', repair, actor)) head = this.store.revision();
+      if (repair.length > 0 && this.commitServerChange('restore-keep-links', repair, [], actor)) head = this.store.revision();
     }
     return { ok: true, revision: head };
   }
@@ -648,7 +915,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
   /** What this person may receive: everything for an SV; for anyone else the SV-only kinds and unauthorised Test Management are removed. */
   private visibleFor<T extends { kind: string; id: string; json?: string }>(who: { role: Role; userId: string }, items: T[]): T[] {
     if (who.role === 'admin') return items;
-    const base = visibleTo(who.role, items);
+    const base = visibleTo(who.role, items).map((i) => redactMemberEmail(i, who.userId));
     if (!base.some((i) => TM_KINDS.has(i.kind) || i.kind === 'assignment')) return base;
     return filterForTester(base, this.authorizedFor(who.userId), who.userId);
   }

@@ -3610,3 +3610,47 @@ textarea:focus-visible,
 .tm-row.tm-status-fail th.tm-key { color: var(--bad-fg); }
 .tm-row.tm-status-pass th.tm-key { color: var(--good-fg); }
 .tm-row.tm-status-blocked th.tm-key { color: var(--bad-fg); }
+
+/* ---- Stage 8D: Total Test Cases, Team Members directory ---- */
+.tm-warning { border: 1px solid var(--bad-border); background: var(--bad-bg); color: var(--bad-fg); border-radius: var(--radius); padding: 6px 8px; margin: 6px 0; }
+.tm-total-input { display: inline-grid; gap: 2px; }
+.tm-total-input .input { width: 7em; }
+.tm-totals { margin-bottom: 8px; }
+.dir-more { display: inline-block; vertical-align: top; }
+.dir-more > summary { cursor: pointer; display: inline-block; padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.dir-more-list { display: grid; gap: 4px; justify-items: start; padding: 6px 0; min-width: 14em; }
+
+/* ---- Stage 8D: Team Meeting (Morning / Evening) ---- */
+.gantt-mode { margin: 8px 16px 0; }
+.mt-board { display: grid; gap: 12px; }
+.mt-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between; }
+.mt-date { margin: 0; font-size: 1.2em; font-weight: 600; }
+.mt-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.mt-summary { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.mt-summary dd { font-size: 1.6em; }
+.mt-table td, .mt-table th { vertical-align: middle; }
+.mt-input { width: 6em; }
+.mt-scope-row { background: var(--bg); }
+.mt-scope-name { padding-left: 24px; font-weight: 500; }
+.mt-project { background: none; border: 0; padding: 0; cursor: pointer; color: inherit; text-align: left; }
+.mt-notes { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.mt-note { display: grid; gap: 4px; }
+.mt-note-label { font-weight: 600; }
+.mt-note-text { white-space: pre-wrap; font-size: 1.1em; margin: 0; }
+.mt-detail { border-left: 4px solid var(--accent); }
+.mt-gantt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.mt-gantt-row { display: grid; grid-template-columns: minmax(120px, 18%) minmax(160px, 1fr) minmax(200px, 38%) auto; gap: 8px 12px; align-items: center; width: 100%; text-align: left; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); cursor: pointer; color: inherit; }
+.mt-gantt-name { font-weight: 600; overflow-wrap: anywhere; }
+.mt-gantt-track { position: relative; height: 16px; background: var(--neutral-bg); border-radius: 4px; }
+.mt-gantt-bar { position: absolute; top: 2px; bottom: 2px; background: var(--info-bg); border: 1px solid var(--info-border); border-radius: 3px; overflow: hidden; }
+.mt-gantt-fill { display: block; height: 100%; background: var(--info-border); }
+.mt-gantt-today { position: absolute; top: -2px; bottom: -2px; width: 0; border-left: 2px dashed var(--bad-border); }
+.mt-gantt-todaykey { display: inline-block; width: 0; height: 12px; border-left: 2px dashed var(--bad-border); vertical-align: middle; }
+.mt-gantt-facts { font-size: 0.9em; }
+@media (max-width: 900px) { .mt-gantt-row { grid-template-columns: 1fr; } }
+/* Presenting: the meeting fills the screen. The application navigation and the planning toggle step aside. */
+body.mt-presenting .app-nav, body.mt-presenting .gantt-mode, body.mt-presenting .app-banner { display: none; }
+.mt-present { font-size: 1.15em; }
+.mt-present .mt-summary dd { font-size: 2.2em; }
+.mt-present .mt-table { font-size: 1.1em; }
+.tm-warning-line { display: block; }

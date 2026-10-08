@@ -1,3 +1,5 @@
+import { selectableMembers } from '../../domain/teamMembers';
+import { businessDate } from '../../../shared/businessTime';
 import type { BugSeverity, BugStatus, BugTicket, Language, RcsMember } from '../../types';
 import { BUG_SEVERITIES, BUG_STATUSES } from '../../types';
 import { t, type TranslationKey } from '../../i18n';
@@ -95,10 +97,8 @@ interface TicketFormProps {
  * never forced into the member master and never falsely attributed.
  */
 export function TicketForm({ lang, values, errors, memberNames, members = [], reporterLocked = false, submitLabel, disabled = false, onChange, onSubmit, onCancel }: TicketFormProps) {
-  const selectableMembers = [...members].sort((a, b) => {
-    if (a.active !== b.active) return a.active ? -1 : 1; // active first
-    return a.id.localeCompare(b.id);
-  });
+  // A removed person is not offered for a new ticket, but the one already on this ticket stays selectable.
+  const selectable = selectableMembers(members, { today: businessDate(), keep: [values.reporterMemberId] });
   const externalReporter = values.reporterMemberId === '';
   return (
     <form
@@ -161,7 +161,7 @@ export function TicketForm({ lang, values, errors, memberNames, members = [], re
           }}
         >
           <option value="">{t(lang, 'tickets.reporterExternal')}</option>
-          {selectableMembers.map((member) => (
+          {selectable.map((member) => (
             <option key={member.id} value={member.id}>
               {member.name}
               {member.active ? '' : ` (${t(lang, 'members.inactive')})`}

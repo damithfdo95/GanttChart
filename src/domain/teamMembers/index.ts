@@ -1,6 +1,8 @@
 import type { UserDto } from '../../../shared/tenancy';
 import type { RcsMember } from '../../types';
 
+export * from './directory';
+
 /**
  * Team Members: one person = one registry account (who they are and may do) + one roster profile (what the QA data refers
  * to). The two are linked by the account's stable id, set by the server. Nothing here guesses a link from names or emails;

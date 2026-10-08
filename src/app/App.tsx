@@ -219,6 +219,7 @@ function Shell() {
   const [screen, setScreen] = useState<Screen>('dashboard');
   const [overallFocus, setOverallFocus] = useState<OverallFocus>({});
   const [ganttFocusProjectId, setGanttFocusProjectId] = useState<string | null>(null);
+  const [meetingIntent, setMeetingIntent] = useState<'morning' | 'evening' | null>(null);
 
   // Document language/title follow the UI language on every screen (not
   // just the Dashboard) so screen readers and browser history stay correct.
@@ -231,6 +232,12 @@ function Shell() {
   const openOverall = (focus: OverallFocus): void => {
     setOverallFocus(focus);
     setScreen('overall');
+  };
+
+  const openMeeting = (session: 'morning' | 'evening'): void => {
+    setOverallFocus({});
+    setMeetingIntent(session);
+    setScreen('gantt');
   };
 
   const openGantt = (projectId: string): void => {
@@ -265,7 +272,7 @@ function Shell() {
       <StorageFallbackBanner />
       <AutoBackupBanner />
       {screen === 'dashboard' ? (
-        <Dashboard onOpenOverall={openOverall} />
+        <Dashboard onOpenOverall={openOverall} onOpenMeeting={openMeeting} />
       ) : screen === 'cycles' ? (
         <CyclesScreen />
       ) : screen === 'testManagement' ? (
@@ -275,7 +282,7 @@ function Shell() {
       ) : screen === 'overall' ? (
         <Overall focus={overallFocus} onOpenGantt={openGantt} onProjectCreated={() => setScreen('dashboard')} />
       ) : screen === 'gantt' ? (
-        <Gantt focusProjectId={ganttFocusProjectId} onFocusHandled={() => setGanttFocusProjectId(null)} />
+        <Gantt focusProjectId={ganttFocusProjectId} onFocusHandled={() => setGanttFocusProjectId(null)} meeting={meetingIntent} onMeetingHandled={() => setMeetingIntent(null)} />
       ) : screen === 'dailyReport' ? (
         <DailyReport />
       ) : screen === 'tickets' ? (

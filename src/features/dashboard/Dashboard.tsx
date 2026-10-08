@@ -64,6 +64,7 @@ import { WorkspaceEmptyNotice } from './WorkspaceEmptyNotice';
 import { ManagerPanel } from './ManagerPanel';
 import { toolNameOf } from '../../domain/branding';
 import { ProjectControlCenter } from './ProjectControlCenter';
+import { derivedTotalFor } from '../../domain/testManagement/totals';
 import { MultiDayTimeline } from '../../components/MultiDayTimeline';
 import { formatDate, formatDateDisplay, parseDate, todayEpochDays } from '../../lib/dates/dates';
 import { buildDayTimeline, getActiveProjects, portfolioSummary, type OverallFocus } from '../../domain/projects';
@@ -91,7 +92,7 @@ const STATUS_KEY: Record<ScheduleStatus, TranslationKey> = {
  * state → engine → UI. Derived values recompute on every input change and
  * on the 30s tick (§14). Portfolio summary cards navigate to Overall.
  */
-export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFocus) => void }) {
+export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (focus: OverallFocus) => void; onOpenMeeting?: (session: 'morning' | 'evening') => void }) {
   const app = useAppStateCtx();
   const { state, updateField, changeStartDate, deleteDailyExecutionEntry } = app;
   const { principal } = useTenant();
@@ -99,6 +100,12 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
   // A Tester sees the Operator section (and enters Today's Execution) only; the manager panels are the SV's.
   const tester = access.isTester;
   const reportsApi = useReportsStateCtx();
+  const totalFromScopes =
+    derivedTotalFor(
+      reportsApi.state.projects.find((p) => p.id === reportsApi.state.activeProjectId),
+      reportsApi.state.scopes ?? [],
+      reportsApi.state.testCases ?? [],
+    ) !== null;
   const now = useNow(30_000);
   // The date loaded in the "Today's Execution" form (editable past days
   // included) — owned here so the Daily Progress panel's per-row Edit
@@ -507,6 +514,17 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
         </div>
       ) : null}
 
+      {onOpenMeeting !== undefined && !tester ? (
+        <div className="dr-button-row dashboard-meeting-actions">
+          <button type="button" className="btn" onClick={() => onOpenMeeting('morning')}>
+            {t(lang, 'mt.open.morning')}
+          </button>
+          <button type="button" className="btn" onClick={() => onOpenMeeting('evening')}>
+            {t(lang, 'mt.open.evening')}
+          </button>
+        </div>
+      ) : null}
+
       {onOpenOverall !== undefined && !tester ? <ManagerPanel lang={lang} /> : null}
       {onOpenOverall !== undefined && !tester ? <ProjectControlCenter lang={lang} /> : null}
 
@@ -523,8 +541,15 @@ export function Dashboard({ onOpenOverall }: { onOpenOverall?: (focus: OverallFo
                 min={0}
                 step={1}
                 value={state.totalCases}
+                readOnly={totalFromScopes}
+                aria-describedby={totalFromScopes ? 'total-from-scopes' : undefined}
                 onChange={(e) => handleNumberChange('totalCases', e.target.value)}
               />
+              {totalFromScopes ? (
+                <span id="total-from-scopes" className="link-help">
+                  {t(lang, 'tm.total.fromScopes')}
+                </span>
+              ) : null}
             </Field>
             <Field label={t(lang, 'fields.currentTesters')} error={errors.currentTesters ? t(lang, errors.currentTesters) : undefined}>
               <input

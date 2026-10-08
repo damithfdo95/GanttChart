@@ -7,6 +7,7 @@ import { formatDate, todayEpochDays } from '../../lib/dates/dates';
 import { withProjectCycle } from '../../domain/cycles';
 import { assignedPeople, isAssignmentCurrent, projectMetrics, projectRiskSignals, type RiskContext } from '../../domain/qaMetrics';
 import { MetricsGrid, RiskBadge, RiskList, useIsQaAdmin, useTesters } from '../cycles/parts';
+import { personOptionText, personOptions, selectableMembers } from '../../domain/teamMembers';
 import type { Language } from '../../types';
 
 const ASSIGN_ERRORS = new Set(['tester_disabled', 'tester_not_found', 'project_not_found', 'forbidden']);
@@ -39,9 +40,14 @@ export function ProjectControlCenter({ lang }: { lang: Language }) {
   const entries = project.inputs.dailyExecuted ?? [];
   const lastActivity = entries.reduce((max, e) => (e.date > max ? e.date : max), '');
   const tickets = project.inputs.bugTickets?.length ?? 0;
-  const canAssign = isAdmin && principal !== null && principal.sharedWorkspace && api !== null && testers !== null;
-  const assignedUserIds = new Set(assignments.filter((a) => a.projectId === project.projectId && isAssignmentCurrent(a, today)).map((a) => a.userId));
-  const available = (testers ?? []).filter((x) => x.status === 'active' && !assignedUserIds.has(x.id));
+  const canAssign = isAdmin && principal !== null && principal.sharedWorkspace && api !== null;
+  // Every active Tester Team Member can be picked, with or without a login; the label says which (a login is needed to sign in and record).
+  const here = assignments.filter((a) => a.projectId === project.projectId && isAssignmentCurrent(a, today));
+  const assignedUserIds = new Set(here.map((a) => a.userId).filter((x): x is string => x !== undefined));
+  const assignedMemberIds = new Set(here.map((a) => a.memberId).filter((x): x is string => x !== undefined));
+  const available = personOptions(lang, selectableMembers(members, { role: 'tester', today }), today).filter(
+    (x) => !assignedMemberIds.has(x.memberId) && (x.userId === null || !assignedUserIds.has(x.userId)),
+  );
 
   const moveCycle = (target: string): void => {
     const result = withProjectCycle(project, target === '' ? null : target, cycles, new Date().toISOString());
@@ -54,7 +60,7 @@ export function ProjectControlCenter({ lang }: { lang: Language }) {
     setBusy(true);
     setMessage(null);
     try {
-      await api.assignTester(project.projectId, pick);
+      await api.assignMember(project.projectId, pick);
       setPick('');
       setMessage({ kind: 'ok', text: t(lang, 'cc.assigned') });
     } catch (e) {
@@ -142,9 +148,8 @@ export function ProjectControlCenter({ lang }: { lang: Language }) {
             <select className="input" value={pick} onChange={(e) => setPick(e.target.value)}>
               <option value="">{t(lang, 'cc.assignPlaceholder')}</option>
               {available.map((x) => (
-                <option key={x.id} value={x.id}>
-                  {x.displayName ?? x.email}
-                  {x.displayName === null ? '' : ` (${x.email})`}
+                <option key={x.memberId} value={x.memberId}>
+                  {personOptionText(lang, x)}
                 </option>
               ))}
             </select>

@@ -720,3 +720,12 @@ and every case has one current **result** (status, retest, question, memo, devic
 assignments; Testers see **My Testing** with the scopes they are assigned to. Also in this stage: the old product label is gone (the fallback name is
 "QA Management"; a workspace's Tool Name replaces it), nothing creates default people any more, and no internal id is ever shown as a person's name.
 Details, formulas and permissions: [docs/QA_EXECUTION.md](docs/QA_EXECUTION.md) §12 to §22.
+
+## Stage 8D: authoritative Total Test Cases, Team Members directory, team meeting
+
+* **Total Test Cases is typed, not counted.** An SV types it per scope (the project Total is the sum; a project without scope Totals keeps its own). Registered detailed cases are optional, counted separately, and
+  never change the Total; if more are registered than the Total allows, a warning is shown and nothing is changed.
+* **Team Members is the one people directory.** Profiles exist with or without a login; every dropdown draws from it (active people only); logins are created or linked later without duplicating anyone; SVs can change roles
+  (SV or Tester), remove people (history is kept, the login is disabled in the same action) and reactivate them. The Owner SV is protected.
+* **Team meeting.** Gantt -> Meeting View gives the SV a whole-team Morning view (today's plan) and Evening view (plan against actual, then tomorrow's plan, which becomes the next Morning), with a presentation mode.
+  Details: [docs/QA_EXECUTION.md](docs/QA_EXECUTION.md) section 13 and [docs/ADMINISTRATION.md](docs/ADMINISTRATION.md) section 11.

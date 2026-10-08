@@ -730,3 +730,21 @@ See [ADMINISTRATION.md](ADMINISTRATION.md) §9 for the permission matrix.
 * **Cost.** Broadcast adds a read of the (small) assignment and scope tables per distinct Tester per change; results are one record each, created lazily.
 * **Assignments.** `assignTester` takes an optional `scopeId` and validates it against the project and its status.
 * Tests: `worker/test/test-management.test.ts`, `worker/test/tm-access.test.ts`, `worker/test/workers/stage8c-test-management.test.ts`, `src/test/stage8c*.test.ts`.
+
+## 19. Stage 8D: Total Test Cases, Team Members as the directory, the team meeting
+
+* **Record kinds.** Two new ones in the existing tenant `WorkspaceRoom`: `dailyPlan` and `meetingNote` (SV-only: `SV_ONLY_KINDS`, so they are never sent to a Tester). `scope` gains an optional
+  `totalTestCases`; `member` gains optional `email` and `removedAt`; `project` gains optional `ownerMemberId`. No new Durable Object class, **no migration tag**, no registry schema change.
+* **Commit rules** (`shared/meeting.ts`, `shared/members.ts`, `shared/qaRules.ts`): plan and note shapes and derived ids, the project and scope must exist in the tenant, SV only; unique normalised
+  profile emails; a linked profile's email, role and active state cannot be changed by a commit (API only), a linked profile cannot be deleted, a profile's link is still set by the server only; a project
+  owner must be a profile of this workspace.
+* **Endpoints** (all SV, Web, tenant from the principal; a forged tenant is refused before anything is read): `POST /api/tenant/members` (profile, optionally with a login), `PATCH /api/tenant/members/:id`,
+  `POST .../:id/account`, `.../role`, `.../remove`, `.../reactivate`, `POST /api/tenant/members/link|profile`, and `POST /api/tenant/assignments` now accepts `memberId` (a linked member resolves to its account;
+  one without a login gets a business assignment). `POST /api/tenant/users` links an existing profile with the same email instead of duplicating it.
+* **Sessions.** A role change closes the person's sockets with code `4412` (`roleChanged`); the client shows a banner and reloads when nothing is waiting. The Worker resolves the principal from the registry
+  on every request, so the next call is already authorised as the new role. Removal closes with `4403` and the disabled account cannot reconnect.
+* **Read filtering.** `WorkspaceRoom.visibleFor` also removes other people's `email` from `member` records for a Tester (snapshot, catch-up, broadcast, export).
+* **Cross-DO order.** The registry (account) and the workspace (profile) are separate Durable Objects with no shared transaction: the account change comes first (it decides permissions), the profile follows,
+  and a failure between them leaves the safer state (a disabled login, a role that matches the account); every step is idempotent and an SV can repeat it.
+* **Cost.** No new background work, alarm or storage engine. Nothing is written on open; plans are one small record per project/scope/day.
+* Tests: `worker/test/workers/stage8d-members.test.ts`, `worker/test/workers/stage8d-meeting.test.ts`, `worker/test/stage8d-rules.test.ts`, `src/test/stage8d*.test.ts`.

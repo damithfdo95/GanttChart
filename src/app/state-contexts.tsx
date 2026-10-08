@@ -11,6 +11,7 @@ import { useAppState, type AppStateApi } from '../features/dashboard/hooks/useAp
 import { useReportsState, type ReportsStateApi } from './useReportsState';
 import { applyActiveProjectSync, applyActiveProjectSyncRestricted, qaInputsFromAppState } from '../domain/projects';
 import { useTenant } from './tenant-context';
+import { derivedTotalFor, reconcileProjectTotals } from '../domain/testManagement/totals';
 import { normalizeQaInputsForLoad } from '../lib/storage/storage';
 import { consumeCorruptionEvents, type CorruptionEvent } from '../lib/storage/corruption';
 import { persistWorkspaceAsync } from '../lib/storage/db/persistenceBackend';
@@ -280,6 +281,30 @@ function useProjectWriteBack(app: AppStateApi, reports: ReportsStateApi, testerO
 }
 
 /**
+ * Stage 8D: when a project's Total Test Cases comes from its scopes, keep the figure every screen reads (`inputs.totalCases`) equal to
+ * the sum. The ACTIVE project is changed through the editing surface (the write-back then carries it into the record - writing the
+ * record directly would be undone by that write-back); the others are changed in the portfolio. SV/local only: a Tester never
+ * receives every scope, so a Tester must not derive anything.
+ */
+function useScopeTotalSync(app: AppStateApi, reports: ReportsStateApi, enabled: boolean): void {
+  useEffect(() => {
+    if (!enabled) return;
+    const scopes = reports.state.scopes ?? [];
+    if (scopes.length === 0) return;
+    const cases = reports.state.testCases ?? [];
+    const projects = reports.state.projects;
+    const activeId = reports.state.activeProjectId;
+    const active = projects.find((p) => p.id === activeId);
+    const derivedActive = derivedTotalFor(active, scopes, cases);
+    if (derivedActive !== null && app.state.totalCases !== derivedActive) app.updateField('totalCases', derivedActive);
+    const reconciled = reconcileProjectTotals(projects, scopes, cases, new Date().toISOString());
+    if (reconciled === projects) return;
+    const others = reconciled.map((p, i) => (p.id === activeId ? projects[i] : p));
+    if (others.some((p, i) => p !== projects[i])) reports.setProjects(others);
+  }, [app, reports, enabled]);
+}
+
+/**
  * One-time migration: seed the portfolio from the existing single-project data.
  * NOT in shared mode: every fresh browser would seed its own project and the
  * shared portfolio would fill with duplicates. In shared mode the first project
@@ -299,6 +324,7 @@ export function AppProviders({ boot, shared = null, children }: { boot: Persiste
   // A Tester's changes reach the shared project only where a Tester may change it (see shared/testerRules.ts).
   const testerOnly = useTenant().principal?.role === 'user';
   useProjectWriteBack(app, reports, testerOnly);
+  useScopeTotalSync(app, reports, !testerOnly);
   const persistence = useWorkspacePersistence(app, reports, boot);
   const sharedSync = useSharedSyncEngine(app, reports, shared);
   return (
