@@ -59,9 +59,10 @@ export function enginePlannedFor(inputs: QaInputs, date: string): number | null 
 }
 
 /** The plan figure of one project on one date (scope plans win over a project-level plan; neither -> the project's own plan). */
-export function planFor(project: ProjectRecord, date: string, plans: readonly DailyTeamPlan[]): PlanFigure {
+export function planFor(project: ProjectRecord, date: string, plans: readonly DailyTeamPlan[], activeScopeIds?: ReadonlySet<string>): PlanFigure {
   const mine = plans.filter((p) => p.projectId === project.projectId && p.date === date);
-  const scoped = mine.filter((p) => p.scopeId !== undefined);
+  // Plans of an archived or unknown scope are not part of the day (they would otherwise be counted next to the project).
+  const scoped = mine.filter((p) => p.scopeId !== undefined && (activeScopeIds === undefined || activeScopeIds.has(p.scopeId)));
   const chosen = scoped.length > 0 ? scoped : mine.filter((p) => p.scopeId === undefined);
   if (chosen.length > 0) {
     const planned = chosen.reduce((sum, p) => sum + p.plannedCases, 0);
@@ -242,7 +243,8 @@ export function buildMeeting(input: MeetingInputs, notes: readonly MeetingNote[]
     if (!inMeeting(project, today, input.plans)) continue;
     const totals = projectTotals(project, input.scopes, input.testCases);
     const metrics = projectMetrics(project);
-    const todayPlan = planFor(project, today, input.plans);
+    const activeScopeIds = new Set(input.scopes.filter((x) => x.projectId === project.projectId && x.status === 'active').map((x) => x.id));
+    const todayPlan = planFor(project, today, input.plans, activeScopeIds);
     const actual = actualOf(project, today);
     const difference = actual.recorded && todayPlan.target !== null ? actual.completed - todayPlan.target : null;
     const scopes: MeetingScopeRow[] = totals.scopes.map((r) => {
@@ -275,7 +277,7 @@ export function buildMeeting(input: MeetingInputs, notes: readonly MeetingNote[]
       registered: totals.registered,
       metrics,
       today: todayPlan,
-      tomorrow: planFor(project, tomorrow, input.plans),
+      tomorrow: planFor(project, tomorrow, input.plans, activeScopeIds),
       actual,
       difference,
       people,
@@ -303,7 +305,8 @@ export function buildMeeting(input: MeetingInputs, notes: readonly MeetingNote[]
     targetToday,
     unplannedProjects: rows.filter((r) => r.today.planned === null).length,
     actualToday,
-    difference: actualToday - sum((r) => (r.actual.recorded ? (r.today.target ?? 0) : 0)),
+    // Difference = Today's Actual - Today's Plan over the SAME rows as both totals; a project with nothing recorded today counts 0 actual.
+    difference: actualToday - targetToday,
     pass: sum((r) => r.actual.pass),
     fail: sum((r) => r.actual.fail),
     blocked: sum((r) => r.actual.blocked),

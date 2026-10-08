@@ -2221,5 +2221,5 @@
   "mt.gantt.assigned": "Assigned",
   "mt.gantt.due": "Due",
   "mt.gantt.todayMark": "Today",
-  "mt.diffNote": "Difference compares today's actual with the plan for the projects that recorded results today."
+  "mt.diffNote": "Difference = Today's Actual - Today's Plan, over all projects shown. A project with no results recorded today counts as 0 actual."
 }

@@ -82,6 +82,9 @@ describe('the Team Members directory screen', () => {
 describe('the meeting is the SV\'s', () => {
   it('no Tester navigation leads to it; the Gantt toggle and the Dashboard shortcuts are SV-only; a Tester sees a plain note', () => {
     expect(navItems('user').map((i) => i.id)).not.toContain('testManagement');
+    // ... but the Tester keeps their own focused execution screen.
+    expect(navItems('user').map((i) => i.id)).toContain('myTesting');
+    expect(navItems('admin').map((i) => i.id)).not.toContain('myTesting');
     const gantt = raw('../features/gantt/Gantt.tsx');
     expect(gantt).toMatch(/if \(isTester\) return <GanttPlanning/);
     expect(raw('../features/dashboard/Dashboard.tsx')).toMatch(/onOpenMeeting !== undefined && !tester/);

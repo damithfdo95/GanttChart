@@ -180,6 +180,53 @@ describe('Evening: plan against actual', () => {
   });
 });
 
+describe('Difference is Actual minus Plan, everywhere, over one row set', () => {
+  const ecoPlans = [plan('PRJ-001', TODAY, 80, 'eco'), plan('PRJ-001', TODAY, 50, 'htma'), plan('PRJ-002', TODAY, 35)];
+  const scopes = [scope('eco', 'PRJ-001', 134), scope('htma', 'PRJ-001', 90)];
+  const run = (actual1: number, actual2: number | null) =>
+    buildMeeting(base({ projects: [project('PRJ-001', { dailyExecuted: actual1 > 0 ? [entry(TODAY, { pass: actual1 })] : [] }), project('PRJ-002', { dailyExecuted: actual2 === null ? [] : [entry(TODAY, { pass: actual2 })] })], scopes, plans: ecoPlans }), [], true);
+
+  it('Plan 165, Actual 70 is -95 (a project with nothing recorded counts 0, in plan and actual alike)', () => {
+    const v = run(70, null);
+    expect(v.summary).toMatchObject({ targetToday: 165, actualToday: 70, difference: -95 });
+    expect(v.rows[0].difference).toBe(70 - 130); // the project row: its own actual minus its own plan
+    expect(v.rows[1].difference).toBeNull(); // nothing recorded: not a number
+  });
+
+  it('Plan 100 / Actual 100 is 0; Plan 80 / Actual 95 is +15', () => {
+    const p1 = [plan('PRJ-001', TODAY, 100)];
+    const a = buildMeeting(base({ projects: [project('PRJ-001', { dailyExecuted: [entry(TODAY, { pass: 100 })] })], plans: p1 }), [], true);
+    expect([a.summary.difference, a.rows[0].difference]).toEqual([0, 0]);
+    const b = buildMeeting(base({ projects: [project('PRJ-001', { dailyExecuted: [entry(TODAY, { pass: 95 })] })], plans: [plan('PRJ-001', TODAY, 80)] }), [], true);
+    expect([b.summary.difference, b.rows[0].difference]).toEqual([15, 15]);
+  });
+
+  it('never uses Remaining or another metric: the same plan and actual give the same Difference whatever the Total', () => {
+    const mk = (total: number) => buildMeeting(base({ projects: [project('PRJ-001', { totalCases: total, dailyExecuted: [entry(TODAY, { pass: 70 })] })], plans: [plan('PRJ-001', TODAY, 165)] }), [], true).summary.difference;
+    expect([mk(200), mk(5000)]).toEqual([-95, -95]);
+  });
+
+  it('a project with scope plans counts only those; its project-level plan is not added; archived and unknown scopes do not count', () => {
+    const archived = { ...scope('old', 'PRJ-001', 10), status: 'archived' as const };
+    const v = buildMeeting(base({ projects: [project('PRJ-001')], scopes: [...scopes, archived], plans: [plan('PRJ-001', TODAY, 999), plan('PRJ-001', TODAY, 80, 'eco'), plan('PRJ-001', TODAY, 50, 'htma'), plan('PRJ-001', TODAY, 400, 'old'), plan('PRJ-001', TODAY, 400, 'ghost')] }), [], false);
+    expect(v.rows[0].today.planned).toBe(130);
+    expect(v.summary.plannedToday).toBe(130);
+    // with only an archived scope plan, the project-level plan is the fallback
+    const w = buildMeeting(base({ projects: [project('PRJ-001')], scopes: [archived], plans: [plan('PRJ-001', TODAY, 60), plan('PRJ-001', TODAY, 400, 'old')] }), [], false);
+    expect(w.rows[0].today.planned).toBe(60);
+  });
+
+  it('scope rows carry no actuals (no per-scope source): the structure has none to show', () => {
+    const v = run(70, null);
+    expect(Object.keys(v.rows[0].scopes[0]).sort()).toEqual(['people', 'plan', 'registered', 'registeredCompleted', 'scope', 'tomorrow', 'total']);
+  });
+
+  it('tomorrow skips weekends and the national holidays of the built-in Japan calendar; company holidays are not known', () => {
+    expect(nextBusinessDate('2026-10-09')).toBe('2026-10-13'); // Mon 10-12 is Sports Day
+    expect(nextBusinessDate('2026-10-02')).toBe('2026-10-05'); // an ordinary Friday: Monday
+  });
+});
+
 describe('tomorrow becomes the next Morning without being entered twice', () => {
   it('the plan an SV types in the Evening for the next business day is the plan the next Morning reads', () => {
     const eveningPlans = setPlan([], { date: TOMORROW, projectId: 'PRJ-001', plannedCases: 145, mode: 'evening', today: TODAY }, NOW);

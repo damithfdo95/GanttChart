@@ -300,6 +300,20 @@ exist in THIS workspace) and the records are not sent to Testers. They are ordin
 * **Risks** are the existing deterministic rules (overdue, behind plan, due soon with much remaining, blocked, failed, no recent activity, no Tester) plus two the meeting
   can see: "actual below plan" and "no plan set". There is no scoring.
 
+### Meeting arithmetic (verified in Stage 8D.1)
+
+* **Difference = Today's Actual - Today's Plan**, everywhere it appears (Evening summary, project row, schedule bars, detail panel). It is never derived from Remaining or any other metric.
+  Plan 165 / Actual 70 is -95; 100 / 100 is 0; 80 / 95 is +15.
+* **One row set.** The summary Plan, Actual and Difference are sums over the same project rows, so `Difference = Actual total - Plan total` always holds. A project with no results
+  recorded today contributes its plan and 0 actual to the totals (its own row shows "Not recorded" and no Difference). (The first Stage 8D build summed the plan over every project but the
+  difference only over projects that had results, which showed 165 / 70 / -60; that was a defect, fixed.)
+* **Plan of a project on a day.** If the project has scope plans for that day, the project plan is the SUM of the plans of its ACTIVE scopes and the project-level plan is ignored (never
+  both). Plans of archived or unknown scopes are ignored. With no usable scope plan, the project-level plan is used; with none, the project's own daily plan; with none, "not set" (0 in totals).
+* **Actuals exist per project only.** Today's Execution is recorded per project, so Actual, Pass, Fail and Blocked appear on Project rows. Scope rows show plan, Total and people only; no project
+  number is repeated on a scope row, and nothing is allocated across scopes. Per-scope actual aggregation needs its own reliable source and is future work.
+* **"Tomorrow"** is the next business day after today: weekends and the Japanese national holidays computed by the app's built-in calendar (`src/lib/dates/businessDays.ts`, no external service) are
+  skipped. Company-specific holidays and a project's non-working planning rows are NOT known to it; the SV can still prepare any day's plan by hand.
+
 ### Write cost (Cloudflare Free)
 
 Nothing is written when a meeting screen is opened. A plan or total is saved when its field is left or Enter is pressed (one revision, no per-keystroke writes); an unchanged
