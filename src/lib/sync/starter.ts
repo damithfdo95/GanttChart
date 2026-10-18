@@ -3,6 +3,7 @@ import type { Language } from '../../types';
 import { seedInitialProjectRecord } from '../../domain/projects/migrations';
 import { DEMO_STATE, normalizeAppState } from '../storage/storage';
 import { defaultReportsState } from '../storage/reports';
+import { deviceSettings } from '../sync/records';
 
 /**
  * The starter project of a brand-new shared workspace uses FIXED ids. If two
@@ -25,7 +26,7 @@ export function starterWorkspace(language: Language, local: ReportsState, nowIso
       projects: [project],
       activeProjectId: project.id,
       // Per-device settings survive.
-      settings: { ...base.settings, ...(local.settings.autoBackup !== undefined ? { autoBackup: local.settings.autoBackup } : {}) },
+      settings: { ...base.settings, ...deviceSettings(local.settings) },
     },
   };
 }

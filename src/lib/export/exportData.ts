@@ -33,6 +33,7 @@ import {
 import { calculateActivityProgress, DEFAULT_PROGRESS_RULES, percentRatio } from '../reporting/progress';
 import { isAttending } from '../reporting/sections';
 import { projectPlanningStatus, projectDisplayName } from '../../domain/projects';
+import type { TicketAnalysis } from '../../domain/jira';
 import type { XlsxCell, XlsxSheet } from './xlsx';
 import { buildManagementReportRow, riskStatusLabel, type ManagementReportRow } from './management';
 /** Export filters (date range, team, attendance status). */
@@ -596,6 +597,39 @@ export function bugTicketsSheet(
       ticket.status === undefined ? '' : bugStatusLabel(lang, ticket.status),
       ticket.memo ?? '',
       identityStateLabel(lang, ticketIdentityState(ticket, members)),
+    ]),
+  };
+}
+
+/**
+ * JIRA ticket-analysis sheet — one row per analyzed ticket (newest first),
+ * with the reporter resolution reflected via the Member column: the member's
+ * name when the reporter matched a Team Member, '(unmatched)' otherwise.
+ */
+export function ticketAnalysisSheet(a: TicketAnalysis): XlsxSheet {
+  return {
+    name: 'JIRA Ticket Analysis',
+    headers: [
+      'Issue Key',
+      'Summary',
+      'Status',
+      'Status Category',
+      'Type',
+      'Reporter',
+      'Member ID',
+      'Member',
+      'Updated',
+    ],
+    rows: a.tickets.map((ticket) => [
+      ticket.issueKey,
+      ticket.summary,
+      ticket.statusName,
+      ticket.statusCategory,
+      ticket.typeName,
+      ticket.reporterName,
+      ticket.memberId ?? '',
+      ticket.memberName ?? '(unmatched)',
+      ticket.updated ?? '',
     ]),
   };
 }

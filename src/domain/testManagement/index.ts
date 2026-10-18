@@ -21,6 +21,7 @@ import { cleanTotal } from './totals';
 
 export * from '../../../shared/testManagement';
 export { parseBulkCases, type BulkParse, type BulkRow, type BulkRowError } from './bulk';
+export * from './jiraImport';
 export * from './totals';
 
 /**
@@ -441,7 +442,9 @@ export function buildBulkCases(state: Pick<TestManagementState, 'scopes' | 'test
   const reserved: string[] = rows.flatMap((r) => (r.key === undefined ? [] : [r.key]));
   const baseOrder = state.testCases.filter((c) => c.scopeId === scopeId).reduce((m, c) => Math.max(m, c.order), 0);
   for (const [i, row] of rows.entries()) {
-    const made = newTestCase(state, scopeId, { ...(row.key === undefined ? {} : { key: row.key }), title: row.title, priority: row.priority, ...(row.type === undefined ? {} : { type: row.type }), ...(row.expected === undefined ? {} : { expected: row.expected }) }, now, {
+    // JIRA-import rows (see ./jiraImport) carry an extra optional `description`; Excel paste rows never set it.
+    const description = (row as BulkRow & { description?: string }).description;
+    const made = newTestCase(state, scopeId, { ...(row.key === undefined ? {} : { key: row.key }), title: row.title, priority: row.priority, ...(row.type === undefined ? {} : { type: row.type }), ...(row.expected === undefined ? {} : { expected: row.expected }), ...(description === undefined ? {} : { description }) }, now, {
       // keys given by the sheet are reserved up front (so an auto key never takes one), keys already issued in this paste too
       reservedKeys: [...reserved.filter((k) => k !== row.key), ...out.map((c) => c.key)],
       order: baseOrder + (i + 1) * 10,

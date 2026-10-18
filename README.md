@@ -6,7 +6,7 @@ A local-first, offline-capable dashboard that answers one question:
 - Runs 100% locally in the browser — no server, no cloud, no accounts
 - Data is stored locally in the browser database (IndexedDB, `GanttChartDB`), with the pre-V6.6 `localStorage` copy retained as a migration fallback, plus user-exported JSON files
 - Japanese (default) / English UI switch, fully bilingual
-- Zero runtime network requests — works with the network adapter disabled
+- No runtime network requests by default — works with the network adapter disabled. The only exceptions are opt-in: the shared-web sync mode and the JIRA Integration (Settings → JIRA Integration), each active only when an SV configures it
 
 See [docs/DATABASE.md](docs/DATABASE.md) for the local database architecture:
 object stores, the automatic localStorage → IndexedDB migration and how to
@@ -87,6 +87,38 @@ person with no GanttChart account sees "no account" and is never added automatic
 are created only top-down: the configured Super Admin creates Admins, an Admin creates Users
 (both limited to the managed organization domains). There is no public registration.
 
+## JIRA Integration (opt-in)
+
+An SV can connect the app to an Atlassian JIRA instance (Cloud or Data Center) and import
+issues as **Test Cases** (Test Management → Test Cases → Import from JIRA) or as
+**blocking events** (Dashboard → Blocking → Import from JIRA). The feature is off until a
+connection exists.
+
+* **Settings** (Settings → JIRA Integration): **Base URL** (the JIRA root, e.g.
+  `https://your-site.atlassian.net`), **Type** (Auto — detected from the URL host —, Cloud or
+  Data Center), **Email** (Cloud only) and **API token / PAT**, and an optional **Proxy URL**.
+  The **Test Connection** button verifies the setup before any import screen uses it.
+* **Case import**: pick a JQL (prefilled with `project = XXX ORDER BY updated DESC`), fetch,
+  review the preview (case key, JIRA key, title), then confirm. Issues are mapped to Test Cases
+  in the scope selected on the Cases tab: the title comes from the summary, the priority from
+  the JIRA priority, the description from the issue description, and the case `type` carries
+  the ticket reference (`[PROJ-42] Bug`) so re-imports are detected — a JIRA key that is already
+  imported (or appears twice in one batch) is skipped with a count, never duplicated. Nothing is
+  saved until you confirm; the commit uses exactly the same path as Bulk Add.
+* **Blocker import**: issues become blocking events on today's date (editable per row), with a
+  guessed category (Environment / Build / Test Data / Requirement / System Issue / Other), 30
+  minutes by default, and a `[JIRA <key>] <summary>` note. Rows are editable and removable
+  before applying; applying merges into the existing events, and a re-import of the same JIRA
+  key on the same date in the same category is skipped with a count.
+* **Cloud needs a proxy**: JIRA Cloud sends no CORS headers, so a browser cannot call it
+  directly. Cloud integrations therefore need the **Proxy URL** (a small forwarder such as the
+  Cloudflare Worker in this repo) that receives the original JIRA path and forwards it. Data
+  Center works directly (Bearer PAT). The import button is limited to SVs in both places.
+* **Credentials stay local**: the connection (token included) is stored with the local settings
+  in this browser only — never in the shared workspace and never synced. Errors show a
+  per-kind localized hint (CORS → configure the proxy, auth → check the token, rate limit →
+  wait, …); the stable technical message is appended for diagnosis and contains no credential.
+
 Try it locally (needs Node 22; uses the real Workers runtime, no Cloudflare account):
 
 ```powershell
@@ -117,7 +149,9 @@ npm run dev
 ```
 
 Then open the printed local URL (e.g. http://localhost:5173). `npm install` needs
-one-time network access to download packages; the application itself never does.
+one-time network access to download packages; the application itself does not
+connect anywhere unless an SV has configured one of the two opt-in
+integrations (shared-web sync, or JIRA Import in Settings).
 
 ## Production build
 
@@ -270,7 +304,11 @@ Key design points:
   removed.
 - **Export** writes a JSON file via `Blob` + `URL.createObjectURL`
   (`input type="file"` + `FileReader` for import). Files never leave the
-  machine; there is no server, no fetch/XHR anywhere in the codebase.
+  machine. There is no server and no fetch/XHR in the default app; the only
+  network calls in the whole codebase belong to the opt-in JIRA Integration
+  (Settings → JIRA Integration, below) and the optional shared-web sync mode
+  — both inactive until an SV configures them, and neither is involved in
+  exports or backups.
 - **Reset** restores the demo defaults (keeps your language choice). The
   demo data is: 36 total cases, 8 testers, 13:00–17:00, no lunch (both lunch
   fields empty), 4 cases/h/tester, 15 completed / 11 passed — giving 32
@@ -279,6 +317,9 @@ Key design points:
   remaining cases.
 - No telemetry, no analytics, no cookies, no external assets. The system font
   stack includes Japanese fonts (`Meiryo`, `Yu Gothic UI`, `Segoe UI`).
+  The JIRA integration talks only to the configured JIRA instance (or the
+  configured proxy); stored credentials never leave this browser and never
+  travel through any other service.
 
 Exported JSON shape (schema version 2):
 
@@ -697,8 +738,9 @@ The architecture is deliberately wrapper-friendly:
   paths already work from the `file://` protocol.
 - **Tauri:** set `frontendDist` to `../dist` (or run `npm run build` as the
   `beforeBuildCommand`). The webview serves the same local files.
-- Because there are no network calls, packaged builds stay offline with no
-  CSP exceptions beyond local file access.
+- Because the default app makes no network calls, packaged builds stay offline with
+  no CSP exceptions beyond local file access. (The opt-in JIRA integration performs
+  fetches only to the configured JIRA/proxy origin when an SV uses it.)
 
 ## Stage 8A: QA test execution management
 

@@ -21,6 +21,7 @@ import { checkCaseResult, checkScope, checkTestCase } from '../../../shared/test
 import { checkDailyPlan, checkMeetingNote } from '../../../shared/meeting';
 import { checkNotification, checkNotificationAck } from '../../../shared/notifications';
 import { usableBranding } from '../../../shared/branding';
+import type { JiraConnection } from '../../../shared/jira';
 import { DEFAULT_REPORT_TEMPLATES } from '../reporting/template';
 import { DEFAULT_PROGRESS_RULES } from '../reporting/progress';
 import { hasRecoveryPayload, stashCorruptedRaw } from './corruption';
@@ -268,6 +269,23 @@ function isDailyReport(v: unknown): v is DailyReport {  if (typeof v !== 'object
   );
 }
 
+/**
+ * Shape guard for the optional JIRA import connection. Lenient on purpose:
+ * a malformed value must never reject the whole settings object — the loader
+ * self-heals by sanitizing through normalizeReportsState instead.
+ */
+export function isJiraConnection(v: unknown): v is JiraConnection {
+  if (typeof v !== 'object' || v === null) return false;
+  const r = v as Record<string, unknown>;
+  return (
+    typeof r.baseUrl === 'string' &&
+    (r.flavor === undefined || r.flavor === 'auto' || r.flavor === 'cloud' || r.flavor === 'dc') &&
+    (r.email === undefined || typeof r.email === 'string') &&
+    (r.token === undefined || typeof r.token === 'string') &&
+    (r.proxyUrl === undefined || typeof r.proxyUrl === 'string')
+  );
+}
+
 function isReportSettings(v: unknown): v is ReportSettings {
   if (typeof v !== 'object' || v === null) return false;
   const s = v as Record<string, unknown>;
@@ -281,6 +299,11 @@ function isReportSettings(v: unknown): v is ReportSettings {
     typeof s.supervisorName === 'string' &&
     typeof s.projectJiraUrl === 'string' &&
     (s.toolName === undefined || typeof s.toolName === 'string') &&
+    // The JIRA connection is optional and self-healing (like autoBackup): any
+    // object-shaped value passes the guard and is sanitized by
+    // normalizeReportsState; only clearly-corrupt non-objects reject the
+    // settings (so a damaged payload never locks the user out).
+    (s.jira === undefined || (typeof s.jira === 'object' && s.jira !== null)) &&
     typeof templates === 'object' &&
     templates !== null &&
     typeof templates.en === 'string' &&
@@ -309,6 +332,29 @@ function normalizeAutoBackupSettings(v: unknown): AutoBackupSettings {
     folderName: s.folderName === null || typeof s.folderName === 'undefined' ? null : typeof s.folderName === 'string' ? s.folderName : null,
     retentionDays: retention,
   };
+}
+
+/**
+ * Sanitize the optional JIRA connection (self-healing, same rule as
+ * autoBackup): URLs are trimmed, empty strings are dropped, and the whole
+ * connection is discarded when the base URL is missing or not http(s).
+ * A broken JIRA configuration must never lock the user out.
+ */
+function normalizeJiraConnection(v: unknown): JiraConnection | undefined {
+  if (typeof v !== 'object' || v === null) return undefined;
+  const r = v as Record<string, unknown>;
+  const trimStr = (x: unknown): string => (typeof x === 'string' ? x.trim() : '');
+  const baseUrl = trimStr(r.baseUrl);
+  if (baseUrl === '' || !/^https?:\/\//i.test(baseUrl)) return undefined;
+  const out: JiraConnection = { baseUrl };
+  if (r.flavor === 'cloud' || r.flavor === 'dc' || r.flavor === 'auto') out.flavor = r.flavor;
+  const email = trimStr(r.email);
+  if (email !== '') out.email = email;
+  const token = trimStr(r.token);
+  if (token !== '') out.token = token;
+  const proxyUrl = trimStr(r.proxyUrl);
+  if (proxyUrl !== '' && /^https?:\/\//i.test(proxyUrl)) out.proxyUrl = proxyUrl;
+  return out;
 }
 
 function isQaInputsShape(v: unknown): v is QaInputs {
@@ -529,6 +575,8 @@ export function normalizeReportsState(state: ReportsState): ReportsState {
     settings: {
       ...state.settings,
       autoBackup: normalizeAutoBackupSettings(state.settings.autoBackup),
+      // Optional; stays absent/undefined when missing or unsalvageable.
+      jira: normalizeJiraConnection(state.settings.jira),
     },
     projects: projectsMigration.projects,
     activeProjectId: state.activeProjectId ?? null,

@@ -1,5 +1,6 @@
 import type { AppState, ProjectRecord, QaInputs } from '../../types';
 import { newProjectRecord } from './lifecycle';
+import { normalizeJiraProjectKey } from '../jira';
 import { TESTER_INPUT_FIELDS } from '../../../shared/testerRules';
 
 /**
@@ -28,7 +29,33 @@ export function ensureProjectIds(projects: ProjectRecord[]): ProjectRecord[] {
     seen.add(projectId);
     return { ...project, projectId };
   });
-  return changed ? result : projects;
+  // Every load/import path funnels through this function, so the optional
+  // per-project JIRA key is normalized here too (optional-safe: absent stays
+  // absent, a value normalizing to '' is dropped).
+  return normalizeProjectJiraKeys(changed ? result : projects);
+}
+
+/**
+ * Normalize the optional per-project JIRA project key on load/import.
+ * Optional-safe: an absent field stays absent; a present value is normalized
+ * (uppercase, trimmed, inner spaces removed); a value that normalizes to ''
+ * (blank/whitespace-only) is dropped. Pure — same array returned unchanged
+ * when nothing changed.
+ */
+export function normalizeProjectJiraKeys(projects: readonly ProjectRecord[]): ProjectRecord[] {
+  let changed = false;
+  const result = projects.map((project) => {
+    if (project.jiraProjectKey === undefined) return project;
+    const normalized = normalizeJiraProjectKey(project.jiraProjectKey);
+    if (normalized === project.jiraProjectKey) return project;
+    changed = true;
+    if (normalized === '') {
+      const { jiraProjectKey: _dropped, ...rest } = project;
+      return rest;
+    }
+    return { ...project, jiraProjectKey: normalized };
+  });
+  return changed ? result : (projects as ProjectRecord[]);
 }
 
 /**

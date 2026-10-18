@@ -48,6 +48,7 @@ describe('the role and screen matrix (one table for the navigation and the scree
       tickets: 'input',
       performance: 'input',
       team: 'view',
+      jira: 'view',
       cycles: 'none',
       testManagement: 'none',
       myTesting: 'input',
@@ -71,7 +72,7 @@ describe('the role and screen matrix (one table for the navigation and the scree
 
   it('navigation for a Tester offers no History, Settings, Cycles, Daily Report, Review, Reports or Test Management administration, and no member management', () => {
     const ids = navItems('user').map((i) => i.id);
-    expect(ids).toEqual(['dashboard', 'overall', 'gantt', 'myTesting', 'tickets', 'performance', 'team']);
+    expect(ids).toEqual(['dashboard', 'overall', 'gantt', 'myTesting', 'tickets', 'performance', 'team', 'jira']);
     for (const hidden of ['history', 'settings', 'cycles', 'dailyReport', 'review', 'reports']) expect(ids).not.toContain(hidden);
   });
 

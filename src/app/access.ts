@@ -19,7 +19,7 @@ export type UiRole = 'sv' | 'tester';
 /** manage = change anything there; input = enter their own data only; view = read only; none = not offered. */
 export type ScreenAccess = 'manage' | 'input' | 'view' | 'none';
 
-export type ScreenId = 'dashboard' | 'testManagement' | 'myTesting' | 'cycles' | 'overall' | 'gantt' | 'dailyReport' | 'tickets' | 'performance' | 'review' | 'reports' | 'team' | 'history' | 'settings';
+export type ScreenId = 'dashboard' | 'testManagement' | 'myTesting' | 'cycles' | 'overall' | 'gantt' | 'dailyReport' | 'tickets' | 'performance' | 'review' | 'reports' | 'team' | 'history' | 'settings' | 'jira';
 
 export const SCREEN_ACCESS: Readonly<Record<ScreenId, Readonly<Record<UiRole, ScreenAccess>>>> = {
   // A Tester sees the Operator section (and enters Today's Execution); the manager panels are the SV's.
@@ -37,6 +37,8 @@ export const SCREEN_ACCESS: Readonly<Record<ScreenId, Readonly<Record<UiRole, Sc
   performance: { sv: 'manage', tester: 'input' },
   review: { sv: 'manage', tester: 'none' },
   reports: { sv: 'manage', tester: 'none' },
+  // JIRA ticket analysis: every Tester reads it; only the SV links reporters or maps projects.
+  jira: { sv: 'manage', tester: 'view' },
   // SV: Team Members management. Tester: "My Team Member Profile" only.
   team: { sv: 'manage', tester: 'view' },
   history: { sv: 'manage', tester: 'none' },

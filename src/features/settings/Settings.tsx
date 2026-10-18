@@ -10,6 +10,7 @@ import { MIGRATION_FAILURE_LABEL_KEY, readMigrationFailureRecord } from '../../l
 import { WorkspacePanel } from '../tenancy/WorkspacePanel';
 import { DataBackup } from './DataBackup';
 import { WorkspaceAppearance } from './WorkspaceAppearance';
+import { JiraIntegration } from './JiraIntegration';
 import { DataRetention, WorkspaceLogo } from './WorkspaceBranding';
 import { NotificationsSettings } from '../notifications/NotificationsSettings';
 import { useSharedSync } from '../../app/shared-sync';
@@ -313,6 +314,7 @@ export function Settings() {
       <WorkspaceLogo />
       <NotificationsSettings />
       <DataRetention />
+      <JiraIntegration />
 
       <DataBackup />
 

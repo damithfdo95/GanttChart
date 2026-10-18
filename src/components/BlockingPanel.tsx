@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useAppStateCtx } from '../app/state-contexts';
 import { formatDate, todayEpochDays } from '../lib/dates/dates';
 import { generateId } from '../lib/id';
@@ -19,6 +19,7 @@ import { t, type TranslationKey } from '../i18n';
 import { MetricCard } from './MetricCard';
 import { TablePager } from './TablePager';
 import { usePagedRows } from '../lib/pagination/usePagedRows';
+import { JiraBlockingImport } from './JiraBlockingImport';
 
 const BLOCKING_CAT_KEY: Record<BlockingCategory, TranslationKey> = {
   ENVIRONMENT: 'blocking.cat.ENVIRONMENT',
@@ -44,6 +45,8 @@ export function BlockingPanel({ now }: BlockingPanelProps) {
   const lang = state.language;
   const today = formatDate(todayEpochDays());
   const events = state.blockingEvents ?? [];
+  const [jiraImporting, setJiraImporting] = useState(false);
+  const [jiraMessage, setJiraMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
   const productiveElapsedMinutes = calculateProductiveElapsedTime(now, state.startTime, WORK_LUNCH);
   const capacityPerHour = calculateTeamCapacity(state.currentTesters, state.perHourPerTester);
@@ -99,7 +102,26 @@ export function BlockingPanel({ now }: BlockingPanelProps) {
         <button type="button" className="btn" onClick={addEvent}>
           {t(lang, 'blocking.addEvent')}
         </button>
+        <button type="button" className="btn" onClick={() => { setJiraImporting(true); setJiraMessage(null); }}>
+          {t(lang, 'jira.import.blocking.open')}
+        </button>
       </div>
+      {jiraMessage === null ? null : (
+        <p className={`data-controls-message ${jiraMessage.kind}`} role={jiraMessage.kind === 'error' ? 'alert' : 'status'}>
+          {jiraMessage.text}
+        </p>
+      )}
+      {jiraImporting ? (
+        <JiraBlockingImport
+          lang={lang}
+          defaultDate={today}
+          onClose={() => setJiraImporting(false)}
+          onApply={(imported, skipped) => {
+            setJiraImporting(false);
+            setJiraMessage({ kind: 'ok', text: t(lang, 'jira.import.blocking.done', { imported, skipped }) });
+          }}
+        />
+      ) : null}
 
       {events.length === 0 ? (
         <p className="empty-note">{t(lang, 'blocking.noEvents')}</p>

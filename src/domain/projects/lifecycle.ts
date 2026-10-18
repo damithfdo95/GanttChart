@@ -1,6 +1,7 @@
 import type { DailyReport, ProjectLifecycleStatus, ProjectRecord, QaInputs } from '../../types';
 import { generateId } from '../../lib/id';
 import { normalizeQaInputs } from '../../lib/storage/storage';
+import { normalizeJiraProjectKey } from '../jira';
 import { LIFECYCLE_ORDER } from './types';
 
 /**
@@ -51,11 +52,12 @@ export function nextProjectId(existing: readonly ProjectRecord[]): string {
  */
 export function newProjectRecord(
   inputs: QaInputs,
-  overrides: Partial<Pick<ProjectRecord, 'nameEn' | 'nameJa' | 'team' | 'status'>> = {},
+  overrides: Partial<Pick<ProjectRecord, 'nameEn' | 'nameJa' | 'team' | 'status' | 'jiraProjectKey'>> = {},
   nowIso: string,
   existing: readonly ProjectRecord[] = [],
 ): ProjectRecord {
   const status = overrides.status ?? 'todo';
+  const jiraProjectKey = normalizeJiraProjectKey(overrides.jiraProjectKey ?? '');
   return {
     id: generateId(),
     projectId: nextProjectId(existing),
@@ -69,6 +71,7 @@ export function newProjectRecord(
     createdAt: nowIso,
     updatedAt: nowIso,
     inputs: normalizeQaInputs(JSON.parse(JSON.stringify(inputs)) as QaInputs),
+    ...(jiraProjectKey !== '' ? { jiraProjectKey } : {}),
   };
 }
 

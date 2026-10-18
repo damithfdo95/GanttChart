@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ProjectLifecycleStatus } from '../types';
 import { useAppStateCtx, useReportsStateCtx, activateProjectRecord } from '../app/state-contexts';
 import { t, type TranslationKey } from '../i18n';
+import { isValidJiraProjectKey, normalizeJiraProjectKey } from '../domain/jira';
 import { newProjectRecord } from '../domain/projects';
 import { personOptions, selectableMembers } from '../domain/teamMembers';
 import {
@@ -54,6 +55,8 @@ export function NewProjectForm({ open, onClose, onCreated }: NewProjectFormProps
   const lang = app.state.language;
 
   const [form, setForm] = useState<NewProjectForm>(() => defaultNewProjectForm(formatDate(todayEpochDays())));
+  // Optional JIRA project key (the JIRA tab); normalized/validated like the mapping block.
+  const [jiraProjectKey, setJiraProjectKey] = useState('');
   // Field errors appear only after the first Create attempt — a freshly
   // opened form never greets the user with red validation text.
   const [showErrors, setShowErrors] = useState(false);
@@ -63,7 +66,10 @@ export function NewProjectForm({ open, onClose, onCreated }: NewProjectFormProps
   const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (open) setForm(defaultNewProjectForm(formatDate(todayEpochDays())));
+    if (open) {
+      setForm(defaultNewProjectForm(formatDate(todayEpochDays())));
+      setJiraProjectKey('');
+    }
   }, [open]);
 
   // Modal focus management: focus the first field on open, restore focus to
@@ -149,6 +155,8 @@ export function NewProjectForm({ open, onClose, onCreated }: NewProjectFormProps
 
   const handleCreate = (): void => {
     if (!validation.isValid || validation.inputs === null) return;
+    // The optional JIRA project key follows the mapping block's rule: empty or a valid key.
+    if (jiraProjectKey.trim() !== '' && !isValidJiraProjectKey(jiraProjectKey)) return;
     const nowIso = new Date().toISOString();
     const record = newProjectRecord(
       validation.inputs,
@@ -165,9 +173,11 @@ export function NewProjectForm({ open, onClose, onCreated }: NewProjectFormProps
     );
     // The owner is a Team Member of this workspace (a dropdown, never typed); the name is kept alongside as a snapshot for exports.
     const ownerMember = (reportsApi.state.rcsMembers ?? []).find((m) => m.id === form.ownerMemberId);
+    const normalizedJiraKey = normalizeJiraProjectKey(jiraProjectKey);
     reportsApi.addProject({
       ...record,
       description: form.description.trim(),
+      ...(normalizedJiraKey !== '' ? { jiraProjectKey: normalizedJiraKey } : {}),
       ...(ownerMember === undefined ? {} : { ownerMemberId: ownerMember.id, owner: ownerMember.name }),
     });
     activateProjectRecord(reportsApi, app, record);
@@ -180,6 +190,10 @@ export function NewProjectForm({ open, onClose, onCreated }: NewProjectFormProps
     !showErrors || validation.errors[field] === undefined
       ? undefined
       : t(lang, validation.errors[field] as TranslationKey);
+
+  // The optional JIRA project key: empty is fine, otherwise it must be a valid key (same rule as the JIRA tab mapping).
+  const jiraKeyInvalid = jiraProjectKey.trim() !== '' && !isValidJiraProjectKey(jiraProjectKey);
+  const jiraKeyError = !showErrors || !jiraKeyInvalid ? undefined : t(lang, 'jira.tab.projectKeyInvalid');
 
   return (
     <div
@@ -249,7 +263,19 @@ export function NewProjectForm({ open, onClose, onCreated }: NewProjectFormProps
                   ))}
                 </select>
               </Field>
+              <Field label={t(lang, 'newProject.jiraProjectKey')} error={jiraKeyError}>
+                <input
+                  className={`input${jiraKeyInvalid ? ' table-input-invalid' : ''}`}
+                  type="text"
+                  value={jiraProjectKey}
+                  maxLength={20}
+                  placeholder={t(lang, 'jira.tab.projectKeyPlaceholder')}
+                  aria-invalid={jiraKeyInvalid}
+                  onChange={(e) => setJiraProjectKey(e.target.value)}
+                />
+              </Field>
             </div>
+            <p className="npf-hint">{t(lang, 'newProject.jiraProjectKeyHint')}</p>
           </fieldset>
 
           <fieldset className="npf-section">

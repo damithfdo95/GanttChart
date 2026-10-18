@@ -52,7 +52,7 @@ describe('navigation by role', () => {
       expect(list).not.toContain('members'); // "RCS Members" is part of Team Members now
     }
     // A Tester gets only the screens they work with.
-    expect(ids('user')).toEqual(['dashboard', 'overall', 'gantt', 'myTesting', 'tickets', 'performance', 'team']);
+    expect(ids('user')).toEqual(['dashboard', 'overall', 'gantt', 'myTesting', 'tickets', 'performance', 'team', 'jira']);
   });
 
   it('the Super Admin has NO QA navigation at all', () => {

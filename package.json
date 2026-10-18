@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Local-only QA test execution schedule tracker (GanttChart). No server, no network, no telemetry.",
+  "description": "Local-first QA test execution schedule tracker (GanttChart). No server and no default network use; the opt-in JIRA integration and shared sync mode run only when an SV configures them.",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

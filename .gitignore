@@ -3,7 +3,8 @@ dist/
 *.local
 
 # Local workspace backups contain real project data — never commit them.
-backup/
+# Anchored to the repository root so it can never swallow src/lib/backup/.
+/backup/
 *.json.bak
 
 # Cloudflare / Wrangler local state and secrets
@@ -15,3 +16,6 @@ worker-configuration.d.ts
 # Local-only files that must never be committed
 .claude/scheduled_tasks.lock
 Application Audience*
+
+# Pre-change workspace snapshots contain real project data.
+docs/ganttchart-before-*.json

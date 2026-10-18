@@ -12,6 +12,7 @@ import { Overall } from '../features/overall/Overall';
 import { Gantt } from '../features/gantt/Gantt';
 import { DailyReport } from '../features/daily-report/DailyReport';
 import { ReportsExport } from '../features/reports/ReportsExport';
+import { JiraScreen } from '../features/jira/JiraScreen';
 import { Settings } from '../features/settings/Settings';
 import { TicketTab } from '../features/tickets/TicketTab';
 import { PerformanceTab } from '../features/performance/PerformanceTab';
@@ -223,13 +224,19 @@ function Shell() {
   const [ganttFocusProjectId, setGanttFocusProjectId] = useState<string | null>(null);
   const [meetingIntent, setMeetingIntent] = useState<'morning' | 'evening' | null>(null);
 
+  // The JIRA tab exists only while Settings → JIRA Integration is configured:
+  // the entry is filtered out of the navigation below, and an active tab falls
+  // back to the dashboard the moment the connection is removed.
+  const jiraConfigured = reports.state.settings.jira !== undefined;
+  const activeScreen: Screen = screen === 'jira' && !jiraConfigured ? 'dashboard' : screen;
+
   // Document language/title follow the UI language on every screen (not
   // just the Dashboard) so screen readers and browser history stay correct.
   useEffect(() => {
     document.documentElement.lang = state.language;
-    const screenKey = NAV_ITEMS.find((item) => item.id === screen)?.key ?? 'app.title';
+    const screenKey = NAV_ITEMS.find((item) => item.id === activeScreen)?.key ?? 'app.title';
     document.title = `${t(state.language, screenKey)} — ${toolNameOf(reports.state.settings, state.language)}`;
-  }, [state.language, screen, reports.state.settings]);
+  }, [state.language, activeScreen, reports.state.settings]);
 
   const openOverall = (focus: OverallFocus): void => {
     setOverallFocus(focus);
@@ -252,12 +259,14 @@ function Shell() {
     <>
       <nav className="app-nav" aria-label={t(state.language, 'nav.mainNavigation')}>
         <BrandMark lang={state.language} />
-        {navItems(principal?.role ?? null).map((item) => (
+        {navItems(principal?.role ?? null)
+          .filter((item) => item.id !== 'jira' || jiraConfigured)
+          .map((item) => (
           <button
             key={item.id}
             type="button"
-            className={screen === item.id ? 'active' : undefined}
-            aria-current={screen === item.id ? 'page' : undefined}
+            className={activeScreen === item.id ? 'active' : undefined}
+            aria-current={activeScreen === item.id ? 'page' : undefined}
             onClick={() => setScreen(item.id)}
           >
             {t(state.language, item.key)}
@@ -275,31 +284,33 @@ function Shell() {
       <CorruptionBanner />
       <StorageFallbackBanner />
       <AutoBackupBanner />
-      {screen === 'dashboard' ? (
+      {activeScreen === 'dashboard' ? (
         <Dashboard onOpenOverall={openOverall} onOpenMeeting={openMeeting} />
-      ) : screen === 'cycles' ? (
+      ) : activeScreen === 'cycles' ? (
         <CyclesScreen />
-      ) : screen === 'testManagement' ? (
+      ) : activeScreen === 'testManagement' ? (
         <TestManagementScreen />
-      ) : screen === 'myTesting' ? (
+      ) : activeScreen === 'myTesting' ? (
         <MyTestingScreen />
-      ) : screen === 'overall' ? (
+      ) : activeScreen === 'overall' ? (
         <Overall focus={overallFocus} onOpenGantt={openGantt} onProjectCreated={() => setScreen('dashboard')} />
-      ) : screen === 'gantt' ? (
+      ) : activeScreen === 'gantt' ? (
         <Gantt focusProjectId={ganttFocusProjectId} onFocusHandled={() => setGanttFocusProjectId(null)} meeting={meetingIntent} onMeetingHandled={() => setMeetingIntent(null)} />
-      ) : screen === 'dailyReport' ? (
+      ) : activeScreen === 'dailyReport' ? (
         <DailyReport />
-      ) : screen === 'tickets' ? (
+      ) : activeScreen === 'tickets' ? (
         <TicketTab />
-      ) : screen === 'performance' ? (
+      ) : activeScreen === 'performance' ? (
         <PerformanceTab />
-      ) : screen === 'review' ? (
+      ) : activeScreen === 'review' ? (
         <ReviewTab />
-      ) : screen === 'reports' ? (
+      ) : activeScreen === 'reports' ? (
         <ReportsExport />
-      ) : screen === 'history' ? (
+      ) : activeScreen === 'jira' ? (
+        <JiraScreen />
+      ) : activeScreen === 'history' ? (
         <HistoryScreen />
-      ) : screen === 'team' && (principal?.role === 'admin' || principal?.role === 'user') ? (
+      ) : activeScreen === 'team' && (principal?.role === 'admin' || principal?.role === 'user') ? (
         <TeamScreen onOpenSettings={() => setScreen('settings')} />
       ) : (
         <Settings />

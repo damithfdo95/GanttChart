@@ -37,6 +37,7 @@ import { useTesters } from '../cycles/parts';
 import { ExecutionTable } from './ExecutionTable';
 import { RegisteredWarning, ScopeTotalInput, SummaryBlock, TotalsPanel, pct } from './SummaryParts';
 import { useBusinessToday, usePeopleDirectory, useTestManagement } from './useTestManagement';
+import { JiraImportDialog } from './JiraImportDialog';
 import type { Language, ProjectRecord } from '../../types';
 
 type Tab = 'overview' | 'scopes' | 'cases' | 'execution';
@@ -477,6 +478,7 @@ function CasesTab({ lang, project }: { lang: Language; project: ProjectRecord })
   const [form, setForm] = useState(EMPTY_FORM);
   const [note, setNote] = useState<Note>(null);
   const [bulk, setBulk] = useState(false);
+  const [jiraImporting, setJiraImporting] = useState(false);
   const [paste, setPaste] = useState('');
   const [parsed, setParsed] = useState<BulkParse | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -571,6 +573,15 @@ function CasesTab({ lang, project }: { lang: Language; project: ProjectRecord })
 
   const set = (k: keyof typeof EMPTY_FORM, v: string): void => setForm((f) => ({ ...f, [k]: v }));
 
+  const jiraDone = (imported: number, duplicates: number, invalid: number): void => {
+    setJiraImporting(false);
+    const text =
+      duplicates + invalid > 0
+        ? `${t(lang, 'jira.import.done', { count: imported })} ${t(lang, 'jira.import.doneSkipped', { duplicates, invalid })}`
+        : t(lang, 'jira.import.done', { count: imported });
+    setNote({ kind: 'ok', text });
+  };
+
   return (
     <section className="dr-section">
       <div className="dr-button-row">
@@ -591,6 +602,9 @@ function CasesTab({ lang, project }: { lang: Language; project: ProjectRecord })
         </button>
         <button type="button" className="btn" disabled={archivedScope} onClick={() => { setBulk(true); setEditing(null); setNote(null); }}>
           {t(lang, 'tm.bulk.open')}
+        </button>
+        <button type="button" className="btn" disabled={archivedScope} onClick={() => { setJiraImporting(true); setEditing(null); setBulk(false); setNote(null); }}>
+          {t(lang, 'jira.import.open')}
         </button>
         <label className="tm-check">
           <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> {t(lang, 'tm.showArchived')}
@@ -715,6 +729,15 @@ function CasesTab({ lang, project }: { lang: Language; project: ProjectRecord })
           )}
         </div>
       )}
+      {jiraImporting ? (
+        <JiraImportDialog
+          lang={lang}
+          scope={scope}
+          tm={tm}
+          onClose={() => setJiraImporting(false)}
+          onDone={jiraDone}
+        />
+      ) : null}
       {cases.length === 0 ? (
         <div className="tenancy-empty" role="note">
           <p>{t(lang, 'tm.empty.noCases')}</p>

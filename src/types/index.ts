@@ -11,6 +11,7 @@ import type { CaseResult, TestCase, TestScope } from '../../shared/testManagemen
 import type { DailyTeamPlan, MeetingNote } from '../../shared/meeting';
 import type { NotificationAck, NotificationDef } from '../../shared/notifications';
 import type { BrandingRecord } from '../../shared/branding';
+import type { JiraConnection } from '../../shared/jira';
 
 /** A QA test cycle / release grouping test executions (projects). See shared/qaRules.ts. */
 export type Cycle = CycleRecord;
@@ -729,6 +730,12 @@ export interface ReportSettings {
   toolName?: string;
   /** Stage 8E: how many days of meeting plans and notes are kept (90, 180, 365 or 730). Absent = 365. */
   planRetentionDays?: number;
+  /**
+   * JIRA import connection (Stage: JIRA import). Absent = feature off.
+   * Stored locally with the other settings (including the token — the UI
+   * warns about that). Never part of the shared workspace.
+   */
+  jira?: JiraConnection;
 }
 
 export interface ReportsState {
@@ -918,4 +925,10 @@ export interface ProjectRecord {
    * not in any cycle (every project created before cycles existed). Never used in calculations.
    */
   cycleId?: string | null;
+  /**
+   * Optional JIRA project key for the JIRA ticket analysis (uppercase, no inner spaces,
+   * e.g. "QA"). Absent on projects without one; metadata only — never used in calculations.
+   * Normalized on creation/load; a value that normalizes to '' is dropped.
+   */
+  jiraProjectKey?: string;
 }
