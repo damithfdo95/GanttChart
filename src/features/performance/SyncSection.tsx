@@ -1,3 +1,4 @@
+import { useAskConfirm } from '../../components/ConfirmDialog';
 import { useMemo, useState } from 'react';
 import type { AttendanceRecord, Language, ProjectRecord, RcsMember, TesterDailyPerformance, TesterProjectAssignment } from '../../types';
 import { t, type TranslationKey } from '../../i18n';
@@ -85,6 +86,7 @@ export function SyncSection({
   const [preview, setPreview] = useState<TesterPerformanceSyncPlan | null>(null);
   const [showAttendance, setShowAttendance] = useState(false);
   const [syncApplied, setSyncApplied] = useState(false);
+  const ask = useAskConfirm(lang);
 
   const selectableMembers = useMemo(
     () => members.filter((member) => member.active).sort((a, b) => a.name.localeCompare(b.name)),
@@ -190,7 +192,7 @@ export function SyncSection({
     setSyncApplied(true);
   };
 
-  const handleSync = (scope: 'current' | 'all'): void => {
+  const handleSync = async (scope: 'current' | 'all'): Promise<void> => {
     // Bulk write: confirm first (authored locale keys confirmSync /
     // syncApplied), then apply through the single write helper. The scope
     // only selects WHICH projects are visited — manual overrides,
@@ -198,7 +200,7 @@ export function SyncSection({
     const plan = scope === 'current' ? currentProjectPlan : syncPlan;
     if (plan === null || plan.toCreate + plan.toUpdate === 0) return;
     const confirmKey: TranslationKey = scope === 'current' ? 'performance.confirmSyncCurrent' : 'performance.confirmSync';
-    if (!window.confirm(t(lang, confirmKey, scope === 'current' ? { project: activeProjectName } : undefined))) return;
+    if (!(await ask(t(lang, confirmKey, scope === 'current' ? { project: activeProjectName } : undefined), { severity: 'warning' }))) return;
     applyPlan(plan);
   };
 
@@ -360,8 +362,8 @@ export function SyncSection({
                         <button
                           type="button"
                           className="btn btn-danger"
-                          onClick={() => {
-                            if (window.confirm(t(lang, 'performance.confirmRemoveAssignment'))) {
+                          onClick={async () => {
+                            if (await ask(t(lang, 'performance.confirmRemoveAssignment'), { severity: 'danger' })) {
                               onRemoveAssignment(assignment.id);
                             }
                           }}

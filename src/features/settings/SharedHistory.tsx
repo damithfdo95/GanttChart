@@ -1,3 +1,4 @@
+import { useAskConfirm } from '../../components/ConfirmDialog';
 import { useCallback, useEffect, useState } from 'react';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
 import { actorLabel, changedLabel, kindLabelKey } from '../../domain/historyLabels';
@@ -34,6 +35,7 @@ function when(iso: string, lang: 'en' | 'ja'): string {
  */
 export function SharedHistory() {
   const lang = useAppStateCtx().state.language;
+  const ask = useAskConfirm(lang);
   const shared = useSharedSync();
   const reports = useReportsStateCtx();
   const [filter, setFilter] = useState<HistoryFilter>({});
@@ -95,7 +97,7 @@ export function SharedHistory() {
   };
 
   const restore = async (row: RevisionRow): Promise<void> => {
-    if (!window.confirm(t(lang, 'shared.history.restoreConfirm', { n: row.revision, when: when(row.committedAt, lang) }))) return;
+    if (!(await ask(t(lang, 'shared.history.restoreConfirm', { n: row.revision, when: when(row.committedAt, lang) }), { severity: 'warning' }))) return;
     setBusy(true);
     setMessage(null);
     try {

@@ -1,13 +1,13 @@
 import type { MigrationDeps } from '../../lib/tenancy/migration';
 import type { TenancyApi } from '../../lib/tenancy/api';
 import { createBackupPayload } from '../../lib/backup/backup';
-import { downloadTextFile } from '../../lib/export/download';
+import { downloadTextFile, fileStamp } from '../../lib/export/download';
 import { getStorageDiagnostics, loadWorkspaceFromIndexedDb, persistWorkspaceAsync } from '../../lib/storage/db/persistenceBackend';
 import { recordKey } from '../../lib/sync/records';
 import { unlinkDevice, writeLink, writeMirror } from '../../lib/sync/device';
 
 function stamp(): string {
-  return new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+  return fileStamp();
 }
 
 /**

@@ -1,3 +1,4 @@
+import { useAskConfirm } from '../../components/ConfirmDialog';
 import { useEffect, useState } from 'react';
 import { useAppStateCtx, useAutoBackupCtx, useReportsStateCtx } from '../../app/state-contexts';
 import { t, LANGUAGES } from '../../i18n';
@@ -16,7 +17,7 @@ import { NotificationsSettings } from '../notifications/NotificationsSettings';
 import { useSharedSync } from '../../app/shared-sync';
 import { unlinkDevice } from '../../lib/sync/device';
 import { createBackupPayload } from '../../lib/backup/backup';
-import { downloadTextFile } from '../../lib/export/download';
+import { downloadTextFile, fileStamp } from '../../lib/export/download';
 import { pad2 } from '../../lib/formatting/format';
 import type { Language, ProgressDenominator } from '../../types';
 
@@ -27,6 +28,7 @@ export function Settings() {
   const autoBackupApi = useAutoBackupCtx();
   const shared = useSharedSync();
   const lang = app.state.language;
+  const ask = useAskConfirm(lang);
   const settings = reportsApi.state.settings;
   const migrationFailure = readMigrationFailureRecord();
   const [clearOutcome, setClearOutcome] = useState<'done' | 'aborted' | null>(null);
@@ -74,7 +76,7 @@ export function Settings() {
   const downloadFullBackup = (): void => {
     const payload = createBackupPayload(app.state, reportsApi.state);
     const now = new Date();
-    const stamp = `${now.toISOString().slice(0, 10)}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    const stamp = fileStamp(now);
     downloadTextFile(`ganttchart-backup-${stamp}.json`, 'application/json', JSON.stringify(payload, null, 2));
   };
 
@@ -86,10 +88,10 @@ export function Settings() {
    * key and all recovery stashes are removed, and the canonical state
    * returns to the normal initial state (language kept).
    */
-  const handleClearAll = (): void => {
+  const handleClearAll = async (): Promise<void> => {
     // In shared mode this clears only THIS browser and disconnects it; the
     // shared workspace (and everyone else's data) is never touched.
-    if (!window.confirm(t(lang, shared.enabled ? 'shared.settings.clearDeviceConfirm' : 'settings.confirmClearAll'))) return;
+    if (!(await ask(t(lang, shared.enabled ? 'shared.settings.clearDeviceConfirm' : 'settings.confirmClearAll'), { severity: 'danger' }))) return;
     downloadFullBackup();
     void clearAllLocalDataAsync().then((result) => {
       if (result === 'aborted') {

@@ -1,3 +1,4 @@
+import { useAskConfirm } from '../../components/ConfirmDialog';
 import { useState } from 'react';
 import { memberLabel } from '../../domain/people';
 import type { Language, RcsMember, RcsMemberNameHistory } from '../../types';
@@ -43,6 +44,7 @@ export function RcsMembersTab({ editMemberId = null, onClose }: { editMemberId?:
   const reportsApi = useReportsStateCtx();
   const { api } = useTenant();
   const lang: Language = app.state.language;
+  const ask = useAskConfirm(lang);
   const members = reportsApi.state.rcsMembers ?? [];
   const member = editMemberId === null ? undefined : members.find((m) => m.id === editMemberId);
   const [draft, setDraft] = useState<MemberDraft | null>(null);
@@ -124,9 +126,9 @@ export function RcsMembersTab({ editMemberId = null, onClose }: { editMemberId?:
       : hasMemberReferences(member.id, memberReferenceScope({ attendance: reportsApi.state.attendance, testerAssignments: reportsApi.state.testerAssignments, projects: reportsApi.state.projects, reviews: reportsApi.state.reviews }));
   const canDelete = member !== undefined && !isLinked(member) && !referenced;
 
-  const handleDelete = (): void => {
+  const handleDelete = async (): Promise<void> => {
     if (member === undefined || !canDelete) return;
-    if (window.confirm(t(lang, 'members.confirmDelete'))) {
+    if (await ask(t(lang, 'members.confirmDelete'), { severity: 'danger' })) {
       reportsApi.removeMember(member.id);
       onClose?.();
     }

@@ -1,3 +1,4 @@
+import { useAskConfirm } from './ConfirmDialog';
 import { useMemo } from 'react';
 import { useAppStateCtx } from '../app/state-contexts';
 import { t } from '../i18n';
@@ -41,6 +42,7 @@ export function DailyProgressPanel({
 }) {
   const { state, updateField } = useAppStateCtx();
   const lang = state.language;
+  const ask = useAskConfirm(lang);
   const today = formatDate(todayEpochDays());
 
   const productiveHours = workdayProductiveHours(state.startTime, state.dailyOvertimeMinutes);
@@ -367,8 +369,8 @@ export function DailyProgressPanel({
                         <button
                           type="button"
                           className="btn btn-danger"
-                          onClick={() => {
-                            if (window.confirm(t(lang, 'exec.confirmDeleteEntry', { date: entry.date }))) {
+                          onClick={async () => {
+                            if (await ask(t(lang, 'exec.confirmDeleteEntry', { date: entry.date }), { severity: 'danger' })) {
                               onDeleteEntry(entry.date);
                             }
                           }}

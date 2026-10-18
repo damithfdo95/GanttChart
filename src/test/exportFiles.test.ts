@@ -144,3 +144,11 @@ describe('buildXlsx', () => {
     expect(styles).toContain('formatCode="0.00%"');
   });
 });
+
+describe('fileStamp', () => {
+  it('uses LOCAL date and time, zero-padded', async () => {
+    const { fileStamp } = await import('../lib/export/download');
+    expect(fileStamp(new Date(2026, 0, 5, 3, 7))).toBe('2026-01-05-0307');
+    expect(fileStamp(new Date(2026, 11, 31, 23, 59))).toBe('2026-12-31-2359');
+  });
+});

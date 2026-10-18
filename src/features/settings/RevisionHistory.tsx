@@ -1,3 +1,4 @@
+import { useAskConfirm } from '../../components/ConfirmDialog';
 import { useCallback, useEffect, useState } from 'react';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
 import { t, type TranslationKey } from '../../i18n';
@@ -14,7 +15,7 @@ import { diffWorkspaces } from '../../lib/storage/db/diff';
 import type { RevisionChangeSummary, RevisionReason, WorkspaceRevisionMeta } from '../../lib/storage/db/journal';
 import { REVISION_HISTORY_RETENTION } from '../../lib/storage/db/revisionHistory';
 import { createHistoryBackupPayload } from '../../lib/backup/backup';
-import { downloadTextFile } from '../../lib/export/download';
+import { downloadTextFile, fileStamp } from '../../lib/export/download';
 import { TablePager } from '../../components/TablePager';
 import { usePagedRows } from '../../lib/pagination/usePagedRows';
 
@@ -74,6 +75,7 @@ export function RevisionHistory() {
   const app = useAppStateCtx();
   const reportsApi = useReportsStateCtx();
   const lang = app.state.language;
+  const ask = useAskConfirm(lang);
 
   const [metas, setMetas] = useState<WorkspaceRevisionMeta[] | null>(null);
   const [diagnostics, setDiagnostics] = useState<StorageDiagnostics | null>(null);
@@ -115,7 +117,7 @@ export function RevisionHistory() {
   };
 
   const restore = async (revision: number): Promise<void> => {
-    const confirmed = window.confirm(t(lang, 'history.restoreConfirm', { revision }));
+    const confirmed = await ask(t(lang, 'history.restoreConfirm', { revision }), { severity: 'warning' });
     if (!confirmed) return;
     setBusy(true);
     try {
@@ -148,7 +150,7 @@ export function RevisionHistory() {
     }
     const payload = createHistoryBackupPayload(app.state, reportsApi.state, revisions);
     const now = new Date();
-    const stamp = `${now.toISOString().slice(0, 10)}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    const stamp = fileStamp(now);
     downloadTextFile(`ganttchart-history-${stamp}.json`, 'application/json', JSON.stringify(payload, null, 2));
   };
 

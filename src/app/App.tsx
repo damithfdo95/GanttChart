@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { AppProviders, useAppStateCtx, useAutoBackupCtx, usePersistenceCtx, useReportsStateCtx } from './state-contexts';
 import { toolNameOf } from '../domain/branding';
 import type { SharedBoot } from './shared-sync';
@@ -8,15 +8,6 @@ import { LogoutButton } from '../features/tenancy/LogoutButton';
 import { useSharedSync } from './shared-sync';
 import { SyncBanners, SyncStatusIndicator } from '../components/SyncStatus';
 import { Dashboard } from '../features/dashboard/Dashboard';
-import { Overall } from '../features/overall/Overall';
-import { Gantt } from '../features/gantt/Gantt';
-import { DailyReport } from '../features/daily-report/DailyReport';
-import { ReportsExport } from '../features/reports/ReportsExport';
-import { JiraScreen } from '../features/jira/JiraScreen';
-import { Settings } from '../features/settings/Settings';
-import { TicketTab } from '../features/tickets/TicketTab';
-import { PerformanceTab } from '../features/performance/PerformanceTab';
-import { ReviewTab } from '../features/review/ReviewTab';
 import { MIGRATION_FAILURE_LABEL_KEY } from '../lib/storage/db/recovery';
 import { t, type TranslationKey } from '../i18n';
 import type { OverallFocus } from '../domain/projects';
@@ -25,14 +16,25 @@ import { pad2 } from '../lib/formatting/format';
 
 import { NAV_ITEMS, navItems, type Screen } from './navigation';
 import { AccountBadge } from '../features/tenancy/AccountBadge';
-import { TeamScreen } from '../features/tenancy/TeamScreen';
 import { BrandMark } from '../features/branding/BrandMark';
 import { NotificationBanner } from '../features/notifications/NotificationBanner';
-import { CyclesScreen } from '../features/cycles/CyclesScreen';
-import { TestManagementScreen } from '../features/testManagement/TestManagementScreen';
-import { MyTestingScreen } from '../features/testManagement/MyTestingScreen';
-import { RevisionHistory } from '../features/settings/RevisionHistory';
-import { SharedHistory } from '../features/settings/SharedHistory';
+
+// Screens other than the landing Dashboard load on first visit, keeping the first download small.
+const Overall = lazy(() => import('../features/overall/Overall').then((m) => ({ default: m.Overall })));
+const Gantt = lazy(() => import('../features/gantt/Gantt').then((m) => ({ default: m.Gantt })));
+const DailyReport = lazy(() => import('../features/daily-report/DailyReport').then((m) => ({ default: m.DailyReport })));
+const ReportsExport = lazy(() => import('../features/reports/ReportsExport').then((m) => ({ default: m.ReportsExport })));
+const JiraScreen = lazy(() => import('../features/jira/JiraScreen').then((m) => ({ default: m.JiraScreen })));
+const Settings = lazy(() => import('../features/settings/Settings').then((m) => ({ default: m.Settings })));
+const TicketTab = lazy(() => import('../features/tickets/TicketTab').then((m) => ({ default: m.TicketTab })));
+const PerformanceTab = lazy(() => import('../features/performance/PerformanceTab').then((m) => ({ default: m.PerformanceTab })));
+const ReviewTab = lazy(() => import('../features/review/ReviewTab').then((m) => ({ default: m.ReviewTab })));
+const TeamScreen = lazy(() => import('../features/tenancy/TeamScreen').then((m) => ({ default: m.TeamScreen })));
+const CyclesScreen = lazy(() => import('../features/cycles/CyclesScreen').then((m) => ({ default: m.CyclesScreen })));
+const TestManagementScreen = lazy(() => import('../features/testManagement/TestManagementScreen').then((m) => ({ default: m.TestManagementScreen })));
+const MyTestingScreen = lazy(() => import('../features/testManagement/MyTestingScreen').then((m) => ({ default: m.MyTestingScreen })));
+const RevisionHistory = lazy(() => import('../features/settings/RevisionHistory').then((m) => ({ default: m.RevisionHistory })));
+const SharedHistory = lazy(() => import('../features/settings/SharedHistory').then((m) => ({ default: m.SharedHistory })));
 
 function formatSaveTime(timestamp: number): string {
   const d = new Date(timestamp);
@@ -284,6 +286,7 @@ function Shell() {
       <CorruptionBanner />
       <StorageFallbackBanner />
       <AutoBackupBanner />
+      <Suspense fallback={<p className="dr-summary" role="status">{t(state.language, 'app.loadingScreen')}</p>}>
       {activeScreen === 'dashboard' ? (
         <Dashboard onOpenOverall={openOverall} onOpenMeeting={openMeeting} />
       ) : activeScreen === 'cycles' ? (
@@ -315,6 +318,7 @@ function Shell() {
       ) : (
         <Settings />
       )}
+      </Suspense>
     </>
   );
 }

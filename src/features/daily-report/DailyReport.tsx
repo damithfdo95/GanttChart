@@ -1,3 +1,4 @@
+import { useAskConfirm } from '../../components/ConfirmDialog';
 import { useEffect, useMemo, useState } from 'react';
 import type { AttendanceRecord, DailyReport as DailyReportEntity, DailyTopic, Language, ReportActivity } from '../../types';
 import { useAppStateCtx } from '../../app/state-contexts';
@@ -41,6 +42,7 @@ export function DailyReport() {
   const app = useAppStateCtx();
   const reportsApi = useReportsStateCtx();
   const uiLang = app.state.language;
+  const ask = useAskConfirm(uiLang);
   const settings = reportsApi.state.settings;
 
   const [selectedDate, setSelectedDate] = useState<string>(() => formatDate(todayEpochDays()));
@@ -143,11 +145,11 @@ export function DailyReport() {
 
   // ---- handlers ---------------------------------------------------------------
 
-  const handleRefreshData = (): void => {
+  const handleRefreshData = async (): Promise<void> => {
     if (draft === undefined) return;
     // Refresh replaces auto-seeded activities and suggested next-day items;
     // manual entries are kept. Confirm first so edits are never lost silently.
-    if (!window.confirm(t(uiLang, 'dailyReport.refreshConfirm'))) return;
+    if (!(await ask(t(uiLang, 'dailyReport.refreshConfirm'), { severity: 'warning' }))) return;
     const seeded = seedAutoActivities(draft.language, app.state, selectedDate);
     const manual = draft.activities.filter((a) => a.source === 'MANUAL');
     const freshSuggestions = buildNextDaySuggestions(draft.language, {
@@ -259,10 +261,10 @@ export function DailyReport() {
     reportsApi.upsertReport({ ...draft, morningPreviewText: text, updatedAt: nowIso() });
   };
 
-  const handleRefreshMorning = (): void => {
+  const handleRefreshMorning = async (): Promise<void> => {
     if (draft === undefined) return;
     // Refresh replaces the auto-seeded schedule item; manual items are kept.
-    if (!window.confirm(t(uiLang, 'dailyReport.morningRefreshConfirm'))) return;
+    if (!(await ask(t(uiLang, 'dailyReport.morningRefreshConfirm'), { severity: 'warning' }))) return;
     const seeded = morningScheduleSuggestions(draft.language).map((text) => ({
       id: generateId(),
       text,
@@ -283,19 +285,19 @@ export function DailyReport() {
   const handleExportMorningExcel = (): void =>
     exportReportExcel(`morning-report-${selectedDate}.xlsx`, t(uiLang, 'dailyReport.modeMorning'), morningPreview);
 
-  const handleFinalize = (): void => {
+  const handleFinalize = async (): Promise<void> => {
     if (draft === undefined) return;
     // Finalizing freezes an immutable snapshot; require an explicit confirm.
-    if (!window.confirm(t(uiLang, 'dailyReport.finalizeConfirm'))) return;
+    if (!(await ask(t(uiLang, 'dailyReport.finalizeConfirm'), { severity: 'warning' }))) return;
     const finalized = finalizeReport(draft, attendanceForDate, topicsForDate, settings.supervisorName, nowIso());
     reportsApi.upsertReport(finalized);
     setViewingId(finalized.id);
     setMessage({ kind: 'ok', text: t(uiLang, 'dailyReport.finalizedMessage') });
   };
 
-  const handleDeleteDraft = (): void => {
+  const handleDeleteDraft = async (): Promise<void> => {
     if (draft === undefined) return;
-    if (!window.confirm(t(uiLang, 'dailyReport.confirmDeleteDraft'))) return;
+    if (!(await ask(t(uiLang, 'dailyReport.confirmDeleteDraft'), { severity: 'danger' }))) return;
     reportsApi.removeReport(draft.id);
     setMessage({ kind: 'ok', text: t(uiLang, 'dailyReport.draftDeleted') });
   };

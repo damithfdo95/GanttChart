@@ -1,3 +1,4 @@
+import { useAskConfirm } from '../../components/ConfirmDialog';
 import { selectableMembers } from '../../domain/teamMembers';
 import { businessDate } from '../../../shared/businessTime';
 import { useMemo, useState } from 'react';
@@ -63,6 +64,7 @@ export function PerformanceTab() {
   const app = useAppStateCtx();
   const reportsApi = useReportsStateCtx();
   const lang = app.state.language;
+  const ask = useAskConfirm(lang);
 
   const today = formatDate(todayEpochDays());
   const defaultYear = Number(today.slice(0, 4));
@@ -271,9 +273,9 @@ export function PerformanceTab() {
     app.updateField('testerDailyPerformance', records);
   };
 
-  const handleRemoveRecord = (record: TesterDailyPerformance): void => {
+  const handleRemoveRecord = async (record: TesterDailyPerformance): Promise<void> => {
     // Removing a record is irreversible (sync cannot restore manual history).
-    if (!window.confirm(t(lang, 'performance.confirmRemoveRecord'))) return;
+    if (!(await ask(t(lang, 'performance.confirmRemoveRecord'), { severity: 'danger' }))) return;
     app.updateField('testerDailyPerformance', removeTesterDailyPerformance(activeRecords, record.id));
     if (editingRecord?.id === record.id) setEditingRecord(undefined);
   };

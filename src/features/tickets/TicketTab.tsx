@@ -1,3 +1,4 @@
+import { useAskConfirm } from '../../components/ConfirmDialog';
 import { useMemo, useState } from 'react';
 import type { BugTicket } from '../../types';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
@@ -29,6 +30,7 @@ export function TicketTab() {
   const app = useAppStateCtx();
   const reportsApi = useReportsStateCtx();
   const lang = app.state.language;
+  const ask = useAskConfirm(lang);
   const access = useAccess();
   const tester = access.isTester;
   const ownMember = (reportsApi.state.rcsMembers ?? []).find((m) => m.id === access.ownMemberId) ?? null;
@@ -133,9 +135,9 @@ export function TicketTab() {
     setNotice(null);
   };
 
-  const handleDelete = (ticket: BugTicket): void => {
+  const handleDelete = async (ticket: BugTicket): Promise<void> => {
     if (!canChange(ticket)) return;
-    if (!window.confirm(t(lang, 'tickets.confirmDelete', { title: ticket.title }))) return;
+    if (!(await ask(t(lang, 'tickets.confirmDelete', { title: ticket.title }), { severity: 'danger' }))) return;
     setTickets(removeBugTicket(tickets, ticket.id));
     if (editingId === ticket.id) {
       setEditingId(null);

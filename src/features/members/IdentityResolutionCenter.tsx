@@ -1,3 +1,4 @@
+import { useAskConfirm } from '../../components/ConfirmDialog';
 import { useMemo, useState } from 'react';
 import { rosterLabel } from '../../domain/people';
 import type {
@@ -163,6 +164,7 @@ export function IdentityResolutionCenter({
   onAppendAudit,
 }: IdentityResolutionCenterProps) {
   const [expanded, setExpanded] = useState(false);
+  const ask = useAskConfirm(lang);
   const issues = useMemo(() => collectIdentityIssues(attendance, projects, members), [attendance, projects, members]);
   const integrity = useMemo(
     () =>
@@ -238,7 +240,7 @@ export function IdentityResolutionCenter({
   };
 
   /** Bulk-confirm the explicitly SELECTED unique suggestions only (§27/§28). */
-  const handleBulkResolve = (): void => {
+  const handleBulkResolve = async (): Promise<void> => {
     const selectedAttendance = issues.attendance.filter(
       (issue) => issue.suggestion !== undefined && selected.has(`att-${issue.recordId}`),
     );
@@ -250,14 +252,10 @@ export function IdentityResolutionCenter({
     const ambiguousCount =
       issues.attendance.filter((issue) => issue.kind === 'ambiguous' && issue.suggestion === undefined).length +
       issues.tickets.filter((issue) => issue.kind === 'ambiguous' && issue.suggestion === undefined).length;
-    if (
-      !window.confirm(
-        t(lang, 'identityResolution.confirmBulk', {
+    if (!(await ask(t(lang, 'identityResolution.confirmBulk', {
           selected: total,
           ambiguous: ambiguousCount,
-        }),
-      )
-    ) {
+        }), { severity: 'warning' }))) {
       return;
     }
     const timestamp = new Date().toISOString();

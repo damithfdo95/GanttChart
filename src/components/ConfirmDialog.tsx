@@ -1,4 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { t } from '../i18n';
+import type { Language } from '../types';
 
 /**
  * One accessible confirmation dialog for consequential actions.
@@ -32,6 +34,37 @@ export interface ConfirmOptions {
 }
 
 export type ConfirmFn = (options: ConfirmOptions) => Promise<boolean>;
+
+/** A plain-message confirmation (the shape `window.confirm` had), shown in the accessible dialog. */
+export type AskConfirm = (message: string, options?: { severity?: ConfirmSeverity; confirmLabel?: string }) => Promise<boolean>;
+
+/**
+ * `await ask(message)` -> true when confirmed. Blank lines in the message start a new paragraph.
+ * Use severity "danger" for permanent deletes, "warning" for disruptive but reversible actions;
+ * the default "normal" starts on the confirm button like the native dialog did.
+ */
+export function useAskConfirm(lang: Language): AskConfirm {
+  const confirm = useConfirm();
+  return useCallback<AskConfirm>(
+    (message, options) => {
+      const severity = options?.severity ?? 'normal';
+      return confirm({
+        title: t(lang, 'confirm.title'),
+        body: (
+          <>
+            {message.split(/\n{2,}/).map((paragraph, i) => (
+              <p key={i}>{paragraph}</p>
+            ))}
+          </>
+        ),
+        confirmLabel: options?.confirmLabel ?? t(lang, severity === 'danger' ? 'confirm.delete' : 'confirm.ok'),
+        cancelLabel: t(lang, 'tenancy.cancel'),
+        severity,
+      });
+    },
+    [confirm, lang],
+  );
+}
 
 /** Does what the person typed satisfy every required confirmation? */
 export function typedSatisfied(typed: readonly TypedConfirmation[] | undefined, values: readonly string[]): boolean {

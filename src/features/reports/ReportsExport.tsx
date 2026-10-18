@@ -1,3 +1,4 @@
+import { useAskConfirm } from '../../components/ConfirmDialog';
 import { useMemo, useRef, useState } from 'react';
 import { useSharedGuard } from '../../app/useSharedGuard';
 import type { AttendanceStatus } from '../../types';
@@ -32,7 +33,7 @@ import {
 import { buildManagementReportRow } from '../../lib/export/management';
 import { buildXlsx, type XlsxSheet } from '../../lib/export/xlsx';
 import { toCsv, csvValueFromCell } from '../../lib/export/csv';
-import { downloadBinaryFile, downloadTextFile, escapeHtml } from '../../lib/export/download';
+import { downloadBinaryFile, downloadTextFile, escapeHtml, fileStamp } from '../../lib/export/download';
 import { printHtml } from '../../lib/export/print';
 import { createBackupPayload, parseBackupPayload } from '../../lib/backup/backup';
 import { sanitizeRestoredAccountLinks } from '../../lib/backup/restoreLinks';
@@ -54,6 +55,7 @@ export function ReportsExport() {
   const { principal } = useTenant();
   const reportsApi = useReportsStateCtx();
   const lang = app.state.language;
+  const ask = useAskConfirm(lang);
   const settings = reportsApi.state.settings;
 
   const [dateFrom, setDateFrom] = useState('');
@@ -268,7 +270,7 @@ export function ReportsExport() {
   );
 
   // Timestamp includes the time so same-day exports never collide.
-  const timestamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+  const timestamp = fileStamp();
 
   const exportCsv = (dataset: DatasetConfig): void => {
     const { sheet } = dataset.build();
@@ -367,20 +369,16 @@ export function ReportsExport() {
 
   const importBackup = (file: File): void => {
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const result = parseBackupPayload(String(reader.result ?? ''));
       if (!result.ok) {
         setMessage({ kind: 'error', text: t(lang, 'reports.importErr') });
         return;
       }
-      if (
-        !window.confirm(
-          t(lang, 'reports.confirmRestore', {
+      if (!(await ask(t(lang, 'reports.confirmRestore', {
             projects: result.data.reportsState.projects.length,
             reports: result.data.reportsState.reports.length,
-          }),
-        )
-      ) {
+          }), { severity: 'warning' }))) {
         return;
       }
       // Restoring a backup replaces the WHOLE shared workspace for everyone: administrators only, typed confirmation.

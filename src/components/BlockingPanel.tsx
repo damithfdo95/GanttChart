@@ -1,3 +1,4 @@
+import { useAskConfirm } from './ConfirmDialog';
 import { useMemo, useState } from 'react';
 import { useAppStateCtx } from '../app/state-contexts';
 import { formatDate, todayEpochDays } from '../lib/dates/dates';
@@ -43,6 +44,7 @@ interface BlockingPanelProps {
 export function BlockingPanel({ now }: BlockingPanelProps) {
   const { state, updateField } = useAppStateCtx();
   const lang = state.language;
+  const ask = useAskConfirm(lang);
   const today = formatDate(todayEpochDays());
   const events = state.blockingEvents ?? [];
   const [jiraImporting, setJiraImporting] = useState(false);
@@ -71,8 +73,8 @@ export function BlockingPanel({ now }: BlockingPanelProps) {
     setEvents(events.map((event) => (event.id === id ? { ...event, ...patch } : event)));
   };
 
-  const removeEvent = (id: string): void => {
-    if (!window.confirm(t(lang, 'blocking.confirmRemove'))) return;
+  const removeEvent = async (id: string): Promise<void> => {
+    if (!(await ask(t(lang, 'blocking.confirmRemove'), { severity: 'danger' }))) return;
     setEvents(events.filter((event) => event.id !== id));
   };
 

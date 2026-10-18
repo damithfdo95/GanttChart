@@ -1,3 +1,4 @@
+import { useAskConfirm } from '../../components/ConfirmDialog';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSharedGuard } from '../../app/useSharedGuard';
 import type { ProjectLifecycleStatus, ProjectRecord } from '../../types';
@@ -91,6 +92,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
   const reportsApi = useReportsStateCtx();
   const guard = useSharedGuard();
   const lang = app.state.language;
+  const ask = useAskConfirm(lang);
   const settings = reportsApi.state.settings;
   // A Tester reads this screen; every change to projects is an SV's (the server enforces the same).
   const access = useAccess();
@@ -227,7 +229,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
           { label: t(lang, 'labels.now'), value: formatClock(now) },
         ];
 
-  const handleStatusChange = (project: ProjectRecord, status: ProjectLifecycleStatus): void => {
+  const handleStatusChange = async (project: ProjectRecord, status: ProjectLifecycleStatus): Promise<void> => {
     if (status === 'done' && project.status !== 'done') {
       // V6.6 §23: informational completion summary — objective evidence for
       // the review, never a completion blocker.
@@ -250,20 +252,20 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
         testers: testers.size,
         cases: casesExecuted,
       });
-      if (!window.confirm(`${t(lang, 'overall.confirmMarkDone')}\n\n${summary}`)) return;
+      if (!(await ask(`${t(lang, 'overall.confirmMarkDone')}\n\n${summary}`))) return;
     }
     reportsApi.setProjectStatus(project.id, status, settings.supervisorName || undefined);
     setReopenFor(null);
   };
 
-  const handleBulkStatus = (status: ProjectLifecycleStatus): void => {
+  const handleBulkStatus = async (status: ProjectLifecycleStatus): Promise<void> => {
     const targets = projects.filter((p) => selected.has(p.id));
     if (targets.length === 0) return;
     // The Done confirmation counts only projects that will actually change —
     // already-done projects are skipped by the loop below.
     const changing = status === 'done' ? targets.filter((p) => p.status !== 'done') : targets;
     if (changing.length === 0) return;
-    if (status === 'done' && !window.confirm(t(lang, 'overall.confirmBulkDone', { count: changing.length }))) return;
+    if (status === 'done' && !(await ask(t(lang, 'overall.confirmBulkDone', { count: changing.length })))) return;
     for (const project of targets) {
       if (status === 'done' && project.status === 'done') continue;
       reportsApi.setProjectStatus(project.id, status, settings.supervisorName || undefined);
@@ -308,14 +310,14 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
   const handleImportFile = (file: File): void => {
     if (!guard.guardWrite()) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const result = detectImportFile(String(reader.result ?? ''));
       if (result.kind === 'invalid') {
         setImportMessage({ kind: 'error', text: t(lang, 'import.invalidFile') });
         return;
       }
       if (result.kind === 'backup') {
-        if (!window.confirm(t(lang, 'import.confirmBackup'))) return;
+        if (!(await ask(t(lang, 'import.confirmBackup'), { severity: 'warning' }))) return;
         // A full backup replaces the WHOLE shared workspace for everyone: administrators only, typed confirmation.
         if (!guard.confirmReplace()) return;
         app.replaceState(result.data.appState);
@@ -327,14 +329,10 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
       if (result.kind === 'project') {
         const name =
           resolveBilingualName(lang, { nameEn: result.data.project.nameEn, nameJa: result.data.project.nameJa }) || '—';
-        if (
-          !window.confirm(
-            t(lang, 'import.confirmProject', {
+        if (!(await ask(t(lang, 'import.confirmProject', {
               name,
               count: result.data.reports.length,
-            }),
-          )
-        ) {
+            }), { severity: 'warning' }))) {
           return;
         }
         const merged = importProjectIntoRegistry(reportsApi.state.projects, reportsApi.state.reports, result.data, {
@@ -361,7 +359,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
         return;
       }
       // Legacy app-state export: replaces the editing surface of the active project.
-      if (!window.confirm(t(lang, 'import.confirmAppState'))) return;
+      if (!(await ask(t(lang, 'import.confirmAppState'), { severity: 'warning' }))) return;
       app.replaceState(result.data);
       setImportMessage({ kind: 'ok', text: t(lang, 'import.appStateOk') });
     };
@@ -369,9 +367,9 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
     reader.readAsText(file);
   };
 
-  const handleDeleteProject = (project: ProjectRecord): void => {
+  const handleDeleteProject = async (project: ProjectRecord): Promise<void> => {
     const name = resolveBilingualName(lang, { nameEn: project.nameEn, nameJa: project.nameJa }) || '—';
-    if (!window.confirm(t(lang, 'overall.confirmDeleteProject', { name }))) return;
+    if (!(await ask(t(lang, 'overall.confirmDeleteProject', { name }), { severity: 'danger' }))) return;
     if (!guard.confirmEveryone('shared.confirm.deleteProject')) return;
     const wasActive = reportsApi.state.activeProjectId === project.id;
     const fallback = reportsApi.state.projects.find((p) => p.id !== project.id) ?? null;

@@ -23,7 +23,7 @@ import { JiraImportTickets } from './JiraImportTickets';
 import { ticketAnalysisSheet } from '../../lib/export/exportData';
 import { buildXlsx } from '../../lib/export/xlsx';
 import { toCsv, csvValueFromCell } from '../../lib/export/csv';
-import { downloadBinaryFile, downloadTextFile } from '../../lib/export/download';
+import { downloadBinaryFile, downloadTextFile, fileStamp } from '../../lib/export/download';
 import { formatDateDisplay, formatDate, parseDate, todayEpochDays } from '../../lib/dates/dates';
 import { formatInteger, formatNumber } from '../../lib/formatting/format';
 import { personOptions, personOptionText, selectableMembers } from '../../domain/teamMembers';
@@ -305,7 +305,7 @@ export function JiraScreen() {
 
   const handleExportCsv = (): void => {
     if (analysis === null) return;
-    const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+    const stamp = fileStamp();
     const sheet = ticketAnalysisSheet(analysis);
     const csv = toCsv(sheet.headers, sheet.rows.map((row) => row.map(csvValueFromCell)));
     downloadTextFile(`ganttchart-jira-tickets-${stamp}.csv`, 'text/csv;charset=utf-8', csv);
@@ -314,7 +314,7 @@ export function JiraScreen() {
 
   const handleExportXlsx = (): void => {
     if (analysis === null) return;
-    const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+    const stamp = fileStamp();
     const sheet = ticketAnalysisSheet(analysis);
     downloadBinaryFile(`ganttchart-jira-tickets-${stamp}.xlsx`, XLSX_MIME, buildXlsx([sheet]));
     setMessage({ kind: 'ok', text: t(lang, 'reports.exportedRows', { dataset: sheet.name, count: sheet.rows.length }) });

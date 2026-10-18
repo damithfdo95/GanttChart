@@ -1,3 +1,4 @@
+import { useAskConfirm } from './ConfirmDialog';
 import { useMemo } from 'react';
 import { useAppStateCtx } from '../app/state-contexts';
 import { formatDate, todayEpochDays } from '../lib/dates/dates';
@@ -36,6 +37,7 @@ const MILESTONE_STATUS_KEY: Record<MilestoneStatus, TranslationKey> = {
 export function MilestonePanel({ now }: MilestonePanelProps) {
   const { state, updateField } = useAppStateCtx();
   const lang = state.language;
+  const ask = useAskConfirm(lang);
   const milestones = state.milestones ?? [];
   const nowAbsoluteMinutes = todayEpochDays() * 1440 + now;
 
@@ -52,8 +54,8 @@ export function MilestonePanel({ now }: MilestonePanelProps) {
     setMilestones(milestones.map((m) => (m.id === id ? { ...m, ...patch } : m)));
   };
 
-  const removeMilestone = (id: string): void => {
-    if (!window.confirm(t(lang, 'milestones.confirmRemove'))) return;
+  const removeMilestone = async (id: string): Promise<void> => {
+    if (!(await ask(t(lang, 'milestones.confirmRemove'), { severity: 'danger' }))) return;
     setMilestones(milestones.filter((m) => m.id !== id));
   };
 

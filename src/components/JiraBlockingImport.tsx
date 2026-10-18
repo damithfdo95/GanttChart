@@ -18,6 +18,9 @@ const BLOCKING_CAT_KEY: Record<BlockingCategory, TranslationKey> = {
   OTHER: 'blocking.cat.OTHER',
 };
 
+/** The unavailable minutes each imported event starts with (editable per row afterwards). */
+const DEFAULT_MINUTES = 30;
+
 interface JiraBlockingImportProps {
   lang: Language;
   /** The date new events default to — the panel's "today" semantics, so imports land where the panel is looking. */
@@ -39,6 +42,7 @@ export function JiraBlockingImport({ lang, defaultDate, onClose, onApply }: Jira
   const { loading, error, search } = useJiraSearch();
   const [jql, setJql] = useState(JIRA_JQL_PLACEHOLDER);
   const [draft, setDraft] = useState<BlockingEvent[] | null>(null);
+  const [minutes, setMinutes] = useState(DEFAULT_MINUTES);
   const [applying, setApplying] = useState(false);
 
   const fetchEvents = async (): Promise<void> => {
@@ -47,7 +51,7 @@ export function JiraBlockingImport({ lang, defaultDate, onClose, onApply }: Jira
     setDraft(null);
     try {
       const found: JiraIssue[] = await search(q);
-      setDraft(found.length === 0 ? [] : jiraIssuesToBlockingEvents(found, defaultDate));
+      setDraft(found.length === 0 ? [] : jiraIssuesToBlockingEvents(found, defaultDate, { minutes }));
     } catch {
       // The typed failure is exposed by the hook in `error`; the hint below renders it.
     }
@@ -84,6 +88,20 @@ export function JiraBlockingImport({ lang, defaultDate, onClose, onApply }: Jira
           aria-label={t(lang, 'jira.import.jql')}
           onChange={(e) => {
             setJql(e.target.value);
+            setDraft(null);
+          }}
+        />
+      </label>
+      <label className="link-confirm">
+        {t(lang, 'jira.import.blocking.minutesEach')}
+        <input
+          className="input input-cell"
+          type="number"
+          min={1}
+          step={5}
+          value={minutes}
+          onChange={(e) => {
+            setMinutes(Math.max(1, Math.floor(Number(e.target.value)) || 1));
             setDraft(null);
           }}
         />

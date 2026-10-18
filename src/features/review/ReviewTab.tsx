@@ -1,3 +1,4 @@
+import { useAskConfirm } from '../../components/ConfirmDialog';
 import { useMemo, useState } from 'react';
 import type { RcsMember, TesterReview } from '../../types';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
@@ -54,6 +55,7 @@ export function ReviewTab() {
   const app = useAppStateCtx();
   const reportsApi = useReportsStateCtx();
   const lang = app.state.language;
+  const ask = useAskConfirm(lang);
 
   const today = formatDate(todayEpochDays());
   const defaultYear = Number(today.slice(0, 4));
@@ -181,8 +183,8 @@ export function ReviewTab() {
     );
   };
 
-  const handleRemove = (review: TesterReview): void => {
-    if (window.confirm(t(lang, 'review.confirmDelete'))) reportsApi.removeReview(review.id);
+  const handleRemove = async (review: TesterReview): Promise<void> => {
+    if (await ask(t(lang, 'review.confirmDelete'), { severity: 'danger' })) reportsApi.removeReview(review.id);
   };
 
   const selectedMember = selectedTester === '' ? undefined : findMemberById(members, selectedTester);

@@ -3,6 +3,8 @@ import type { JiraIssue } from '../../../shared/jira';
 import { issueToBugTicket, mergeImportedTickets, routeIssuesToProjects } from '../../domain/jira';
 import type { BugTicket, Cycle, Language, ProjectRecord } from '../../types';
 import { resolveBilingualName, t, type TranslationKey } from '../../i18n';
+import { TablePager } from '../../components/TablePager';
+import { usePagedRows } from '../../lib/pagination/usePagedRows';
 
 /**
  * "Import to Tickets" (JIRA tab, SV only): a confirmation step that routes
@@ -31,6 +33,8 @@ interface UnroutableRow {
   reason: UnroutableReason;
   candidates: string[];
 }
+
+const EMPTY_UNROUTABLE: UnroutableRow[] = [];
 
 /** What one import commit did to one project's ticket list. */
 export interface ImportTicketResult {
@@ -95,6 +99,9 @@ export function JiraImportTickets({
     () => (issues.length > 0 ? routeIssuesToProjects(issues, projects, cycles ?? []) : null),
     [issues, projects, cycles],
   );
+
+  // Up to hundreds of tickets can be unroutable: page the list instead of one endless table.
+  const unroutablePager = usePagedRows(routing?.unroutable ?? EMPTY_UNROUTABLE, 10);
 
   const cycleVersionOf = (project: ProjectRecord): string => {
     if (project.cycleId === undefined || project.cycleId === null) return '—';
@@ -215,7 +222,7 @@ export function JiraImportTickets({
                     </tr>
                   </thead>
                   <tbody>
-                    {routing.unroutable.map((row: UnroutableRow) => (
+                    {unroutablePager.pagedRows.map((row: UnroutableRow) => (
                       <tr key={row.issue.key}>
                         <td>{row.issue.key}</td>
                         <td>{row.issue.summary}</td>
@@ -225,6 +232,7 @@ export function JiraImportTickets({
                   </tbody>
                 </table>
               </div>
+              <TablePager lang={lang} pager={unroutablePager} />
               <p className="dr-summary">{t(lang, 'jira.importTickets.skippedNote')}</p>
             </>
           ) : null}

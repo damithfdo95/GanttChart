@@ -1,3 +1,4 @@
+import { useAskConfirm } from '../../components/ConfirmDialog';
 import { useState } from 'react';
 import { useAppStateCtx } from '../../app/state-contexts';
 import { useSharedGuard } from '../../app/useSharedGuard';
@@ -16,6 +17,7 @@ export function DataBackup() {
   const { state, replaceState, resetToDemo } = app;
   const guard = useSharedGuard();
   const lang = state.language;
+  const ask = useAskConfirm(lang);
   const [message, setMessage] = useState<ImportMessage | null>(null);
 
   const handleExport = (): void => {
@@ -39,9 +41,9 @@ export function DataBackup() {
   };
 
   /** Reset the active project's inputs to demo data. Destructive for the active project, so it names the project and asks first. */
-  const handleReset = (): void => {
+  const handleReset = async (): Promise<void> => {
     const name = resolveBilingualName(lang, { nameEn: state.projectNameEn, nameJa: state.projectNameJa }) || t(lang, 'app.title');
-    if (!window.confirm(t(lang, 'dashboard.confirmReset', { name }))) return;
+    if (!(await ask(t(lang, 'dashboard.confirmReset', { name }), { severity: 'danger' }))) return;
     // In shared mode the project is everyone's: say so, and never for read-only people.
     if (!guard.confirmEveryone('shared.confirm.resetProject')) return;
     resetToDemo();

@@ -22,7 +22,7 @@ import {
 import { emptySharedState, starterWorkspace } from '../lib/sync/starter';
 import type { WorkspaceCounts } from '../lib/sync/records';
 import { createBackupPayload } from '../lib/backup/backup';
-import { downloadTextFile } from '../lib/export/download';
+import { downloadTextFile, fileStamp } from '../lib/export/download';
 import { AccessDenied } from '../features/tenancy/AccessDenied';
 import { SuperAdminConsole } from '../features/tenancy/SuperAdminConsole';
 import { PublicLanding } from '../features/tenancy/PublicLanding';
@@ -217,7 +217,7 @@ function execute(
   const { app, reports } = boot.workspace;
   let backedUp = false;
   if (needsLocalBackup(choice, reports)) {
-    const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+    const stamp = fileStamp();
     downloadTextFile(`ganttchart-before-sharing-${stamp}.json`, 'application/json', JSON.stringify(createBackupPayload(app, reports), null, 2));
     backedUp = true;
   }
