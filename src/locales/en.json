@@ -1009,6 +1009,8 @@
 
   "nav.members": "Team Members",
   "nav.mainNavigation": "Main navigation",
+  "gantt.viewSwitch": "Gantt view",
+  "nav.accountArea": "Account and status",
 
   "members.title": "Team Member profiles",
   "members.subtitle": "The roster with stable identities — the member ID never changes. Members who sign in are linked to their account.",

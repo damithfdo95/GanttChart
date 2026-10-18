@@ -28,6 +28,8 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: 'node',
       include: ['src/**/*.test.ts'],
+      // Vitest blanks CSS by default; the layout guard tests read the real stylesheet text.
+      css: { include: [/src[\/]index\.css/] },
     },
   };
 });

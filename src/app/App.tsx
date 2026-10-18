@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { AppProviders, useAppStateCtx, useAutoBackupCtx, usePersistenceCtx, useReportsStateCtx } from './state-contexts';
 import { toolNameOf } from '../domain/branding';
 import type { SharedBoot } from './shared-sync';
@@ -240,6 +240,12 @@ function Shell() {
     document.title = `${t(state.language, screenKey)} — ${toolNameOf(reports.state.settings, state.language)}`;
   }, [state.language, activeScreen, reports.state.settings]);
 
+  // Keep the active tab visible when the strip is scrolled (e.g. after opening History from a link).
+  const activeTabRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [activeScreen]);
+
   const openOverall = (focus: OverallFocus): void => {
     setOverallFocus(focus);
     setScreen('overall');
@@ -259,28 +265,36 @@ function Shell() {
 
   return (
     <>
-      <nav className="app-nav" aria-label={t(state.language, 'nav.mainNavigation')}>
-        <BrandMark lang={state.language} />
-        {navItems(principal?.role ?? null)
-          .filter((item) => item.id !== 'jira' || jiraConfigured)
-          .map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={activeScreen === item.id ? 'active' : undefined}
-            aria-current={activeScreen === item.id ? 'page' : undefined}
-            onClick={() => setScreen(item.id)}
-          >
-            {t(state.language, item.key)}
-          </button>
-        ))}
-        <div className="account-area">
+      <div className="app-shell">
+        {/* Navigation: ONE strip holding every screen (History and Settings included). It scrolls sideways
+            when the window is too narrow; it never wraps, so no tab drops onto a second row. */}
+        <nav className="app-nav" aria-label={t(state.language, 'nav.mainNavigation')}>
+          <BrandMark lang={state.language} />
+          <div className="app-nav-tabs">
+            {navItems(principal?.role ?? null)
+              .filter((item) => item.id !== 'jira' || jiraConfigured)
+              .map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  ref={activeScreen === item.id ? activeTabRef : undefined}
+                  className={activeScreen === item.id ? 'active' : undefined}
+                  aria-current={activeScreen === item.id ? 'page' : undefined}
+                  onClick={() => setScreen(item.id)}
+                >
+                  {t(state.language, item.key)}
+                </button>
+              ))}
+          </div>
+        </nav>
+        {/* Identity, workspace and save/sync status: their own region, independent of the navigation width. */}
+        <div className="account-area" role="group" aria-label={t(state.language, 'nav.accountArea')}>
           <WorkspaceBadge />
           <SyncStatusIndicator />
           <SaveStatusIndicator />
           <ShellLogout />
         </div>
-      </nav>
+      </div>
       <NotificationBanner />
       <SyncBanners />
       <CorruptionBanner />

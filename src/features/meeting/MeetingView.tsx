@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
 import { useAccess } from '../../app/access';
 import { resolveBilingualName, t, type TranslationKey } from '../../i18n';
@@ -23,7 +23,7 @@ const pct = (v: number | null): string => (v === null ? '—' : `${Math.round(v 
  * (what happened against it, and tomorrow's plan). It is tenant-wide and row-per-project (with scopes beneath), never per person.
  * "Present" hides every editing control; the same numbers stay on screen.
  */
-export function MeetingView({ initialSession = 'morning' }: { initialSession?: MeetingSession }) {
+export function MeetingView({ initialSession = 'morning', viewSwitch }: { initialSession?: MeetingSession; viewSwitch?: ReactNode }) {
   const access = useAccess();
   const lang = useLanguage();
   return access.isTester ? (
@@ -31,11 +31,11 @@ export function MeetingView({ initialSession = 'morning' }: { initialSession?: M
       <p>{t(lang, 'mt.svOnly')}</p>
     </section>
   ) : (
-    <MeetingBoard initialSession={initialSession} />
+    <MeetingBoard initialSession={initialSession} viewSwitch={viewSwitch} />
   );
 }
 
-function MeetingBoard({ initialSession }: { initialSession: MeetingSession }) {
+function MeetingBoard({ initialSession, viewSwitch }: { initialSession: MeetingSession; viewSwitch?: ReactNode }) {
   const reports = useReportsStateCtx();
   const lang = useLanguage();
   const today = useBusinessToday();
@@ -128,6 +128,7 @@ function MeetingBoard({ initialSession }: { initialSession: MeetingSession }) {
     <div className={`app mt-board${presenting ? ' mt-present' : ''}`}>
       <header className="mt-head">
         <div>
+          {viewSwitch === undefined ? null : <div className="gantt-view-slot">{viewSwitch}</div>}
           <BrandMark lang={lang} className="brand-logo brand-logo-large" />
           <h1>{t(lang, history ? 'mth.title' : evening ? 'mt.evening' : 'mt.morning')}</h1>
           <p className="mt-date">

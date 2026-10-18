@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { ProjectLifecycleStatus, ProjectRecord } from '../../types';
 import { useAppStateCtx, useReportsStateCtx, activateProject } from '../../app/state-contexts';
 import { t, resolveBilingualName, otherLanguage, type TranslationKey } from '../../i18n';
@@ -57,17 +57,22 @@ export function Gantt({ focusProjectId, onFocusHandled, meeting = null, onMeetin
     onMeetingHandled?.();
   }, [meeting, isTester, onMeetingHandled]);
   if (isTester) return <GanttPlanning focusProjectId={focusProjectId} onFocusHandled={onFocusHandled} />;
-  return (
-    <>
-      <div className="view-toggle gantt-mode" role="tablist" aria-label={t(lang, 'nav.gantt')}>
-        {(['planning', 'meeting'] as const).map((id) => (
-          <button key={id} type="button" role="tab" aria-selected={mode === id} className={mode === id ? 'active' : undefined} onClick={() => setMode(id)}>
-            {t(lang, id === 'planning' ? 'mt.planningView' : 'mt.meetingView')}
-          </button>
-        ))}
-      </div>
-      {mode === 'meeting' ? <MeetingView key={session} initialSession={session} /> : <GanttPlanning focusProjectId={focusProjectId} onFocusHandled={onFocusHandled} />}
-    </>
+  // The switch lives in the page header of whichever view is showing (not in the app shell), so it sits
+  // on the same left edge as the page title and the content below.
+  const viewSwitch = (
+    <div className="view-toggle gantt-mode" role="tablist" aria-label={t(lang, 'gantt.viewSwitch')}>
+      {(['planning', 'meeting'] as const).map((id) => (
+        <button key={id} type="button" role="tab" aria-selected={mode === id} className={mode === id ? 'active' : undefined} onClick={() => setMode(id)}>
+          {mode === id ? <span aria-hidden="true">✓ </span> : null}
+          {t(lang, id === 'planning' ? 'mt.planningView' : 'mt.meetingView')}
+        </button>
+      ))}
+    </div>
+  );
+  return mode === 'meeting' ? (
+    <MeetingView key={session} initialSession={session} viewSwitch={viewSwitch} />
+  ) : (
+    <GanttPlanning focusProjectId={focusProjectId} onFocusHandled={onFocusHandled} viewSwitch={viewSwitch} />
   );
 }
 
@@ -76,7 +81,7 @@ export function Gantt({ focusProjectId, onFocusHandled, meeting = null, onMeetin
  * Project selection and status filtering live here; Done projects stay out of
  * the way but are never deleted.
  */
-function GanttPlanning({ focusProjectId, onFocusHandled }: GanttProps) {
+function GanttPlanning({ focusProjectId, onFocusHandled, viewSwitch }: GanttProps & { viewSwitch?: ReactNode }) {
   const app = useAppStateCtx();
   const reportsApi = useReportsStateCtx();
   const lang = app.state.language;
@@ -167,6 +172,7 @@ function GanttPlanning({ focusProjectId, onFocusHandled }: GanttProps) {
       <header className="app-header">
         <div className="app-title-group">
           <h1>{t(lang, 'nav.gantt')}</h1>
+          {viewSwitch}
         </div>
         <div className="app-header-actions">
           <label className="dr-toolbar-field">

@@ -1009,6 +1009,8 @@
 
   "nav.members": "チームメンバー",
   "nav.mainNavigation": "メインナビゲーション",
+  "gantt.viewSwitch": "ガント表示",
+  "nav.accountArea": "アカウントとステータス",
 
   "members.title": "チームメンバープロフィール",
   "members.subtitle": "安定したIDで管理する名簿 — メンバーIDは変更されません。サインインするメンバーはアカウントと紐付けられます。",
