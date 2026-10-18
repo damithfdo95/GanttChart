@@ -118,13 +118,18 @@ export function SharedHistory() {
   };
 
   return (
-    <section className="dr-section shared-history">
-      <div className="dr-section-header">
-        <h2>{t(lang, 'shared.history.title')}</h2>
-        <button type="button" className="btn btn-ghost" onClick={() => void load()}>
-          {t(lang, 'shared.history.refresh')}
-        </button>
-      </div>
+    <div className="app shared-history">
+      <header className="app-header">
+        <div className="app-title-group">
+          <h1>{t(lang, 'shared.history.title')}</h1>
+        </div>
+        <div className="app-header-actions">
+          <button type="button" className="btn btn-ghost" onClick={() => void load()}>
+            {t(lang, 'shared.history.refresh')}
+          </button>
+        </div>
+      </header>
+      <section className="dr-section history-toolbar">
       <p className="dr-summary">{t(lang, 'shared.history.help', { days: SHARED_HISTORY_DAYS })}</p>
       {message === null ? null : (
         <p className={`data-controls-message ${message.kind}`} role={message.kind === 'error' ? 'alert' : 'status'}>
@@ -173,6 +178,8 @@ export function SharedHistory() {
           {preview.text}
         </p>
       )}
+      </section>
+      <section className="dr-section history-table-card">
       {failed ? (
         <p className="data-controls-message error" role="alert">
           {t(lang, 'shared.history.failed')}
@@ -182,7 +189,8 @@ export function SharedHistory() {
       ) : rows.length === 0 ? (
         <p>{t(lang, 'shared.history.empty')}</p>
       ) : (
-        <table>
+        <div className="table-wrap history-table-wrap">
+        <table className="dr-table">
           <thead>
             <tr>
               <th>{t(lang, 'shared.history.colRevision')}</th>
@@ -190,7 +198,9 @@ export function SharedHistory() {
               <th>{t(lang, 'shared.history.colWho')}</th>
               <th>{t(lang, 'shared.history.colWhat')}</th>
               <th>{t(lang, 'shared.history.colChanges')}</th>
-              <th />
+              <th>
+                <span className="sr-only">{t(lang, 'columns.actions')}</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -210,7 +220,7 @@ export function SharedHistory() {
                   )}
                 </td>
                 <td>{row.puts + row.deletes}</td>
-                <td>
+                <td className="hist-actions">
                   <button type="button" className="btn btn-ghost" onClick={() => void showPreview(row.revision)}>
                     {t(lang, 'shared.history.preview')}
                   </button>{' '}
@@ -222,6 +232,7 @@ export function SharedHistory() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
       {page === null || failed ? null : (
         <nav className="table-pager" aria-label={t(lang, 'shared.history.pager')}>
@@ -254,5 +265,6 @@ export function SharedHistory() {
         </nav>
       )}
     </section>
+    </div>
   );
 }

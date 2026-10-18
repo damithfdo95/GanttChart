@@ -2,7 +2,6 @@ import { useAskConfirm } from '../../components/ConfirmDialog';
 import { useCallback, useEffect, useState } from 'react';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
 import { t, type TranslationKey } from '../../i18n';
-import { SectionCard } from '../../components/SectionCard';
 import { MetricCard } from '../../components/MetricCard';
 import {
   createRestoreRevision,
@@ -161,7 +160,13 @@ export function RevisionHistory() {
   const pager = usePagedRows(metas ?? [], 10, { initialPage: 'last' });
 
   return (
-    <SectionCard title={t(lang, 'history.title')} span={12}>
+    <div className="app revision-history">
+      <header className="app-header">
+        <div className="app-title-group">
+          <h1>{t(lang, 'history.title')}</h1>
+        </div>
+      </header>
+      <section className="dr-section history-table-card">
       <div className="metrics-grid">
         <MetricCard label={t(lang, 'history.current')} value={String(currentRevision)} />
         <MetricCard
@@ -252,6 +257,7 @@ export function RevisionHistory() {
           {t(lang, 'history.exportHistory')}
         </button>
       </div>
-    </SectionCard>
+      </section>
+    </div>
   );
 }

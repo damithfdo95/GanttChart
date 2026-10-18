@@ -2173,6 +2173,7 @@
   "dir.removed": "removed",
   "dir.noLoginYet": "no login yet",
   "dir.addTitle": "Add Team Member",
+  "dir.listTitle": "Team directory",
   "dir.help": "Team Members is the one list of people in this workspace. Everyone you pick on any screen comes from here. A person can exist without a login; create the login now or later.",
   "dir.name": "Display name",
   "dir.email": "Email",

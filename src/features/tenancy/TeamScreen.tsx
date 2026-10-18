@@ -50,8 +50,10 @@ export function TeamScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
 function SvTeam({ lang, principal, api, members, onOpenSettings }: { lang: Language; principal: PrincipalDto; api: TenancyApi; members: readonly RcsMember[]; onOpenSettings: () => void }) {
   const [editing, setEditing] = useState<string | null>(null);
   const reports = useReportsStateCtx();
+  // ONE standard page container (.app: same max-width and padding as Dashboard / Gantt / Settings) holds the
+  // whole screen; the sections below it are cards inside it.
   return (
-    <>
+    <div className="app team-screen">
       <TeamView
         lang={lang}
         principal={principal}
@@ -66,7 +68,7 @@ function SvTeam({ lang, principal, api, members, onOpenSettings }: { lang: Langu
       {principal.role === 'admin' ? <LegacyPlaceholderNotice lang={lang} /> : null}
       {principal.role === 'admin' && principal.tenant?.storageMode === 'web' ? <TesterWorkload lang={lang} /> : null}
       {principal.role === 'admin' ? <RcsMembersTab editMemberId={editing} onClose={() => setEditing(null)} /> : null}
-    </>
+    </div>
   );
 }
 
@@ -91,9 +93,13 @@ export function MyProfile({
     return p === undefined ? stable : `${resolveBilingualName(lang, { nameEn: p.nameEn, nameJa: p.nameJa }) || stable} (${stable})`;
   };
   return (
-    <div className="team-screen">
+    <div className="app team-screen">
+      <header className="app-header">
+        <div className="app-title-group">
+          <h1 id="my-profile-title">{t(lang, 'team.myProfile.title')}</h1>
+        </div>
+      </header>
       <section className="dr-section" aria-labelledby="my-profile-title">
-        <h1 id="my-profile-title">{t(lang, 'team.myProfile.title')}</h1>
         <p className="dr-summary">{t(lang, 'team.myProfile.help')}</p>
         <dl className="cc-facts">
           <div>
@@ -168,12 +174,14 @@ export function TeamView({
   const tenant = principal.tenant;
 
   return (
-    <div className="team-screen">
-      <header className="dr-section">
-        <h1>{t(lang, 'team.title')}</h1>
-        <p>
+    <div className="team-view">
+      <header className="app-header">
+        <div className="app-title-group">
+          <h1>{t(lang, 'team.title')}</h1>
+          <p className="app-subtitle">
           <strong>{tenant.name}</strong> · {t(lang, tenant.storageMode === 'web' ? 'tenancy.mode.web' : 'tenancy.mode.local')} · {t(lang, principal.isOwner ? 'tenancy.owner.youAre' : 'tenancy.role.sv')}
-        </p>
+          </p>
+        </div>
       </header>
       {tenant.storageMode === 'web' ? (
         <>
@@ -183,7 +191,7 @@ export function TeamView({
       ) : (
         <>
           <section className="dr-section tenancy-empty" aria-labelledby="team-local-title">
-            <h2 id="team-local-title">{t(lang, 'team.members.title')}</h2>
+            <h2 id="team-local-title" className="sr-only">{t(lang, 'team.members.title')}</h2>
             <p role="status">
               <strong>{t(lang, 'tenancy.users.localOnly')}</strong>
             </p>

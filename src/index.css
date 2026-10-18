@@ -3704,3 +3704,39 @@ body.mt-presenting .app-shell, body.mt-presenting .gantt-mode, body.mt-presentin
 .nt-item { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
 .nt-message { margin: 2px 0; white-space: pre-wrap; }
 .nt-form { max-width: 640px; }
+
+/* ---- Team Members and History: the standard page container (.app) + cards ---- */
+.app-title-group .app-subtitle { margin: 0; }
+/* RcsMembersTab brings its own .app; inside the Team screen it must not double the page padding. */
+.team-screen .app { padding: 0; max-width: none; margin: 0; }
+.team-screen .team-view,
+.team-screen > .dr-section,
+.team-screen .app > .dr-section { margin-bottom: 16px; }
+/* Add Team Member: a card whose fields flow in columns instead of one narrow box on the far left. */
+.team-add-card .tenancy-form {
+  max-width: none;
+  padding: 0;
+  margin: 8px 0 0;
+  border: 0;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px 24px;
+  align-items: start;
+}
+.team-add-card .tenancy-form .form-field { display: grid; gap: 4px; align-content: start; min-width: 0; }
+.team-add-card .tenancy-form fieldset,
+.team-add-card .tenancy-form > button { grid-column: 1 / -1; }
+.team-add-card .tenancy-form > button { justify-self: start; }
+/* The member directory table scrolls inside its card, never the page. */
+.team-list-card .tenancy-table-wrap { overflow-x: auto; }
+.team-list-card .tenancy-table { min-width: 880px; }
+
+/* History: toolbar card + table card; long "What" text wraps in its cell. */
+.history-toolbar .tenancy-controls { margin: 12px 0 0; }
+.history-table-wrap { margin: 0; }
+.shared-history .history-table-wrap > .dr-table { width: 100%; min-width: 720px; border-collapse: collapse; }
+.shared-history td { vertical-align: top; overflow-wrap: anywhere; }
+.shared-history .hist-actions { white-space: nowrap; }
+.shared-history .hist-changed { margin: 4px 0 0; padding-left: 18px; font-size: 12px; color: var(--text-muted); }
+.revision-history .history-table-card > .metrics-grid { margin-bottom: 12px; }
+.team-screen .tenancy-empty { padding: 14px 18px; margin: 0 0 16px; }
+.revision-history .plan-actions { margin-top: 12px; }

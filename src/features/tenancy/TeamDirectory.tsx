@@ -309,8 +309,9 @@ export function TeamDirectory({
   };
 
   return (
-    <section className="dr-section" aria-labelledby="dir-title">
-      <h2 id="dir-title">{t(lang, 'team.members.title')}</h2>
+    <>
+    <section className="dr-section team-add-card" aria-labelledby="dir-title">
+      <h2 id="dir-title">{t(lang, 'dir.addTitle')}</h2>
       <p className="dr-summary">{t(lang, 'dir.help')}</p>
       {web ? <p className="dr-summary">{t(lang, 'tenancy.users.help')}</p> : <p className="link-help">{t(lang, 'dir.localNote')}</p>}
       <div aria-live="polite">
@@ -328,24 +329,29 @@ export function TeamDirectory({
           void add();
         }}
       >
-        <h3>{t(lang, 'dir.addTitle')}</h3>
-        <label className="link-confirm">
-          {t(lang, 'dir.name')}
-          <input className="input" required value={name} maxLength={80} onChange={(e) => setName(e.target.value)} autoComplete="off" />
-        </label>
-        <label className="link-confirm">
-          {t(lang, 'dir.email')}
-          <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" required={withLogin} />
-        </label>
-        <p className="link-help">{t(lang, 'dir.emailHint')}</p>
-        <label className="link-confirm">
-          {t(lang, 'dir.role')}
-          <select className="input" value={role} onChange={(e) => setRole(e.target.value as MemberRole)}>
-            <option value="tester">{t(lang, 'tenancy.role.tester')}</option>
-            <option value="sv">{t(lang, 'tenancy.role.sv')}</option>
-          </select>
-        </label>
-        <p className="link-help">{t(lang, role === 'sv' ? 'tenancy.users.roleHelpSv' : 'tenancy.users.roleHelpTester')}</p>
+        <div className="form-field">
+          <label className="link-confirm">
+            {t(lang, 'dir.name')}
+            <input className="input" required value={name} maxLength={80} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+          </label>
+        </div>
+        <div className="form-field">
+          <label className="link-confirm">
+            {t(lang, 'dir.email')}
+            <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" required={withLogin} />
+          </label>
+          <p className="link-help">{t(lang, 'dir.emailHint')}</p>
+        </div>
+        <div className="form-field">
+          <label className="link-confirm">
+            {t(lang, 'dir.role')}
+            <select className="input" value={role} onChange={(e) => setRole(e.target.value as MemberRole)}>
+              <option value="tester">{t(lang, 'tenancy.role.tester')}</option>
+              <option value="sv">{t(lang, 'tenancy.role.sv')}</option>
+            </select>
+          </label>
+          <p className="link-help">{t(lang, role === 'sv' ? 'tenancy.users.roleHelpSv' : 'tenancy.users.roleHelpTester')}</p>
+        </div>
         {web ? (
           <fieldset className="plain-fieldset">
             <legend>{t(lang, 'dir.loginLabel')}</legend>
@@ -371,7 +377,10 @@ export function TeamDirectory({
           {t(lang, 'dir.add')}
         </button>
       </form>
+    </section>
 
+    <section className="dr-section team-list-card" aria-labelledby="dir-list-title">
+      <h2 id="dir-list-title">{t(lang, 'dir.listTitle')}</h2>
       <div className="tenancy-controls" role="search">
         <label>
           {t(lang, 'tenancy.list.search')}
@@ -577,5 +586,6 @@ export function TeamDirectory({
         </div>
       )}
     </section>
+    </>
   );
 }
