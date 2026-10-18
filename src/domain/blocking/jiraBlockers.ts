@@ -67,6 +67,21 @@ export function jiraKeyFromNote(note: string): string | null {
   return m === null ? null : m[1];
 }
 
+const NOTE_PREFIX = /^\[JIRA [^\]]+\] ?/;
+
+/** The editable part of an imported note: everything after the `[JIRA KEY] ` handle. */
+export function editableNoteText(note: string): string {
+  const m = note.match(NOTE_PREFIX);
+  return m === null ? note : note.slice(m[0].length);
+}
+
+/** The note with its text replaced but the `[JIRA KEY]` dedupe handle kept, capped at the note limit. */
+export function withNoteText(note: string, text: string): string {
+  const m = note.match(NOTE_PREFIX);
+  const prefix = m === null ? '' : `${m[0].trimEnd()} `;
+  return (prefix + text).slice(0, JIRA_BLOCKING_NOTE_MAX);
+}
+
 /** One blocking event per issue, against the given business date (YYYY-MM-DD, never "today" internally). */
 export function jiraIssuesToBlockingEvents(issues: readonly JiraIssue[], date: string, defaults: JiraBlockingDefaults = {}): BlockingEvent[] {
   const minutes = Math.max(1, defaults.minutes ?? 30);

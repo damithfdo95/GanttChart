@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Startup } from './app/Startup';
+import { installStaleChunkReload } from './app/staleChunk';
 import { initPersistence } from './lib/storage/db/bootstrap';
 import './index.css';
 
@@ -12,6 +13,8 @@ import './index.css';
  * The plain-DOM placeholder avoids rendering a false empty workspace while
  * the database work is in flight.
  */
+installStaleChunkReload();
+
 const rootEl = document.getElementById('root')!;
 rootEl.textContent = 'Loading… / 読み込み中…';
 

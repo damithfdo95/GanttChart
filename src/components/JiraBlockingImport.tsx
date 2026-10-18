@@ -7,7 +7,7 @@ import { t, type TranslationKey } from '../i18n';
 import type { Language } from '../types';
 import type { JiraIssue } from '../../shared/jira';
 import { BLOCKING_CATEGORIES, type BlockingCategory, type BlockingEvent } from '../types';
-import { jiraIssuesToBlockingEvents, mergeBlockingEvents } from '../domain/blocking/jiraBlockers';
+import { editableNoteText, jiraIssuesToBlockingEvents, mergeBlockingEvents, withNoteText } from '../domain/blocking/jiraBlockers';
 
 const BLOCKING_CAT_KEY: Record<BlockingCategory, TranslationKey> = {
   ENVIRONMENT: 'blocking.cat.ENVIRONMENT',
@@ -176,7 +176,15 @@ export function JiraBlockingImport({ lang, defaultDate, onClose, onApply }: Jira
                       onChange={(e) => updateDraft(i, { minutes: Math.max(1, Number(e.target.value) || 0) })}
                     />
                   </td>
-                  <td>{event.note}</td>
+                  <td>
+                    <span className="dr-summary">{event.note.match(/^\[JIRA [^\]]+\]/)?.[0]} </span>
+                    <input
+                      className="input"
+                      aria-label={t(lang, 'blocking.note')}
+                      value={editableNoteText(event.note)}
+                      onChange={(e) => updateDraft(i, { note: withNoteText(event.note, e.target.value) })}
+                    />
+                  </td>
                   <td>
                     <button type="button" className="btn btn-ghost" onClick={() => removeDraft(i)}>
                       {t(lang, 'buttons.remove')}

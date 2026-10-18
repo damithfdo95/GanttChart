@@ -174,3 +174,15 @@ describe('jiraKeyFromNote and mergeBlockingEvents', () => {
     expect(skipped).toEqual([]);
   });
 });
+describe('editing an imported note', () => {
+  it('shows only the text after the [JIRA KEY] handle and keeps the handle when edited', async () => {
+    const { editableNoteText, withNoteText, JIRA_BLOCKING_NOTE_MAX, jiraKeyFromNote } = await import('../domain/blocking/jiraBlockers');
+    expect(editableNoteText('[JIRA PROJ-42] Login fails')).toBe('Login fails');
+    expect(editableNoteText('manual note')).toBe('manual note');
+    const edited = withNoteText('[JIRA PROJ-42] Login fails', 'Env down since 9am');
+    expect(edited).toBe('[JIRA PROJ-42] Env down since 9am');
+    expect(jiraKeyFromNote(edited)).toBe('PROJ-42');
+    expect(withNoteText('[JIRA PROJ-42] x', 'y'.repeat(500))).toHaveLength(JIRA_BLOCKING_NOTE_MAX);
+    expect(withNoteText('[JIRA PROJ-42] x', '')).toBe('[JIRA PROJ-42] ');
+  });
+});
