@@ -17,6 +17,9 @@ const ATTENTION_LIST_LIMIT = 8;
 export function ManagerPanel({ lang }: { lang: Language }) {
   const reports = useReportsStateCtx();
   const [cycleId, setCycleId] = useState<string>('');
+  // Collapsed by default: the overview is summary data, not the daily
+  // working surface — one click brings it back, nothing is lost.
+  const [open, setOpen] = useState(false);
   const today = formatDate(todayEpochDays());
   const nowIso = useMemo(() => new Date().toISOString(), []);
   const projects = reports.state.projects;
@@ -74,50 +77,64 @@ export function ManagerPanel({ lang }: { lang: Language }) {
             </select>
           </label>
         ) : null}
+        <button
+          type="button"
+          className="btn btn-ghost panel-toggle"
+          aria-expanded={open}
+          aria-controls="manager-panel-body"
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span className="panel-toggle-chevron" aria-hidden="true">{open ? '▼' : '▶'}</span>
+          {t(lang, open ? 'common.collapse' : 'common.expand')}
+        </button>
       </div>
 
-      <div className="overall-summary" role="group" aria-label={t(lang, 'mgr.portfolio')}>
-        {cards.map((c) => (
-          <div key={c.label} className={`summary-card${c.warn === true ? ' summary-card-warn' : ''}`}>
-            <span className="summary-card-label">{c.label}</span>
-            <span className="summary-card-value">
-              {c.warn === true ? <span aria-hidden="true">⚠ </span> : null}
-              {c.value}
-            </span>
+      {open ? (
+        <div id="manager-panel-body" className="panel-toggle-body">
+          <div className="overall-summary" role="group" aria-label={t(lang, 'mgr.portfolio')}>
+            {cards.map((c) => (
+              <div key={c.label} className={`summary-card${c.warn === true ? ' summary-card-warn' : ''}`}>
+                <span className="summary-card-label">{c.label}</span>
+                <span className="summary-card-value">
+                  {c.warn === true ? <span aria-hidden="true">⚠ </span> : null}
+                  {c.value}
+                </span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      <h3>{t(lang, 'mgr.results')}</h3>
-      <MetricsGrid lang={lang} m={summary.metrics} />
+          <h3>{t(lang, 'mgr.results')}</h3>
+          <MetricsGrid lang={lang} m={summary.metrics} />
 
-      <h3>{t(lang, 'mgr.today')}</h3>
-      <div className="overall-summary" role="group" aria-label={t(lang, 'mgr.today')}>
-        {todayCards.map((c) => (
-          <div key={c.label} className="summary-card">
-            <span className="summary-card-label">{c.label}</span>
-            <span className="summary-card-value">{c.value}</span>
+          <h3>{t(lang, 'mgr.today')}</h3>
+          <div className="overall-summary" role="group" aria-label={t(lang, 'mgr.today')}>
+            {todayCards.map((c) => (
+              <div key={c.label} className="summary-card">
+                <span className="summary-card-label">{c.label}</span>
+                <span className="summary-card-value">{c.value}</span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      {k.projectsWithEntry === 0 ? <p className="link-help">{t(lang, 'mgr.noResultsToday')}</p> : null}
+          {k.projectsWithEntry === 0 ? <p className="link-help">{t(lang, 'mgr.noResultsToday')}</p> : null}
 
-      <h3>{t(lang, 'mgr.attention')}</h3>
-      {attention.length === 0 ? (
-        <p>{t(lang, 'mgr.noAttention')}</p>
-      ) : (
-        <ul className="attention-list">
-          {attention.map(({ project, signals }) => (
-            <li key={project.id}>
-              <strong>{project.nameEn || project.nameJa || project.projectId}</strong> <code>{project.projectId}</code>
-              <RiskList lang={lang} signals={signals} />
-            </li>
-          ))}
-        </ul>
-      )}
-      <p className="link-help">
-        {t(lang, 'mgr.passRateNote')} {summary.metrics.passRate === null ? '' : `(${percent(summary.metrics.passRate)})`}
-      </p>
+          <h3>{t(lang, 'mgr.attention')}</h3>
+          {attention.length === 0 ? (
+            <p>{t(lang, 'mgr.noAttention')}</p>
+          ) : (
+            <ul className="attention-list">
+              {attention.map(({ project, signals }) => (
+                <li key={project.id}>
+                  <strong>{project.nameEn || project.nameJa || project.projectId}</strong> <code>{project.projectId}</code>
+                  <RiskList lang={lang} signals={signals} />
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="link-help">
+            {t(lang, 'mgr.passRateNote')} {summary.metrics.passRate === null ? '' : `(${percent(summary.metrics.passRate)})`}
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -9,6 +9,7 @@ import type {
   ExternalIdentity,
   IdentityAuditEntry,
   ProjectLifecycleStatus,
+  ProjectOwnerEntry,
   ProjectRecord,
   RcsMember,
   ReportSettings,
@@ -80,6 +81,10 @@ export interface ReportsStateApi {
   upsertMember: (member: RcsMember) => void;
   /** RCS member master (V6.8): remove one member by id. */
   removeMember: (id: string) => void;
+  /** Project Owner registry: add or replace one row by id. */
+  upsertProjectOwner: (entry: ProjectOwnerEntry) => void;
+  /** Project Owner registry: remove one row by id. */
+  removeProjectOwner: (id: string) => void;
   /** Identity-resolution audit (V6.9-B §29): append entries to the append-only log. */
   appendIdentityAudit: (entries: IdentityAuditEntry[]) => void;
   /**
@@ -274,6 +279,21 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
     setState((prev) => ({ ...prev, rcsMembers: (prev.rcsMembers ?? []).filter((member) => member.id !== id) }));
   }, []);
 
+  const upsertProjectOwnerAction = useCallback((entry: ProjectOwnerEntry): void => {
+    setState((prev) => {
+      const entries = prev.projectOwners ?? [];
+      const index = entries.findIndex((e) => e.id === entry.id);
+      return {
+        ...prev,
+        projectOwners: index === -1 ? [...entries, entry] : entries.map((e) => (e.id === entry.id ? entry : e)),
+      };
+    });
+  }, []);
+
+  const removeProjectOwnerAction = useCallback((id: string): void => {
+    setState((prev) => ({ ...prev, projectOwners: (prev.projectOwners ?? []).filter((entry) => entry.id !== id) }));
+  }, []);
+
   const appendIdentityAuditAction = useCallback((entries: IdentityAuditEntry[]): void => {
     if (entries.length === 0) return;
     // Append-only (V6.9-B §29): existing audit history is never rewritten.
@@ -328,6 +348,8 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
     removeReview: removeReviewAction,
     upsertMember: upsertMemberAction,
     removeMember: removeMemberAction,
+    upsertProjectOwner: upsertProjectOwnerAction,
+    removeProjectOwner: removeProjectOwnerAction,
     appendIdentityAudit: appendIdentityAuditAction,
     upsertExternalIdentity: upsertExternalIdentityAction,
   };

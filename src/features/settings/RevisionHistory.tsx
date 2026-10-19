@@ -163,12 +163,12 @@ export function RevisionHistory() {
     <div className="app revision-history">
       <header className="app-header">
         <div className="app-title-group">
-          <h1>{t(lang, 'history.title')}</h1>
+          <h1>{t(lang, 'history.revisions.title')}</h1>
         </div>
       </header>
       <section className="dr-section history-table-card">
       <div className="metrics-grid">
-        <MetricCard label={t(lang, 'history.current')} value={String(currentRevision)} />
+        <MetricCard label={t(lang, 'history.revisions.current')} value={String(currentRevision)} />
         <MetricCard
           label={t(lang, 'history.integrity')}
           value={
@@ -201,7 +201,7 @@ export function RevisionHistory() {
                 <th>{t(lang, 'history.revision')}</th>
                 <th>{t(lang, 'columns.date')}</th>
                 <th>{t(lang, 'history.reason')}</th>
-                <th>{t(lang, 'history.change')}</th>
+                <th>{t(lang, 'history.revisions.change')}</th>
                 <th>{t(lang, 'overall.projects')}</th>
               </tr>
             </thead>
@@ -216,7 +216,7 @@ export function RevisionHistory() {
                   >
                     <td>
                       {meta.revision}
-                      {isCurrent ? ` — ${t(lang, 'history.current')}` : ''}
+                      {isCurrent ? ` — ${t(lang, 'history.revisions.current')}` : ''}
                     </td>
                     <td>{meta.committedAt.replace('T', ' ').slice(0, 16)}</td>
                     <td>{t(lang, REASON_KEY[meta.reason])}</td>

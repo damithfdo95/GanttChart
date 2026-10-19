@@ -19,7 +19,12 @@ export interface AppStateApi {
   updatePlanningRow: (index: number, patch: PlanningRowPatch) => void;
   /** Add the next sequential day; optionally copying the last row's values. */
   addPlanningRow: (copyPrevious: boolean) => void;
+  /** Remove one planning row by index. */
   removePlanningRow: (index: number) => void;
+  /** Move one planning row up/down by one position (reorders the plan). */
+  movePlanningRow: (index: number, direction: -1 | 1) => void;
+  /** Insert a new row directly after `index`, optionally copying that row's values. */
+  insertPlanningRowAfter: (index: number, copyRow: boolean) => void;
   /**
    * Save one day's ACTUAL execution (V7): upserts the entry (one per date),
    * recomputes the canonical cumulative fields as Σ entries, regenerates the
@@ -133,6 +138,61 @@ export function useAppState(initial?: AppState): AppStateApi {
     [mutateRows],
   );
 
+  /** Swap two adjacent rows; out-of-range targets are ignored (no-op). */
+  const movePlanningRow = useCallback(
+    (index: number, direction: -1 | 1): void => {
+      mutateRows((rows) => {
+        const target = index + direction;
+        if (target < 0 || target >= rows.length) return rows;
+        const next = [...rows];
+        const moved = next[target];
+        next[target] = next[index];
+        next[index] = moved;
+        return next;
+      });
+    },
+    [mutateRows],
+  );
+
+  /**
+   * Insert a new row directly after `index` (optionally copying that row's
+   * staffing and window overrides). The new row gets the next business day
+   * after the source row; when that date is already taken the existing
+   * validation surfaces it — nothing is silently shifted.
+   */
+  const insertPlanningRowAfter = useCallback(
+    (index: number, copyRow: boolean): void => {
+      mutateRows((rows) => {
+        const source = rows[index];
+        if (source === undefined) return rows;
+        const sourceEpoch = parseDate(source.date) ?? todayEpochDays();
+        const row: PlanningRow = {
+          id: generateId(),
+          // "Next day" is the next business day — weekends and Japanese
+          // public holidays are never planned automatically.
+          date: formatDate(nextBusinessDayEpoch(sourceEpoch)),
+          plannedTesters: copyRow ? source.plannedTesters : 1,
+          absentTesters: copyRow ? source.absentTesters : 0,
+          nonWorkingDay: copyRow ? source.nonWorkingDay : false,
+          note: copyRow ? source.note : '',
+          // V7: a copied row carries its per-day window overrides too.
+          ...(copyRow
+            ? {
+                startTime: source.startTime,
+                endTime: source.endTime,
+                overtimeMinutes: source.overtimeMinutes,
+                intervalEnabled: source.intervalEnabled,
+              }
+            : {}),
+        };
+        const next = [...rows];
+        next.splice(index + 1, 0, row);
+        return next;
+      });
+    },
+    [mutateRows],
+  );
+
   const saveDailyExecutionEntry = useCallback((entry: DailyExecutionEntry): void => {
     setState((prev) => {
       const synced = applyDailyExecutionEntry(prev, entry);
@@ -158,6 +218,8 @@ export function useAppState(initial?: AppState): AppStateApi {
     updatePlanningRow,
     addPlanningRow,
     removePlanningRow,
+    movePlanningRow,
+    insertPlanningRowAfter,
     saveDailyExecutionEntry,
     deleteDailyExecutionEntry,
   };

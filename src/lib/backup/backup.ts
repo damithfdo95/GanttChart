@@ -48,13 +48,13 @@ function migrateBackupData(parsed: Record<string, unknown>): { appState: AppStat
  * (e.g. without spoAssigned) are exported with their safe defaults filled.
  */
 /**
- * The reports state as a backup carries it: no acknowledgments (see below) and no JIRA connection.
- * The connection holds a credential and belongs to the device, so a backup file never contains it
+ * The reports state as a backup carries it: no acknowledgments (see below) and no JIRA or TestRail connection.
+ * Either connection holds a credential and belongs to the device, so a backup file never contains it
  * (restoring keeps the device's own, see sanitizeRestoredAccountLinks).
  */
 function backupReportsState(reportsState: ReportsState): ReportsState {
   const normalized = normalizeReportsState(reportsState);
-  const { jira: _jira, ...settings } = normalized.settings;
+  const { jira: _jira, testrail: _testrail, ...settings } = normalized.settings;
   return { ...normalized, settings, notificationAcks: [] };
 }
 

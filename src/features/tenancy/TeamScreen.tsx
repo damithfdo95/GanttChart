@@ -14,6 +14,7 @@ import { AuditLog } from './AuditLog';
 import { StatusBadge } from './UsersManager';
 import { TeamDirectory } from './TeamDirectory';
 import { TesterWorkload } from './TesterWorkload';
+import { ProjectOwnersSection } from './ProjectOwnersSection';
 
 /** What each storage mode means, in plain words. Used wherever a person decides or wonders. */
 export function StorageModeExplainer({ lang, mode }: { lang: Language; mode: StorageMode }) {
@@ -65,6 +66,7 @@ function SvTeam({ lang, principal, api, members, onOpenSettings }: { lang: Langu
         onOpenSettings={onOpenSettings}
         onEditDetails={setEditing}
       />
+      {principal.role === 'admin' ? <ProjectOwnersSection lang={lang} /> : null}
       {principal.role === 'admin' ? <LegacyPlaceholderNotice lang={lang} /> : null}
       {principal.role === 'admin' && principal.tenant?.storageMode === 'web' ? <TesterWorkload lang={lang} /> : null}
       {principal.role === 'admin' ? <RcsMembersTab editMemberId={editing} onClose={() => setEditing(null)} /> : null}

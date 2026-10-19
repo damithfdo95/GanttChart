@@ -12,18 +12,56 @@ import { MeetingGantt } from './MeetingGantt';
 import { MeetingHistory } from './MeetingHistory';
 import { BrandMark } from '../branding/BrandMark';
 import { MeetingRiskBadge, MeetingRiskList, NoteBox, PlanInput } from './MeetingParts';
+import { ColumnVisibility } from '../../components/ColumnVisibility';
 import type { Language, ProjectRecord } from '../../types';
 
 export type MeetingSession = 'morning' | 'evening';
 
 const pct = (v: number | null): string => (v === null ? '—' : `${Math.round(v * 100)}%`);
 
+/** The meeting table's hideable columns (Project is the locked identity column). */
+type MeetingColumn =
+  | 'testers'
+  | 'total'
+  | 'todayPlan'
+  | 'remaining'
+  | 'schedule'
+  | 'actual'
+  | 'diff'
+  | 'pass'
+  | 'fail'
+  | 'blocked'
+  | 'progress'
+  | 'tomorrow';
+
+const MORNING_COLUMNS: readonly MeetingColumn[] = ['testers', 'total', 'todayPlan', 'remaining', 'schedule'];
+const EVENING_COLUMNS: readonly MeetingColumn[] = ['todayPlan', 'actual', 'diff', 'pass', 'fail', 'blocked', 'remaining', 'progress', 'tomorrow'];
+/** Evening scope sub-rows: the columns spanned by the people cell (between Today Plan and Tomorrow). */
+const EVENING_SCOPE_MIDDLE: readonly MeetingColumn[] = ['actual', 'diff', 'pass', 'fail', 'blocked', 'remaining', 'progress'];
+/** Morning scope sub-rows: the trailing spanned columns (after Today Plan). */
+const MORNING_SCOPE_TAIL: readonly MeetingColumn[] = ['remaining', 'schedule'];
+
+const MEETING_COLUMN_LABEL: Record<MeetingColumn, TranslationKey> = {
+  testers: 'mt.col.testers',
+  total: 'mt.col.total',
+  todayPlan: 'mt.col.todayPlan',
+  remaining: 'mt.col.remaining',
+  schedule: 'mt.col.schedule',
+  actual: 'mt.col.actual',
+  diff: 'mt.col.diff',
+  pass: 'mt.col.pass',
+  fail: 'mt.col.fail',
+  blocked: 'mt.col.blocked',
+  progress: 'mt.col.progress',
+  tomorrow: 'mt.col.tomorrow',
+};
+
 /**
  * The SV's team meeting (Stage 8D): the WHOLE team's day on one screen, presented in the Morning (what is planned today) and the Evening
  * (what happened against it, and tomorrow's plan). It is tenant-wide and row-per-project (with scopes beneath), never per person.
  * "Present" hides every editing control; the same numbers stay on screen.
  */
-export function MeetingView({ initialSession = 'morning', viewSwitch }: { initialSession?: MeetingSession; viewSwitch?: ReactNode }) {
+export function MeetingView({ initialSession = 'morning', viewSwitch, langToggle }: { initialSession?: MeetingSession; viewSwitch?: ReactNode; langToggle?: ReactNode }) {
   const access = useAccess();
   const lang = useLanguage();
   return access.isTester ? (
@@ -31,11 +69,11 @@ export function MeetingView({ initialSession = 'morning', viewSwitch }: { initia
       <p>{t(lang, 'mt.svOnly')}</p>
     </section>
   ) : (
-    <MeetingBoard initialSession={initialSession} viewSwitch={viewSwitch} />
+    <MeetingBoard initialSession={initialSession} viewSwitch={viewSwitch} langToggle={langToggle} />
   );
 }
 
-function MeetingBoard({ initialSession, viewSwitch }: { initialSession: MeetingSession; viewSwitch?: ReactNode }) {
+function MeetingBoard({ initialSession, viewSwitch, langToggle }: { initialSession: MeetingSession; viewSwitch?: ReactNode; langToggle?: ReactNode }) {
   const reports = useReportsStateCtx();
   const lang = useLanguage();
   const today = useBusinessToday();
@@ -45,6 +83,14 @@ function MeetingBoard({ initialSession, viewSwitch }: { initialSession: MeetingS
   const [history, setHistory] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // Per-session column visibility: what the SV chose to show in the Morning
+  // table never changes the Evening table (and vice versa). Session-scoped —
+  // every meeting starts with the full, default table.
+  const [hiddenCols, setHiddenCols] = useState<Record<MeetingSession, ReadonlySet<MeetingColumn>>>({
+    morning: new Set(),
+    evening: new Set(),
+  });
+  const vis = (col: MeetingColumn): boolean => !hiddenCols[session].has(col);
   const directory = usePeopleDirectory(null);
   const s = reports.state;
   const evening = session === 'evening';
@@ -147,9 +193,30 @@ function MeetingBoard({ initialSession, viewSwitch }: { initialSession: MeetingS
               {t(lang, 'mth.tab')}
             </button>
           </div>
+          {history ? null : (
+            <ColumnVisibility
+              lang={lang}
+              buttonLabel={t(lang, 'common.columns')}
+              columns={[
+                { id: 'project', label: t(lang, 'mt.col.project'), locked: true },
+                ...(evening ? EVENING_COLUMNS : MORNING_COLUMNS).map((col) => ({ id: col, label: t(lang, MEETING_COLUMN_LABEL[col]) })),
+              ]}
+              hidden={hiddenCols[session]}
+              onToggle={(id) =>
+                setHiddenCols((prev) => {
+                  const next = new Set<MeetingColumn>(prev[session]);
+                  if (next.has(id as MeetingColumn)) next.delete(id as MeetingColumn);
+                  else next.add(id as MeetingColumn);
+                  return { ...prev, [session]: next };
+                })
+              }
+              onReset={() => setHiddenCols((prev) => ({ ...prev, [session]: new Set<MeetingColumn>() }))}
+            />
+          )}
           <button type="button" className="btn" onClick={() => setPresenting((v) => !v)} aria-pressed={presenting}>
             {t(lang, presenting ? 'mt.exitPresent' : 'mt.present')}
           </button>
+          {langToggle === undefined ? null : <div className="gantt-lang-slot">{langToggle}</div>}
         </div>
       </header>
 
@@ -192,26 +259,24 @@ function MeetingBoard({ initialSession, viewSwitch }: { initialSession: MeetingS
               {evening ? (
                 <tr>
                   <th scope="col">{t(lang, 'mt.col.project')}</th>
-                  <th scope="col">{t(lang, 'mt.col.todayPlan')}</th>
-                  <th scope="col">{t(lang, 'mt.col.actual')}</th>
-                  <th scope="col">{t(lang, 'mt.col.diff')}</th>
-                  <th scope="col">{t(lang, 'mt.col.pass')}</th>
-                  <th scope="col">{t(lang, 'mt.col.fail')}</th>
-                  <th scope="col">{t(lang, 'mt.col.blocked')}</th>
-                  <th scope="col">{t(lang, 'mt.col.remaining')}</th>
-                  <th scope="col">{t(lang, 'mt.col.progress')}</th>
-                  <th scope="col">{t(lang, 'mt.col.tomorrow')}</th>
-                  <th scope="col">{t(lang, 'mt.col.risk')}</th>
+                  {vis('todayPlan') ? <th scope="col">{t(lang, 'mt.col.todayPlan')}</th> : null}
+                  {vis('actual') ? <th scope="col" className="num">{t(lang, 'mt.col.actual')}</th> : null}
+                  {vis('diff') ? <th scope="col" className="num">{t(lang, 'mt.col.diff')}</th> : null}
+                  {vis('pass') ? <th scope="col" className="num">{t(lang, 'mt.col.pass')}</th> : null}
+                  {vis('fail') ? <th scope="col" className="num">{t(lang, 'mt.col.fail')}</th> : null}
+                  {vis('blocked') ? <th scope="col" className="num">{t(lang, 'mt.col.blocked')}</th> : null}
+                  {vis('remaining') ? <th scope="col" className="num">{t(lang, 'mt.col.remaining')}</th> : null}
+                  {vis('progress') ? <th scope="col" className="num">{t(lang, 'mt.col.progress')}</th> : null}
+                  {vis('tomorrow') ? <th scope="col">{t(lang, 'mt.col.tomorrow')}</th> : null}
                 </tr>
               ) : (
                 <tr>
                   <th scope="col">{t(lang, 'mt.col.project')}</th>
-                  <th scope="col">{t(lang, 'mt.col.testers')}</th>
-                  <th scope="col">{t(lang, 'mt.col.total')}</th>
-                  <th scope="col">{t(lang, 'mt.col.todayPlan')}</th>
-                  <th scope="col">{t(lang, 'mt.col.remaining')}</th>
-                  <th scope="col">{t(lang, 'mt.col.schedule')}</th>
-                  <th scope="col">{t(lang, 'mt.col.risk')}</th>
+                  {vis('testers') ? <th scope="col">{t(lang, 'mt.col.testers')}</th> : null}
+                  {vis('total') ? <th scope="col" className="num">{t(lang, 'mt.col.total')}</th> : null}
+                  {vis('todayPlan') ? <th scope="col" className="num">{t(lang, 'mt.col.todayPlan')}</th> : null}
+                  {vis('remaining') ? <th scope="col" className="num">{t(lang, 'mt.col.remaining')}</th> : null}
+                  {vis('schedule') ? <th scope="col">{t(lang, 'mt.col.schedule')}</th> : null}
                 </tr>
               )}
             </thead>
@@ -228,36 +293,38 @@ function MeetingBoard({ initialSession, viewSwitch }: { initialSession: MeetingS
                       </th>
                       {evening ? (
                         <>
-                          <td>
-                            {canEdit && !hasScopes ? planCell(today, row.project, null, row.today.planned, false) : <span>{row.today.target === null ? t(lang, 'mt.notSet') : formatInteger(row.today.target, lang)}</span>}
-                            {row.today.revised ? <small className="link-help"> {t(lang, 'mt.revised', { planned: row.today.planned ?? 0 })}</small> : null}
-                            {sourceTag(row)}
-                          </td>
-                          <td>{row.actual.recorded ? formatInteger(row.actual.completed, lang) : <span className="link-help">{t(lang, 'mt.notRecorded')}</span>}</td>
-                          <td>{row.difference === null ? '—' : `${row.difference > 0 ? '+' : ''}${formatInteger(row.difference, lang)}`}</td>
-                          <td>{row.actual.recorded ? row.actual.pass : '—'}</td>
-                          <td>{row.actual.recorded ? row.actual.fail : '—'}</td>
-                          <td>{row.actual.recorded ? row.actual.blocked : '—'}</td>
-                          <td>{formatInteger(row.metrics.remaining, lang)}</td>
-                          <td>{pct(row.metrics.completion)}</td>
-                          <td>{canEdit && !hasScopes ? planCell(tomorrow, row.project, null, row.tomorrow.planned, false) : <span>{row.tomorrow.planned === null ? t(lang, 'mt.notSet') : formatInteger(row.tomorrow.planned, lang)}</span>}</td>
-                          <td>
-                            <MeetingRiskBadge lang={lang} risks={row.risks} />
-                          </td>
+                          {vis('todayPlan') ? (
+                            <td>
+                              {canEdit && !hasScopes ? planCell(today, row.project, null, row.today.planned, false) : <span>{row.today.target === null ? t(lang, 'mt.notSet') : formatInteger(row.today.target, lang)}</span>}
+                              {row.today.revised ? <small className="link-help"> {t(lang, 'mt.revised', { planned: row.today.planned ?? 0 })}</small> : null}
+                              {sourceTag(row)}
+                            </td>
+                          ) : null}
+                          {vis('actual') ? <td className="num">{row.actual.recorded ? formatInteger(row.actual.completed, lang) : <span className="link-help">{t(lang, 'mt.notRecorded')}</span>}</td> : null}
+                          {vis('diff') ? <td className="num">{row.difference === null ? '—' : `${row.difference > 0 ? '+' : ''}${formatInteger(row.difference, lang)}`}</td> : null}
+                          {vis('pass') ? <td className="num">{row.actual.recorded ? row.actual.pass : '—'}</td> : null}
+                          {vis('fail') ? <td className="num">{row.actual.recorded ? row.actual.fail : '—'}</td> : null}
+                          {vis('blocked') ? <td className="num">{row.actual.recorded ? row.actual.blocked : '—'}</td> : null}
+                          {vis('remaining') ? <td className="num">{formatInteger(row.metrics.remaining, lang)}</td> : null}
+                          {vis('progress') ? <td className="num">{pct(row.metrics.completion)}</td> : null}
+                          {vis('tomorrow') ? (
+                            <td>
+                              {canEdit && !hasScopes ? planCell(tomorrow, row.project, null, row.tomorrow.planned, false) : <span>{row.tomorrow.planned === null ? t(lang, 'mt.notSet') : formatInteger(row.tomorrow.planned, lang)}</span>}
+                            </td>
+                          ) : null}
                         </>
                       ) : (
                         <>
-                          <td>{peopleOf(row.people) || <span className="link-help">{t(lang, 'mt.noTesters')}</span>}</td>
-                          <td>{formatInteger(row.total, lang)}</td>
-                          <td>
-                            {canEdit && !hasScopes ? planCell(today, row.project, null, row.today.planned, false) : <span>{row.today.planned === null ? t(lang, 'mt.notSet') : formatInteger(row.today.planned, lang)}</span>}
-                            {sourceTag(row)}
-                          </td>
-                          <td>{formatInteger(row.metrics.remaining, lang)}</td>
-                          <td>{row.window === null ? '—' : `${formatClock(row.window.start)}–${formatClock(row.window.end)}`}</td>
-                          <td>
-                            <MeetingRiskBadge lang={lang} risks={row.risks} />
-                          </td>
+                          {vis('testers') ? <td>{peopleOf(row.people) || <span className="link-help">{t(lang, 'mt.noTesters')}</span>}</td> : null}
+                          {vis('total') ? <td className="num">{formatInteger(row.total, lang)}</td> : null}
+                          {vis('todayPlan') ? (
+                            <td>
+                              {canEdit && !hasScopes ? planCell(today, row.project, null, row.today.planned, false) : <span>{row.today.planned === null ? t(lang, 'mt.notSet') : formatInteger(row.today.planned, lang)}</span>}
+                              {sourceTag(row)}
+                            </td>
+                          ) : null}
+                          {vis('remaining') ? <td className="num">{formatInteger(row.metrics.remaining, lang)}</td> : null}
+                          {vis('schedule') ? <td>{row.window === null ? '—' : `${formatClock(row.window.start)}–${formatClock(row.window.end)}`}</td> : null}
                         </>
                       )}
                     </tr>
@@ -270,19 +337,20 @@ function MeetingBoard({ initialSession, viewSwitch }: { initialSession: MeetingS
                         </th>
                         {evening ? (
                           <>
-                            <td>{planCell(today, row.project, sc, sc.plan?.morningCases ?? sc.plan?.plannedCases ?? null, true)}</td>
-                            <td colSpan={7} className="link-help">
-                              {peopleOf(sc.people) || t(lang, 'mt.noTesters')}
-                            </td>
-                            <td>{planCell(tomorrow, row.project, sc, sc.tomorrow?.plannedCases ?? null, true)}</td>
-                            <td />
+                            {vis('todayPlan') ? <td>{planCell(today, row.project, sc, sc.plan?.morningCases ?? sc.plan?.plannedCases ?? null, true)}</td> : null}
+                            {EVENING_SCOPE_MIDDLE.some(vis) ? (
+                              <td colSpan={EVENING_SCOPE_MIDDLE.filter(vis).length} className="link-help">
+                                {peopleOf(sc.people) || t(lang, 'mt.noTesters')}
+                              </td>
+                            ) : null}
+                            {vis('tomorrow') ? <td>{planCell(tomorrow, row.project, sc, sc.tomorrow?.plannedCases ?? null, true)}</td> : null}
                           </>
                         ) : (
                           <>
-                            <td>{peopleOf(sc.people) || <span className="link-help">{t(lang, 'mt.noTesters')}</span>}</td>
-                            <td>{sc.total === null ? '—' : formatInteger(sc.total, lang)}</td>
-                            <td>{planCell(today, row.project, sc, sc.plan?.plannedCases ?? null, true)}</td>
-                            <td colSpan={3} />
+                            {vis('testers') ? <td>{peopleOf(sc.people) || <span className="link-help">{t(lang, 'mt.noTesters')}</span>}</td> : null}
+                            {vis('total') ? <td className="num">{sc.total === null ? '—' : formatInteger(sc.total, lang)}</td> : null}
+                            {vis('todayPlan') ? <td>{planCell(today, row.project, sc, sc.plan?.plannedCases ?? null, true)}</td> : null}
+                            {MORNING_SCOPE_TAIL.some(vis) ? <td colSpan={MORNING_SCOPE_TAIL.filter(vis).length} /> : null}
                           </>
                         )}
                       </tr>

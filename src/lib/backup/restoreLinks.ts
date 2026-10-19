@@ -30,8 +30,8 @@ import type { RcsMember, ReportsState, TesterProjectAssignment } from '../../typ
  *   members-audience that reaches nobody drops the definition.
  * - Acknowledgments: the file's are ignored and the workspace's own stay,
  *   so a restore can never close or reopen anything for anyone.
- * - JIRA connection: the device's own stays; a file never carries or replaces
- *   credentials.
+ * - JIRA / TestRail connections: the device's own stays; a file never carries
+ *   or replaces credentials.
  * - Branding: the file's logo becomes the workspace's, attributed to the
  *   person restoring it (when signed in).
  */
@@ -113,9 +113,13 @@ export function sanitizeRestoredAccountLinks(
       ? undefined
       : file.brandings.map((b) => (actor === null ? b : { ...b, updatedByUserId: actor }));
 
-  // ---- JIRA connection: device-local, so a file can neither set nor clear it ----
-  const { jira: _fileJira, ...fileSettings } = file.settings;
-  const settings = { ...fileSettings, ...(current.settings.jira !== undefined ? { jira: current.settings.jira } : {}) };
+  // ---- JIRA / TestRail connections: device-local, so a file can neither set nor clear them ----
+  const { jira: _fileJira, testrail: _fileTestrail, ...fileSettings } = file.settings;
+  const settings = {
+    ...fileSettings,
+    ...(current.settings.jira !== undefined ? { jira: current.settings.jira } : {}),
+    ...(current.settings.testrail !== undefined ? { testrail: current.settings.testrail } : {}),
+  };
 
   return {
     ...file,

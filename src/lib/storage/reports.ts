@@ -6,6 +6,7 @@ import type {
   ExternalIdentity,
   IdentityAuditEntry,
   ProjectRecord,
+  ProjectOwnerEntry,
   ProjectStatusChange,
   QaInputs,
   RcsMember,
@@ -22,6 +23,7 @@ import { checkDailyPlan, checkMeetingNote } from '../../../shared/meeting';
 import { checkNotification, checkNotificationAck } from '../../../shared/notifications';
 import { usableBranding } from '../../../shared/branding';
 import type { JiraConnection } from '../../../shared/jira';
+import type { TestRailConnection } from '../../../shared/testrail';
 import { DEFAULT_REPORT_TEMPLATES } from '../reporting/template';
 import { DEFAULT_PROGRESS_RULES } from '../reporting/progress';
 import { hasRecoveryPayload, stashCorruptedRaw } from './corruption';
@@ -87,6 +89,7 @@ export function defaultReportsState(): ReportsState {
     notifications: [],
     notificationAcks: [],
     brandings: [],
+    projectOwners: [],
   };
 }
 
@@ -304,6 +307,9 @@ function isReportSettings(v: unknown): v is ReportSettings {
     // normalizeReportsState; only clearly-corrupt non-objects reject the
     // settings (so a damaged payload never locks the user out).
     (s.jira === undefined || (typeof s.jira === 'object' && s.jira !== null)) &&
+    // The TestRail connection follows the same rule as JIRA's: optional,
+    // object-shaped pass-through; normalizeReportsState sanitizes it.
+    (s.testrail === undefined || (typeof s.testrail === 'object' && s.testrail !== null)) &&
     typeof templates === 'object' &&
     templates !== null &&
     typeof templates.en === 'string' &&
@@ -352,6 +358,28 @@ function normalizeJiraConnection(v: unknown): JiraConnection | undefined {
   if (email !== '') out.email = email;
   const token = trimStr(r.token);
   if (token !== '') out.token = token;
+  const proxyUrl = trimStr(r.proxyUrl);
+  if (proxyUrl !== '' && /^https?:\/\//i.test(proxyUrl)) out.proxyUrl = proxyUrl;
+  return out;
+}
+
+/**
+ * Sanitize the optional TestRail connection (self-healing, same rule as the
+ * JIRA connection): URLs are trimmed, empty strings are dropped, and the
+ * whole connection is discarded when the base URL is missing or not
+ * http(s). A broken TestRail configuration must never lock the user out.
+ */
+function normalizeTestrailConnection(v: unknown): TestRailConnection | undefined {
+  if (typeof v !== 'object' || v === null) return undefined;
+  const r = v as Record<string, unknown>;
+  const trimStr = (x: unknown): string => (typeof x === 'string' ? x.trim() : '');
+  const baseUrl = trimStr(r.baseUrl);
+  if (baseUrl === '' || !/^https?:\/\//i.test(baseUrl)) return undefined;
+  const out: TestRailConnection = { baseUrl };
+  const email = trimStr(r.email);
+  if (email !== '') out.email = email;
+  const apiKey = trimStr(r.apiKey);
+  if (apiKey !== '') out.apiKey = apiKey;
   const proxyUrl = trimStr(r.proxyUrl);
   if (proxyUrl !== '' && /^https?:\/\//i.test(proxyUrl)) out.proxyUrl = proxyUrl;
   return out;
@@ -467,6 +495,21 @@ export function isRcsMember(v: unknown): v is RcsMember {
   );
 }
 
+/** Shape guard for one Project Owner registry row (free-text project/assignee). */
+export function isProjectOwnerEntry(v: unknown): v is ProjectOwnerEntry {
+  if (typeof v !== 'object' || v === null) return false;
+  const r = v as Record<string, unknown>;
+  return (
+    typeof r.id === 'string' &&
+    r.id !== '' &&
+    typeof r.project === 'string' &&
+    r.project !== '' &&
+    typeof r.assignee === 'string' &&
+    r.assignee !== '' &&
+    typeof r.createdAt === 'string'
+  );
+}
+
 function isProjectRecord(v: unknown): v is ProjectRecord {
   if (typeof v !== 'object' || v === null) return false;
   const r = v as Record<string, unknown>;
@@ -537,7 +580,9 @@ export function isReportsState(v: unknown): v is ReportsState {
     // Stage 8E notifications and logo are optional too.
     (s.notifications === undefined || (Array.isArray(s.notifications) && s.notifications.every((c) => checkNotification(c).ok))) &&
     (s.notificationAcks === undefined || (Array.isArray(s.notificationAcks) && s.notificationAcks.every((c) => checkNotificationAck(c).ok))) &&
-    (s.brandings === undefined || (Array.isArray(s.brandings) && s.brandings.every((c) => usableBranding(c) !== null)))
+    (s.brandings === undefined || (Array.isArray(s.brandings) && s.brandings.every((c) => usableBranding(c) !== null))) &&
+    // Project Owner registry is optional so every earlier payload stays valid.
+    (s.projectOwners === undefined || (Array.isArray(s.projectOwners) && s.projectOwners.every(isProjectOwnerEntry)))
   );
 }
 
@@ -577,6 +622,7 @@ export function normalizeReportsState(state: ReportsState): ReportsState {
       autoBackup: normalizeAutoBackupSettings(state.settings.autoBackup),
       // Optional; stays absent/undefined when missing or unsalvageable.
       jira: normalizeJiraConnection(state.settings.jira),
+      testrail: normalizeTestrailConnection(state.settings.testrail),
     },
     projects: projectsMigration.projects,
     activeProjectId: state.activeProjectId ?? null,
@@ -603,6 +649,8 @@ export function normalizeReportsState(state: ReportsState): ReportsState {
     notifications: (state.notifications ?? []).filter((c) => checkNotification(c).ok),
     notificationAcks: (state.notificationAcks ?? []).filter((c) => checkNotificationAck(c).ok),
     brandings: (state.brandings ?? []).filter((c) => usableBranding(c) !== null).slice(0, 1),
+    // Project Owner registry: malformed rows are filtered (never repaired); valid ones pass through unchanged.
+    projectOwners: (state.projectOwners ?? []).filter(isProjectOwnerEntry),
   };
 }
 

@@ -46,8 +46,10 @@ describe('Gantt Planning / Meeting switch lives in the Gantt page header', () =>
     expect(css).toMatch(/body\.mt-presenting \.app-shell, body\.mt-presenting \.gantt-mode/);
   });
 
-  it('a Tester keeps the plain read-only Planning View without a switch', () => {
-    expect(ganttSource).toMatch(/if \(isTester\) return <GanttPlanning focusProjectId=\{focusProjectId\} onFocusHandled=\{onFocusHandled\} \/>;/);
+  it('a Tester keeps the plain read-only Planning View without a switch (the language toggle stays)', () => {
+    expect(ganttSource).toMatch(/if \(isTester\) return <GanttPlanning focusProjectId=\{focusProjectId\} onFocusHandled=\{onFocusHandled\} langToggle=\{langToggle\} \/>;/);
+    // The tester branch must not receive the Planning/Meeting view switch.
+    expect(ganttSource).not.toMatch(/isTester\) return <GanttPlanning[^>]*viewSwitch/);
   });
 });
 

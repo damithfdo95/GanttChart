@@ -27,9 +27,15 @@ interface PlanningPanelProps {
   onSetTargetCompletionTime: (value: string | null) => void;
   onSetPlanStartTime: (minutes: number) => void;
   onSetProjectName: (field: 'projectNameEn' | 'projectNameJa', value: string) => void;
+  /** Editable execution inputs (same fields as the Dashboard INPUT section — one editing surface, two entry points). */
+  onSetTotalCases: (value: number) => void;
+  onSetCurrentTesters: (value: number) => void;
+  onSetPerHourPerTester: (value: number) => void;
   onUpdateRow: (index: number, patch: PlanningRowPatch) => void;
   onAddRow: (copyPrevious: boolean) => void;
   onRemoveRow: (index: number) => void;
+  onMoveRow: (index: number, direction: -1 | 1) => void;
+  onInsertRowAfter: (index: number, copyRow: boolean) => void;
 }
 
 const PLAN_STATUS_KEY: Record<PlanStatus, 'status.completed' | 'status.capacityShortage' | 'status.atRisk' | 'status.onTrack' | 'plan.noTargetSet'> = {
@@ -55,9 +61,14 @@ export function PlanningPanel({
   onSetTargetCompletionTime,
   onSetPlanStartTime,
   onSetProjectName,
+  onSetTotalCases,
+  onSetCurrentTesters,
+  onSetPerHourPerTester,
   onUpdateRow,
   onAddRow,
   onRemoveRow,
+  onMoveRow,
+  onInsertRowAfter,
 }: PlanningPanelProps) {
   const sub = otherLanguage(lang);
   const validation = validatePlanning(inputs);
@@ -175,6 +186,39 @@ export function PlanningPanel({
               onChange={(e) => onSetTargetCompletionTime(e.target.value === '' ? null : e.target.value)}
             />
           </Field>
+          <Field label={t(lang, 'fields.totalCases')}>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step={1}
+              value={inputs.totalCases}
+              aria-label={t(lang, 'fields.totalCases')}
+              onChange={(e) => onSetTotalCases(Math.max(0, Number(e.target.value) || 0))}
+            />
+          </Field>
+          <Field label={t(lang, 'fields.currentTesters')}>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step={1}
+              value={inputs.currentTesters}
+              aria-label={t(lang, 'fields.currentTesters')}
+              onChange={(e) => onSetCurrentTesters(Math.max(0, Number(e.target.value) || 0))}
+            />
+          </Field>
+          <Field label={t(lang, 'fields.perHourPerTester')}>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step={0.5}
+              value={inputs.perHourPerTester}
+              aria-label={t(lang, 'fields.perHourPerTester')}
+              onChange={(e) => onSetPerHourPerTester(Math.max(0, Number(e.target.value) || 0))}
+            />
+          </Field>
         </div>
         <div className="plan-actions">
           <button type="button" className="btn" onClick={() => onAddRow(false)}>
@@ -192,6 +236,8 @@ export function PlanningPanel({
           defaults={projectDayWindowDefaults(inputs)}
           onUpdateRow={onUpdateRow}
           onRemoveRow={onRemoveRow}
+          onMoveRow={onMoveRow}
+          onInsertRowAfter={onInsertRowAfter}
         />
         {errorMessages.size > 0 ? <div className="plan-error-summary">{Array.from(errorMessages).join(' / ')}</div> : null}
       </SectionCard>

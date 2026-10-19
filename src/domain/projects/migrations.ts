@@ -1,6 +1,7 @@
 import type { AppState, ProjectRecord, QaInputs } from '../../types';
 import { newProjectRecord } from './lifecycle';
 import { normalizeJiraProjectKey } from '../jira';
+import { normalizeTestrailPlanUrl } from '../testrail';
 import { TESTER_INPUT_FIELDS } from '../../../shared/testerRules';
 
 /**
@@ -32,7 +33,7 @@ export function ensureProjectIds(projects: ProjectRecord[]): ProjectRecord[] {
   // Every load/import path funnels through this function, so the optional
   // per-project JIRA key is normalized here too (optional-safe: absent stays
   // absent, a value normalizing to '' is dropped).
-  return normalizeProjectJiraKeys(changed ? result : projects);
+  return normalizeProjectTestrailLinks(normalizeProjectJiraKeys(changed ? result : projects));
 }
 
 /**
@@ -54,6 +55,28 @@ export function normalizeProjectJiraKeys(projects: readonly ProjectRecord[]): Pr
       return rest;
     }
     return { ...project, jiraProjectKey: normalized };
+  });
+  return changed ? result : (projects as ProjectRecord[]);
+}
+
+/**
+ * Normalize the optional per-project TestRail plan/run URL on load/import.
+ * Optional-safe: an absent field stays absent; a present value is trimmed;
+ * a value that is not a plan/run view URL (or normalizes to '') is dropped.
+ * Pure — same array returned unchanged when nothing changed.
+ */
+export function normalizeProjectTestrailLinks(projects: readonly ProjectRecord[]): ProjectRecord[] {
+  let changed = false;
+  const result = projects.map((project) => {
+    if (project.testrailPlanUrl === undefined) return project;
+    const normalized = normalizeTestrailPlanUrl(project.testrailPlanUrl);
+    if (normalized === project.testrailPlanUrl) return project;
+    changed = true;
+    if (normalized === '') {
+      const { testrailPlanUrl: _dropped, ...rest } = project;
+      return rest;
+    }
+    return { ...project, testrailPlanUrl: normalized };
   });
   return changed ? result : (projects as ProjectRecord[]);
 }

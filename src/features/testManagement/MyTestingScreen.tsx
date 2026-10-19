@@ -7,6 +7,12 @@ import { assignedScopes, filterCases, sortCases, summarize, type TestScope } fro
 import { ExecutionTable } from './ExecutionTable';
 import { SummaryBlock, pct } from './SummaryParts';
 import { useBusinessToday, usePeopleDirectory, useTestManagement } from './useTestManagement';
+import { ProjectReferenceCard } from '../../components/ProjectReferenceCard';
+
+/** Distinct project ids, in first-seen order. */
+function distinctProjects(ids: readonly string[]): string[] {
+  return [...new Set(ids)];
+}
 
 /**
  * My Testing (Tester): only the scopes this person is assigned to, with progress and a way to continue. No scope or test case
@@ -61,6 +67,10 @@ export function MyTestingScreen() {
       <header className="dr-section">
         <h1>{t(lang, 'tm.my.title')}</h1>
       </header>
+      {distinctProjects(mine.map((s) => s.projectId)).map((projectId) => {
+        const project = projects.find((p) => p.projectId === projectId);
+        return project === undefined ? null : <ProjectReferenceCard key={project.id} lang={lang} project={project} />;
+      })}
       {mine.length === 0 ? (
         <p className="tenancy-empty" role="note">
           {t(lang, 'tm.my.none')}

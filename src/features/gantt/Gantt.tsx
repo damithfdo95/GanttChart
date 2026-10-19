@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { ProjectLifecycleStatus, ProjectRecord } from '../../types';
 import { useAppStateCtx, useReportsStateCtx, activateProject } from '../../app/state-contexts';
-import { t, resolveBilingualName, otherLanguage, type TranslationKey } from '../../i18n';
+import { t, resolveBilingualName, otherLanguage, LANGUAGES, type TranslationKey } from '../../i18n';
 import { formatDate, formatDateDisplay, parseDate, todayEpochDays } from '../../lib/dates/dates';
 import { calculateMultiDayProjection } from '../../lib/calculations/planning';
 import { WORK_DAY_END, WORK_LUNCH } from '../../lib/calculations/workday';
@@ -14,6 +14,7 @@ import { MetricCard } from '../../components/MetricCard';
 import { MultiDayTimeline } from '../../components/MultiDayTimeline';
 import { GanttChartView } from '../../components/GanttChartView';
 import { MeetingView, type MeetingSession } from '../meeting/MeetingView';
+import { ProjectReferenceEditor } from './ProjectReferenceEditor';
 
 const LIFECYCLE_KEY: Record<ProjectLifecycleStatus, TranslationKey> = {
   todo: 'overall.todo',
@@ -33,6 +34,9 @@ const PLANNING_KEY: Record<ReturnType<typeof projectPlanningStatus>, Translation
 };
 
 type GanttStatusFilter = 'active' | 'all' | 'todo' | 'ongoing' | 'extended' | 'onHold' | 'done';
+
+/** Optional Planning View sections that can be shown/hidden. */
+type GanttSection = 'timeline' | 'chart' | 'projects';
 
 interface GanttProps {
   focusProjectId: string | null;
@@ -56,7 +60,25 @@ export function Gantt({ focusProjectId, onFocusHandled, meeting = null, onMeetin
     setSession(meeting);
     onMeetingHandled?.();
   }, [meeting, isTester, onMeetingHandled]);
-  if (isTester) return <GanttPlanning focusProjectId={focusProjectId} onFocusHandled={onFocusHandled} />;
+  // EN / 日本語 quick switch inside the tab. Same language as the app's header
+  // control — just always reachable here, including during a meeting
+  // presentation (which hides the app shell).
+  const langToggle = (
+    <div className="lang-toggle" role="group" aria-label={t(lang, 'app.languageLabel')}>
+      {LANGUAGES.map((option) => (
+        <button
+          key={option.code}
+          type="button"
+          className={lang === option.code ? 'active' : undefined}
+          aria-pressed={lang === option.code}
+          onClick={() => app.updateField('language', option.code)}
+        >
+          {option.short}
+        </button>
+      ))}
+    </div>
+  );
+  if (isTester) return <GanttPlanning focusProjectId={focusProjectId} onFocusHandled={onFocusHandled} langToggle={langToggle} />;
   // The switch lives in the page header of whichever view is showing (not in the app shell), so it sits
   // on the same left edge as the page title and the content below.
   const viewSwitch = (
@@ -70,9 +92,9 @@ export function Gantt({ focusProjectId, onFocusHandled, meeting = null, onMeetin
     </div>
   );
   return mode === 'meeting' ? (
-    <MeetingView key={session} initialSession={session} viewSwitch={viewSwitch} />
+    <MeetingView key={session} initialSession={session} viewSwitch={viewSwitch} langToggle={langToggle} />
   ) : (
-    <GanttPlanning focusProjectId={focusProjectId} onFocusHandled={onFocusHandled} viewSwitch={viewSwitch} />
+    <GanttPlanning focusProjectId={focusProjectId} onFocusHandled={onFocusHandled} viewSwitch={viewSwitch} langToggle={langToggle} />
   );
 }
 
@@ -81,7 +103,7 @@ export function Gantt({ focusProjectId, onFocusHandled, meeting = null, onMeetin
  * Project selection and status filtering live here; Done projects stay out of
  * the way but are never deleted.
  */
-function GanttPlanning({ focusProjectId, onFocusHandled, viewSwitch }: GanttProps & { viewSwitch?: ReactNode }) {
+function GanttPlanning({ focusProjectId, onFocusHandled, viewSwitch, langToggle }: GanttProps & { viewSwitch?: ReactNode; langToggle?: ReactNode }) {
   const app = useAppStateCtx();
   const reportsApi = useReportsStateCtx();
   const lang = app.state.language;
@@ -91,6 +113,8 @@ function GanttPlanning({ focusProjectId, onFocusHandled, viewSwitch }: GanttProp
 
   const [statusFilter, setStatusFilter] = useState<GanttStatusFilter>('active');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  /** Which optional Planning View sections are hidden (Timeline / chart / projects list). Default: all visible. */
+  const [hiddenSections, setHiddenSections] = useState<Set<GanttSection>>(new Set());
 
   const projects = reportsApi.state.projects;
 
@@ -160,6 +184,27 @@ function GanttPlanning({ focusProjectId, onFocusHandled, viewSwitch }: GanttProp
     });
   };
 
+  const toggleSection = (section: GanttSection): void => {
+    setHiddenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(section)) next.delete(section);
+      else next.add(section);
+      return next;
+    });
+  };
+
+  const sectionToggle = (section: GanttSection): ReactNode => (
+    <button
+      type="button"
+      className="btn btn-ghost panel-toggle"
+      aria-expanded={!hiddenSections.has(section)}
+      onClick={() => toggleSection(section)}
+    >
+      <span className="panel-toggle-chevron" aria-hidden="true">{hiddenSections.has(section) ? '▶' : '▼'}</span>
+      {t(lang, hiddenSections.has(section) ? 'common.expand' : 'common.collapse')}
+    </button>
+  );
+
   const activeProgress = activeProject !== null ? projectProgress(activeProject) : null;
   const activePlanning = activeProject !== null ? projectPlanningStatus(activeProject) : 'noTarget';
   // The active project can be excluded by the status filter; it must stay
@@ -210,6 +255,7 @@ function GanttPlanning({ focusProjectId, onFocusHandled, viewSwitch }: GanttProp
               <option value="done">{t(lang, 'overall.done')}</option>
             </select>
           </label>
+          {langToggle === undefined ? null : <div className="gantt-lang-slot">{langToggle}</div>}
         </div>
       </header>
 
@@ -250,22 +296,28 @@ function GanttPlanning({ focusProjectId, onFocusHandled, viewSwitch }: GanttProp
             onSetTargetCompletionTime={(value) => app.updateField('targetCompletionTime', value)}
             onSetPlanStartTime={(minutes) => app.updateField('startTime', minutes)}
             onSetProjectName={(field, value) => app.updateField(field, value)}
+            onSetTotalCases={(value) => app.updateField('totalCases', value)}
+            onSetCurrentTesters={(value) => app.updateField('currentTesters', value)}
+            onSetPerHourPerTester={(value) => app.updateField('perHourPerTester', value)}
             onUpdateRow={app.updatePlanningRow}
             onAddRow={app.addPlanningRow}
             onRemoveRow={app.removePlanningRow}
+            onMoveRow={app.movePlanningRow}
+            onInsertRowAfter={app.insertPlanningRowAfter}
           />
           </fieldset>
+          {!readOnly ? <ProjectReferenceEditor lang={lang} project={activeProject} /> : null}
         </>
       ) : null}
 
-      {dayTimeline.days.length > 1 ? (
-        <SectionCard title={t(lang, 'timeline.title')} span={12}>
+      {!hiddenSections.has('timeline') && dayTimeline.days.length > 1 ? (
+        <SectionCard title={t(lang, 'timeline.title')} span={12} actions={sectionToggle('timeline')}>
           <MultiDayTimeline data={dayTimeline} lang={lang} defaultProjectId={activeProject?.projectId ?? ''} />
         </SectionCard>
       ) : null}
 
-      {visibleProjects.length > 0 ? (
-        <SectionCard title={t(lang, 'gantt.chart.title')} subtitle={t(sub, 'gantt.chart.title')} span={12}>
+      {!hiddenSections.has('chart') && visibleProjects.length > 0 ? (
+        <SectionCard title={t(lang, 'gantt.chart.title')} subtitle={t(sub, 'gantt.chart.title')} span={12} actions={sectionToggle('chart')}>
           <p className="gantt-chart-hint">{t(lang, 'gantt.chart.hint')}</p>
           <GanttChartView
             projects={visibleProjects}
@@ -276,7 +328,8 @@ function GanttPlanning({ focusProjectId, onFocusHandled, viewSwitch }: GanttProp
         </SectionCard>
       ) : null}
 
-      <SectionCard title={t(lang, 'gantt.projects')} span={12}>
+      {!hiddenSections.has('projects') ? (
+      <SectionCard title={t(lang, 'gantt.projects')} span={12} actions={sectionToggle('projects')}>
         <div className="gantt-project-list">
           {activeHiddenByFilter && activeProject !== null ? (
             <p className="empty-note">{t(lang, 'gantt.activeHiddenByFilter')}</p>
@@ -361,6 +414,7 @@ function GanttPlanning({ focusProjectId, onFocusHandled, viewSwitch }: GanttProp
           })}
         </div>
       </SectionCard>
+      ) : null}
     </div>
   );
 }

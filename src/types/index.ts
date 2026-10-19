@@ -12,6 +12,7 @@ import type { DailyTeamPlan, MeetingNote } from '../../shared/meeting';
 import type { NotificationAck, NotificationDef } from '../../shared/notifications';
 import type { BrandingRecord } from '../../shared/branding';
 import type { JiraConnection } from '../../shared/jira';
+import type { TestRailConnection } from '../../shared/testrail';
 
 /** A QA test cycle / release grouping test executions (projects). See shared/qaRules.ts. */
 export type Cycle = CycleRecord;
@@ -247,16 +248,19 @@ export interface RcsMember {
  * - manual: entered by hand in the V6.6 form
  * - manualOverride: a supervisor corrected an automatic/assisted record;
  *   synchronization never overwrites it afterwards
+ * - testrail: imported from TestRail by the SV (Today's Execution → Fetch
+ *   from TestRail); re-import replaces it, manual/manualOverride are kept
  * Legacy records without the field keep it undefined (unknown → shown as
  * manual by default; historical data is never rewritten).
  */
-export type PerformanceRecordSource = 'automatic' | 'assisted' | 'manual' | 'manualOverride';
+export type PerformanceRecordSource = 'automatic' | 'assisted' | 'manual' | 'manualOverride' | 'testrail';
 
 export const PERFORMANCE_RECORD_SOURCES: readonly PerformanceRecordSource[] = [
   'automatic',
   'assisted',
   'manual',
   'manualOverride',
+  'testrail',
 ] as const;
 
 /** JIRA bug severity (manually recorded; optional per ticket). */
@@ -736,6 +740,12 @@ export interface ReportSettings {
    * warns about that). Never part of the shared workspace.
    */
   jira?: JiraConnection;
+  /**
+   * TestRail import connection (Stage: TestRail import). Absent = feature
+   * off. Stored locally with the other settings (including the API key —
+   * the UI warns about that). Never part of the shared workspace.
+   */
+  testrail?: TestRailConnection;
 }
 
 export interface ReportsState {
@@ -796,6 +806,30 @@ export interface ReportsState {
   notifications?: NotificationDef[];
   notificationAcks?: NotificationAck[];
   brandings?: BrandingRecord[];
+  /**
+   * Project Owner registry: workspace-level pairs of one project and one
+   * assignee, entered free-text on the Team Members screen. Optional so
+   * every earlier payload stays valid; normalized to [] on load/import.
+   */
+  projectOwners?: ProjectOwnerEntry[];
+}
+
+/**
+ * One row of the Project Owner registry: ONE project paired with ONE
+ * assignee, both free-text. The assignee is NOT a member identity — the
+ * same name can appear in several rows (one person owning several
+ * projects). Workspace-level so the mapping survives project switches and
+ * the New Project dialog can offer previously used assignees.
+ */
+export interface ProjectOwnerEntry {
+  /** Stable row id ("PO0001"). */
+  id: string;
+  /** Project as typed by the SV (display only; normalized on save). */
+  project: string;
+  /** Assignee name as typed by the SV (display only; suggested again later). */
+  assignee: string;
+  /** ISO timestamp of the row's creation (kept when the row is edited). */
+  createdAt: string;
 }
 
 // ---- Tester assignments & QA review workspace (V6.7) ----
@@ -931,4 +965,40 @@ export interface ProjectRecord {
    * Normalized on creation/load; a value that normalizes to '' is dropped.
    */
   jiraProjectKey?: string;
+  /**
+   * Optional TestRail plan/run URL this project's daily execution imports from
+   * (e.g. "https://rkong.testrail.com/index.php?/plans/view/32716"). Absent on
+   * projects without one; metadata only — never used in calculations. Set from
+   * Today's Execution by an SV; normalized on load, a value that is not a
+   * plan/run view URL is dropped.
+   */
+  testrailPlanUrl?: string;
+  /**
+   * Test environment & reference links (SV-edited, tester-facing): builds
+   * (environment + versions) and the URLs a Tester needs to start work.
+   * Absent on projects without any; metadata only — never used in
+   * calculations. Shared project data (no credentials ever).
+   */
+  reference?: ProjectReference;
+}
+
+/** One build/environment row of a project's test-environment reference. */
+export interface ProjectBuildRef {
+  id: string;
+  /** Environment label, e.g. "Production" / "Preprod" / "Staging". */
+  environment: string;
+  applicationVersion: string;
+  homeVersion: string;
+}
+
+/** Tester-facing reference details of one project: builds, links, notes. */
+export interface ProjectReference {
+  /** TestRail URL; falls back to the project's TestRail plan link when absent. */
+  testrailUrl?: string;
+  questionSheetUrl?: string;
+  buildFileUrl?: string;
+  releaseTicketsUrl?: string;
+  releaseManualUrl?: string;
+  notes?: string;
+  builds?: ProjectBuildRef[];
 }

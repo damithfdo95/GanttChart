@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DailyExecutionEntry, Language } from '../types';
-import { useAppStateCtx } from '../app/state-contexts';
+import { useAppStateCtx, useReportsStateCtx } from '../app/state-contexts';
+import { useAccess } from '../app/access';
 import { t } from '../i18n';
 import { formatDate, todayEpochDays } from '../lib/dates/dates';
 import { generateId } from '../lib/id';
@@ -15,6 +16,18 @@ import {
   type ExecutionStatusTotals,
 } from '../lib/calculations/dailyExecuted';
 import { formatInteger, minutesToTimeInput, parseTimeToMinutes } from '../lib/formatting/format';
+import { createTestRailClient } from '../lib/testrail/client';
+import type { TestRailClientError, TestRailResultRow, TestRailUser } from '../../shared/testrail';
+import {
+  aggregateTestRailDay,
+  applyTestRailDayToEntry,
+  DEFAULT_TESTRAIL_STATUS_MAP,
+  linkTestRailMembers,
+  mergeTestRailTesterRecords,
+  parseTestRailUrl,
+  testrailHostMatches,
+  tokyoDayStartUnix,
+} from '../domain/testrail';
 import { Field } from './Field';
 import { businessDate } from '../../shared/businessTime';
 
@@ -52,7 +65,9 @@ const STATUS_KEYS = [...DELTA_KEYS, 'uncategorizedCompleted'] as const;
 type StatusKey = (typeof STATUS_KEYS)[number];
 
 export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, todayOnly = false, blockedReason }: DailyExecutionFormProps) {
-  const { state, saveDailyExecutionEntry } = useAppStateCtx();
+  const { state, updateField, saveDailyExecutionEntry } = useAppStateCtx();
+  const reports = useReportsStateCtx();
+  const access = useAccess();
   const today = formatDate(todayEpochDays());
   const [dateState, setDateState] = useState<string>(today);
   // A Tester's day is the business day the server will accept (not the browser's own calendar day).
@@ -107,6 +122,90 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
   const dayTotal = derived.pass + derived.fail + derived.notApplicable + derived.spo + (form.uncategorizedCompleted ?? 0);
   const withTotalSuffix = (label: string): string =>
     mode === 'TOTAL' ? `${label} (${t(lang, 'exec.totalShort')})` : label;
+
+  // ---- TestRail import (SV / plain local use; the project must be linked) ----
+  const activeProject = reports.state.projects.find((p) => p.id === reports.state.activeProjectId) ?? null;
+  const testrailConnection = reports.state.settings.testrail;
+  const testrailLink = activeProject?.testrailPlanUrl !== undefined ? parseTestRailUrl(activeProject.testrailPlanUrl) : null;
+  const showTestRail = access.canManage && testrailConnection !== undefined && activeProject !== null;
+  const [testrailBusy, setTestrailBusy] = useState(false);
+  const [testrailMessage, setTestrailMessage] = useState<{ kind: 'ok' | 'error' | 'note'; text: string } | null>(null);
+  const [linkDraft, setLinkDraft] = useState('');
+
+  /**
+   * Fetch the linked plan/run's results for the SELECTED date (default today)
+   * and apply them as an editable proposal: the status counts and the tester
+   * count are replaced, the time window and note stay untouched. Per-tester
+   * records are committed immediately (idempotent; manual / manualOverride
+   * records are never overwritten) — the day's entry itself is committed by
+   * the normal Save button, so the SV stays in the loop.
+   */
+  const runTestrailFetch = async (): Promise<void> => {
+    if (testrailConnection === undefined || testrailLink === null || activeProject === null) return;
+    setTestrailBusy(true);
+    setTestrailMessage(null);
+    try {
+      const client = createTestRailClient(testrailConnection);
+      const runs = testrailLink.kind === 'plan' ? await client.getPlanRuns(testrailLink.id) : [await client.getRun(testrailLink.id)];
+      const dayStart = tokyoDayStartUnix(date);
+      if (dayStart === null) {
+        setTestrailMessage({ kind: 'error', text: t(lang, 'testrail.error.badRequest') });
+        return;
+      }
+      const results: TestRailResultRow[] = [];
+      for (const run of runs) {
+        const rows = await client.getResultsForRun(run.id, { createdAfter: dayStart, createdBefore: dayStart + 86_400 });
+        results.push(...rows);
+      }
+      // Names are cosmetic: without user-list access the import still works ("User #id").
+      let users: TestRailUser[] = [];
+      try {
+        users = await client.getUsers();
+      } catch {
+        /* self-hosted instances may restrict get_users to admins */
+      }
+      const day = linkTestRailMembers(aggregateTestRailDay(results, users, DEFAULT_TESTRAIL_STATUS_MAP, date), users, reports.state.rcsMembers ?? []);
+      if (day.totals.executed === 0) {
+        setTestrailMessage({ kind: 'note', text: t(lang, 'exec.testrailNoResults', { date }) });
+        return;
+      }
+      const merged = mergeTestRailTesterRecords(state.testerDailyPerformance ?? [], activeProject.projectId, day);
+      updateField('testerDailyPerformance', merged.records);
+      setForm((prev) => applyTestRailDayToEntry(prev, day, previous, mode));
+      const parts = [t(lang, 'exec.testrailFetched', { executed: day.totals.executed, testers: day.totals.testers })];
+      if (day.unassignedCount > 0) parts.push(t(lang, 'exec.testrailUnassigned', { count: day.unassignedCount }));
+      if (merged.keptManual > 0) parts.push(t(lang, 'exec.testrailKeptManual', { count: merged.keptManual }));
+      setTestrailMessage({ kind: 'ok', text: parts.join(' ') });
+    } catch (e) {
+      const err = e as TestRailClientError;
+      const hint = t(lang, `testrail.error.${err.kind}`);
+      setTestrailMessage({ kind: 'error', text: err.message !== undefined && err.message !== '' ? `${hint} — ${err.message}` : hint });
+    } finally {
+      setTestrailBusy(false);
+    }
+  };
+
+  const applyLink = (): void => {
+    if (activeProject === null || testrailConnection === undefined) return;
+    const url = linkDraft.trim();
+    if (parseTestRailUrl(url) === null) {
+      setTestrailMessage({ kind: 'error', text: t(lang, 'exec.testrailLinkInvalid') });
+      return;
+    }
+    if (!testrailHostMatches(testrailConnection.baseUrl, url)) {
+      setTestrailMessage({ kind: 'error', text: t(lang, 'exec.testrailLinkHostMismatch') });
+      return;
+    }
+    reports.updateProject(activeProject.id, { testrailPlanUrl: url });
+    setLinkDraft('');
+    setTestrailMessage(null);
+  };
+
+  const removeLink = (): void => {
+    if (activeProject === null) return;
+    reports.updateProject(activeProject.id, { testrailPlanUrl: undefined });
+    setTestrailMessage(null);
+  };
 
   return (
     <div className="daily-execution-form">
@@ -268,6 +367,44 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
         {clampedKeys.length > 0 ? <span className="exec-help exec-clamped">{t(lang, 'exec.clampedHint')}</span> : null}
         {date !== today ? <span className="exec-help">{t(lang, 'exec.entryDateHelp')}</span> : null}
       </div>
+
+      {/* TestRail import (opt-in): the SV links the project to a TestRail
+          plan/run URL once, then fetches that day's results per tester. The
+          fetched counts land in the form above as an editable proposal. */}
+      {showTestRail ? (
+        <div className="exec-mode-row exec-testrail-row" role="group" aria-label={t(lang, 'exec.testrailGroup')}>
+          <span className="field-label">TestRail</span>
+          {testrailLink === null ? (
+            <>
+              <input
+                className="input exec-testrail-input"
+                type="text"
+                placeholder={t(lang, 'exec.testrailLinkPlaceholder')}
+                value={linkDraft}
+                aria-label={t(lang, 'exec.testrailLinkLabel')}
+                onChange={(e) => setLinkDraft(e.target.value)}
+              />
+              <button type="button" className="btn" disabled={linkDraft.trim() === ''} onClick={applyLink}>
+                {t(lang, 'exec.testrailLinkButton')}
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="btn" disabled={testrailBusy} onClick={() => void runTestrailFetch()}>
+                {testrailBusy ? t(lang, 'exec.testrailFetching') : t(lang, 'exec.testrailFetch')}
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={removeLink}>
+                {t(lang, 'exec.testrailUnlink')}
+              </button>
+            </>
+          )}
+        </div>
+      ) : null}
+      {showTestRail && testrailMessage !== null ? (
+        <p className={`exec-help${testrailMessage.kind === 'error' ? ' exec-clamped' : ''}`} role={testrailMessage.kind === 'error' ? 'alert' : 'status'}>
+          {testrailMessage.text}
+        </p>
+      ) : null}
     </div>
   );
 }

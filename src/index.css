@@ -108,6 +108,14 @@ body {
   font-weight: 600;
 }
 
+/* The Gantt tab's own EN/日本語 quick switch (Planning header and Meeting
+   controls — reachable even while presenting, when the app shell is hidden). */
+.gantt-lang-slot {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+}
+
 .data-controls {
   display: flex;
   align-items: center;
@@ -1292,6 +1300,188 @@ textarea:focus-visible,
   gap: 8px;
   flex-wrap: wrap;
   margin: 10px 0;
+}
+
+/* ---- Dashboard panel collapse (QA manager overview / Test execution control center) ---- */
+
+.panel-toggle {
+  margin-left: auto;
+  align-self: flex-start;
+}
+
+.panel-toggle .panel-toggle-chevron {
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 10px;
+}
+
+.panel-toggle-body {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 10px;
+}
+
+/* ---- Integration status hint (Settings → JIRA / TestRail) ---- */
+
+.config-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  align-self: center;
+  white-space: nowrap;
+}
+
+.config-status-ok {
+  color: #1a7f37;
+}
+
+/* ---- Test Environment & Links (project reference) ---- */
+
+.ref-links {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.ref-links li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.ref-link-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  min-width: 180px;
+}
+
+.ref-links a {
+  overflow-wrap: anywhere;
+}
+
+.ref-notes {
+  white-space: pre-wrap;
+  margin: 10px 0 0;
+}
+
+/* Inside the Dashboard's control center the card renders flat (no nested box). */
+.control-center .ref-card {
+  border: 0;
+  padding: 0;
+  margin: 0 0 10px;
+}
+
+/* ---- Section-card header actions (Planning View section toggles) ---- */
+
+.section-card-actions {
+  margin-left: auto;
+  align-self: center;
+  display: flex;
+  gap: 8px;
+}
+
+/* ---- Column show/hide control (Meeting / Planning staffing tables) ---- */
+
+.col-vis {
+  position: relative;
+  display: inline-block;
+}
+
+.col-vis-button {
+  user-select: none;
+}
+
+.col-vis-button::-webkit-details-marker {
+  display: none;
+}
+
+.col-vis-count {
+  display: inline-block;
+  min-width: 16px;
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--neutral-bg);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  text-align: center;
+}
+
+.col-vis-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 40;
+  min-width: 210px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.col-vis-panel label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.col-vis-locked {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.col-vis-reset {
+  justify-self: start;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+/* ---- Staffing editor: column toolbar + compact row actions ---- */
+
+.staffing-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 6px;
+}
+
+.staffing-row-actions {
+  white-space: nowrap;
+}
+
+.btn-row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.btn-row-action:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.btn-row-action:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .dr-toolbar-field {
@@ -3141,6 +3331,17 @@ textarea:focus-visible,
   margin: 8px 0 0;
 }
 
+/* ---- TestRail import row (Today's Execution) ---- */
+
+.exec-testrail-row {
+  flex-wrap: wrap;
+}
+
+.exec-testrail-input {
+  max-width: 420px;
+  min-width: 240px;
+}
+
 .exec-mode-toggle {
   display: inline-flex;
 }
@@ -3667,12 +3868,22 @@ textarea:focus-visible,
 .mt-date { margin: 0; font-size: 1.2em; font-weight: 600; }
 .mt-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .mt-summary { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.mt-summary dt { font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
 .mt-summary dd { font-size: 1.6em; }
 .mt-table td, .mt-table th { vertical-align: middle; }
+.mt-table thead th { font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
+.mt-table tbody tr.mt-row:hover { background: var(--neutral-bg); }
+.mt-table tbody tr.mt-row td { border-bottom: 1px solid var(--border); }
+.mt-table tbody tr.mt-scope-row td { border-bottom: 1px dashed var(--border); }
+.mt-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.mt-project { background: none; border: 0; padding: 0; cursor: pointer; color: inherit; text-align: left; }
+.mt-project:hover strong { text-decoration: underline; }
 .mt-input { width: 6em; }
+/* Inline plan cells read as editable: a quiet dashed field that lights up on hover/focus. */
+.mt-table .mt-input { border-color: var(--border); border-style: dashed; background: transparent; padding: 2px 6px; }
+.mt-table .mt-input:hover, .mt-table .mt-input:focus { border-style: solid; border-color: var(--accent); background: var(--surface); }
 .mt-scope-row { background: var(--bg); }
 .mt-scope-name { padding-left: 24px; font-weight: 500; }
-.mt-project { background: none; border: 0; padding: 0; cursor: pointer; color: inherit; text-align: left; }
 .mt-notes { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 .mt-note { display: grid; gap: 4px; }
 .mt-note-label { font-weight: 600; }

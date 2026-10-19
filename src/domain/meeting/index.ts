@@ -15,6 +15,7 @@ import { isActiveMember } from '../teamMembers/directory';
 import { resultsByCase, scopeAssignees, summarize, type ScopeAssignee } from '../testManagement';
 import { projectTotals } from '../testManagement/totals';
 import { isAssignmentCurrent, needsAttention, projectMetrics, projectRiskSignals, type ExecutionMetrics, type RiskContext, type RiskSignal } from '../qaMetrics';
+import { isAttending } from '../../lib/reporting/sections';
 
 export * from './state';
 
@@ -196,12 +197,15 @@ export interface MeetingView {
 
 const OPEN_TICKET = (status: string | undefined): boolean => status === undefined || status === 'Open' || status === 'In Progress';
 
-/** Is this project part of the team's day? Running projects, ones starting by today, ones that executed today, and ones with a plan. */
-export function inMeeting(project: ProjectRecord, date: string, plans: readonly DailyTeamPlan[]): boolean {
-  if (plans.some((p) => p.projectId === project.projectId && p.date === date && p.plannedCases > 0)) return true;
-  if (entryForDate(project.inputs.dailyExecuted ?? [], date) !== null) return true;
-  if (project.status === 'ongoing' || project.status === 'extended') return true;
-  return project.status === 'todo' && project.inputs.startDate <= date;
+/**
+ * Is this project part of the team's meeting? Only the projects actually
+ * being executed right now: Ongoing (対応中) and Extended (延長 — a deadline
+ * officially moved, execution continues). To Do, On Hold and Done projects
+ * never appear — a plan or a recorded entry of the day no longer includes a
+ * project by itself; mark the project Ongoing to bring it into the meeting.
+ */
+export function inMeeting(project: ProjectRecord): boolean {
+  return project.status === 'ongoing' || project.status === 'extended';
 }
 
 function actualOf(project: ProjectRecord, date: string): DayActual {
@@ -218,11 +222,23 @@ function windowOf(project: ProjectRecord, date: string): { start: number; end: n
   return { start: w.start, end: w.end };
 }
 
-export function attendanceFor(date: string, attendance: readonly AttendanceRecord[]): AttendanceFigure {
-  const rows = attendance.filter((a) => a.date === date);
-  if (rows.length === 0) return { recorded: false, attending: 0, total: 0 };
-  const attending = rows.filter((a) => a.status === 'PRESENT' || a.status === 'LATE' || a.status === 'HALF_DAY').length;
-  return { recorded: true, attending, total: rows.length };
+/**
+ * The day's attendance figure. Attendance input is ABSENCE-ONLY (V6.9-B):
+ * records exist for absences (and legacy explicit rows) and members
+ * WITHOUT a record attend by default — so "everyone present" is a day
+ * with no records, NOT an unrecorded day.
+ *   Total    = the roster active on the date (or the record count when
+ *              more rows exist — external people / legacy full rosters).
+ *   Attending = total minus the day's non-attending records.
+ *   Recorded = there is a roster or any row for the day; false only when
+ *              there is nothing to report at all.
+ */
+export function attendanceFor(date: string, attendance: readonly AttendanceRecord[], members: readonly RcsMember[] = []): AttendanceFigure {
+  const rows = attendance.filter((r) => r.date === date);
+  const total = Math.max(members.filter((m) => isActiveMember(m, date)).length, rows.length);
+  if (total === 0) return { recorded: false, attending: 0, total: 0 };
+  const absent = rows.filter((r) => !isAttending(r.status)).length;
+  return { recorded: true, attending: Math.max(0, total - absent), total };
 }
 
 /** Extra, deterministic signals only the meeting can see (the day's plan against the day's actual). */
@@ -240,7 +256,7 @@ export function buildMeeting(input: MeetingInputs, notes: readonly MeetingNote[]
   const rows: MeetingProjectRow[] = [];
 
   for (const project of input.projects) {
-    if (!inMeeting(project, today, input.plans)) continue;
+    if (!inMeeting(project)) continue;
     const totals = projectTotals(project, input.scopes, input.testCases);
     const metrics = projectMetrics(project);
     const activeScopeIds = new Set(input.scopes.filter((x) => x.projectId === project.projectId && x.status === 'active').map((x) => x.id));
@@ -314,7 +330,7 @@ export function buildMeeting(input: MeetingInputs, notes: readonly MeetingNote[]
     tomorrowPlanned: sum((r) => r.tomorrow.planned ?? 0),
     needsAttention: rows.filter((r) => r.attention).length,
     blockedProjects: rows.filter((r) => r.risks.some((x) => x.code === 'blocked_cases')).length,
-    attendance: attendanceFor(today, input.attendance),
+    attendance: attendanceFor(today, input.attendance, input.members),
   };
   return { rows, summary, note: notes.find((n) => n.date === today) };
 }

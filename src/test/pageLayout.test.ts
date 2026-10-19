@@ -131,7 +131,7 @@ describe('History page layout', () => {
   });
 
   it('the local Revision History uses the same container and page header, with its table in a scroll wrapper', () => {
-    expect(revisionHistory).toMatch(/<div className="app revision-history">\s*<header className="app-header">\s*<div className="app-title-group">\s*<h1>\{t\(lang, 'history\.title'\)\}<\/h1>/);
+    expect(revisionHistory).toMatch(/<div className="app revision-history">\s*<header className="app-header">\s*<div className="app-title-group">\s*<h1>\{t\(lang, 'history\.revisions\.title'\)\}<\/h1>/);
     expect(revisionHistory).toContain('<div className="table-wrap">');
     expect(revisionHistory).not.toContain('SectionCard');
   });

@@ -23,6 +23,10 @@ export function JiraIntegration() {
   const reports = useReportsStateCtx();
   const saved = reports.state.settings.jira;
 
+  // Collapsed by default: connections are configured once — the status hint
+  // shows whether one exists without expanding anything.
+  const [open, setOpen] = useState(false);
+
   const [draft, setDraft] = useState<JiraDraft>({
     baseUrl: saved?.baseUrl ?? '',
     flavor: saved?.flavor ?? 'auto',
@@ -92,8 +96,26 @@ export function JiraIntegration() {
 
   return (
     <section className="dr-section" aria-labelledby="jira-title">
-      <h2 id="jira-title">{t(lang, 'jira.title')}</h2>
-      <p className="dr-summary">{t(lang, 'jira.help')}</p>
+      <div className="dr-button-row">
+        <h2 id="jira-title">{t(lang, 'jira.title')}</h2>
+        <span className={`config-status${saved !== undefined ? ' config-status-ok' : ''}`}>
+          {saved !== undefined ? `✓ ${t(lang, 'common.configured')}` : t(lang, 'common.notConfigured')}
+        </span>
+        <button
+          type="button"
+          className="btn btn-ghost panel-toggle"
+          aria-expanded={open}
+          aria-controls="jira-integration-body"
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span className="panel-toggle-chevron" aria-hidden="true">{open ? '▼' : '▶'}</span>
+          {t(lang, open ? 'common.collapse' : 'common.expand')}
+        </button>
+      </div>
+
+      {open ? (
+        <div id="jira-integration-body" className="panel-toggle-body">
+          <p className="dr-summary">{t(lang, 'jira.help')}</p>
 
       <label className="settings-field">
         {t(lang, 'jira.baseUrl')}
@@ -184,6 +206,8 @@ export function JiraIntegration() {
           {message.text}
         </p>
       )}
+        </div>
+      ) : null}
     </section>
   );
 }

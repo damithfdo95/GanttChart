@@ -353,10 +353,10 @@ describe('Workspace Appearance: the tool name', () => {
 });
 
 describe('Stage 8B.1: Overall for a Tester, business date, unlinked Tester', () => {
-  it('a Tester sees Overall in the menu (labelled Projects / Test Executions) and it is read-only', () => {
+  it('a Tester sees Overall in the menu (labelled Projects) and it is read-only', () => {
     const items = navItems('user');
     expect(items.map((i) => i.id)).toContain('overall');
-    expect(en[items.find((i) => i.id === 'overall')!.key]).toBe('Projects / Test Executions');
+    expect(en[items.find((i) => i.id === 'overall')!.key]).toBe('Projects');
     expect(accessTo('user', 'overall')).toBe('view');
     expect(overallCapabilities(true)).toEqual({ canAddOrImport: false, canExport: false, canChangeStatus: false, canDelete: false });
     expect(overallCapabilities(false)).toEqual({ canAddOrImport: true, canExport: true, canChangeStatus: true, canDelete: true }); // an SV is unchanged

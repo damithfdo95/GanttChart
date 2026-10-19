@@ -93,12 +93,12 @@ function sortKind<T extends Identified>(kind: Exclude<RecordKind, 'settings'>, i
   });
 }
 
-/** The settings fields that never leave the device (a folder handle, JIRA credentials). */
-type DeviceSettingKey = 'autoBackup' | 'jira';
+/** The settings fields that never leave the device (a folder handle, JIRA/TestRail credentials). */
+type DeviceSettingKey = 'autoBackup' | 'jira' | 'testrail';
 
 /** Settings without the per-device fields. */
 export function sharedSettings(settings: ReportSettings): Omit<ReportSettings, DeviceSettingKey> {
-  const { autoBackup: _autoBackup, jira: _jira, ...shared } = settings;
+  const { autoBackup: _autoBackup, jira: _jira, testrail: _testrail, ...shared } = settings;
   return shared;
 }
 
@@ -107,6 +107,7 @@ export function deviceSettings(settings: ReportSettings): Pick<ReportSettings, D
   return {
     ...(settings.autoBackup !== undefined ? { autoBackup: settings.autoBackup } : {}),
     ...(settings.jira !== undefined ? { jira: settings.jira } : {}),
+    ...(settings.testrail !== undefined ? { testrail: settings.testrail } : {}),
   };
 }
 
@@ -192,8 +193,8 @@ export function applyRecordChanges(state: ReportsState, puts: readonly RecordPut
     if (!isObject(parsed)) continue; // never apply a record we cannot read
     if (put.kind === 'settings') {
       // A record from an older build may still carry `jira`: sharedSettings() below ignores it
-      // and the local connection always wins.
-      const { jira: _remoteJira, ...remote } = parsed as unknown as ReportSettings;
+      // and the local connection always wins. (The same guard covers `testrail`.)
+      const { jira: _remoteJira, testrail: _remoteTestrail, ...remote } = parsed as unknown as ReportSettings;
       const merged = { ...remote, ...deviceSettings(next.settings) } as ReportSettings;
       if (JSON.stringify(sharedSettings(merged)) !== JSON.stringify(sharedSettings(next.settings))) next = { ...next, settings: merged };
       continue;

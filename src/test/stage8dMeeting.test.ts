@@ -104,15 +104,15 @@ describe('the whole team, not a person', () => {
 
 describe('which projects are in the meeting', () => {
   const p = (status: ProjectRecord['status'], over: Partial<QaInputs> = {}) => project('PRJ-009', over, status);
-  it('running projects, ones starting by today, ones that executed today or are planned today; not paused or finished ones', () => {
-    expect(inMeeting(p('ongoing'), TODAY, [])).toBe(true);
-    expect(inMeeting(p('extended'), TODAY, [])).toBe(true);
-    expect(inMeeting(p('todo', { startDate: TODAY }), TODAY, [])).toBe(true);
-    expect(inMeeting(p('todo', { startDate: '2026-11-01' }), TODAY, [])).toBe(false);
-    expect(inMeeting(p('onHold'), TODAY, [])).toBe(false);
-    expect(inMeeting(p('done'), TODAY, [])).toBe(false);
-    expect(inMeeting(p('done', { dailyExecuted: [entry(TODAY, { pass: 5 })] }), TODAY, [])).toBe(true); // finished today: still shown
-    expect(inMeeting(p('onHold'), TODAY, [plan('PRJ-009', TODAY, 10)])).toBe(true);
+  it('only projects being executed right now: Ongoing and Extended; never To Do, On Hold or Done — even with plans or entries for the day', () => {
+    expect(inMeeting(p('ongoing'))).toBe(true);
+    expect(inMeeting(p('extended'))).toBe(true);
+    expect(inMeeting(p('todo', { startDate: TODAY }))).toBe(false);
+    expect(inMeeting(p('todo', { startDate: '2026-11-01' }))).toBe(false);
+    expect(inMeeting(p('onHold'))).toBe(false);
+    expect(inMeeting(p('done'))).toBe(false);
+    expect(inMeeting(p('done', { dailyExecuted: [entry(TODAY, { pass: 5 })] }))).toBe(false); // finished: out of the meeting
+    expect(inMeeting(p('onHold', { dailyExecuted: [entry(TODAY, { pass: 5 })] }))).toBe(false); // a plan or entry alone never includes a project
   });
 });
 
@@ -310,13 +310,29 @@ describe('numbers from two sources are never added together', () => {
 
 describe('attendance', () => {
   const a = (status: AttendanceRecord['status'], date = TODAY): AttendanceRecord => ({ id: `${status}-${date}-${Math.random()}`, date, memberName: 'x', team: 'RCS', status, workingStart: null, workingEnd: null, leaveType: null, comment: '' });
+  const roster = [member('USER0001', 'Hana Sato'), member('USER0002', 'Ken Ito'), member('USER0003', 'Taro Tanaka')];
 
-  it('is "not recorded" when nobody has an entry for the day (never guessed from accounts)', () => {
-    expect(attendanceFor(TODAY, [a('PRESENT', '2026-10-07')])).toEqual({ recorded: false, attending: 0, total: 0 });
+  it('a fully-present day IS recorded: with no rows, the whole roster attends by default (absence-only input)', () => {
+    expect(attendanceFor(TODAY, [a('ABSENT', '2026-10-07')], roster)).toEqual({ recorded: true, attending: 3, total: 3 });
+    expect(attendanceFor(TODAY, [], roster)).toEqual({ recorded: true, attending: 3, total: 3 });
   });
 
-  it('counts present, late and half-day people against everyone recorded that day', () => {
+  it('absences subtract from the roster; members without a record attend by default', () => {
+    expect(attendanceFor(TODAY, [a('ABSENT'), a('PAID_LEAVE')], roster)).toEqual({ recorded: true, attending: 1, total: 3 });
+  });
+
+  it('inactive members are not counted in the total', () => {
+    const inactive = [...roster, member('USER0004', 'Gone Person', { active: false, endDate: '2026-10-01' })];
+    expect(attendanceFor(TODAY, [a('ABSENT')], inactive)).toEqual({ recorded: true, attending: 2, total: 3 });
+  });
+
+  it('legacy explicit rows keep their value (attending statuses are not subtractions); more rows than the roster raise the total', () => {
     expect(attendanceFor(TODAY, [a('PRESENT'), a('LATE'), a('HALF_DAY'), a('ABSENT'), a('PAID_LEAVE')])).toEqual({ recorded: true, attending: 3, total: 5 });
+  });
+
+  it('is "not recorded" only when there is no roster and no rows for the day', () => {
+    expect(attendanceFor(TODAY, [a('PRESENT', '2026-10-07')])).toEqual({ recorded: false, attending: 0, total: 0 });
+    expect(attendanceFor(TODAY, [])).toEqual({ recorded: false, attending: 0, total: 0 });
   });
 });
 

@@ -12,6 +12,7 @@ import { WorkspacePanel } from '../tenancy/WorkspacePanel';
 import { DataBackup } from './DataBackup';
 import { WorkspaceAppearance } from './WorkspaceAppearance';
 import { JiraIntegration } from './JiraIntegration';
+import { TestRailIntegration } from './TestRailIntegration';
 import { DataRetention, WorkspaceLogo } from './WorkspaceBranding';
 import { NotificationsSettings } from '../notifications/NotificationsSettings';
 import { useSharedSync } from '../../app/shared-sync';
@@ -317,6 +318,7 @@ export function Settings() {
       <NotificationsSettings />
       <DataRetention />
       <JiraIntegration />
+      <TestRailIntegration />
 
       <DataBackup />
 

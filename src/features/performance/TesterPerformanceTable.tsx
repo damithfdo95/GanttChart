@@ -15,6 +15,8 @@ export function sourceLabel(lang: Language, source: PerformanceRecordSource | un
       return t(lang, 'performance.sourceManual');
     case 'manualOverride':
       return t(lang, 'performance.sourceManualOverride');
+    case 'testrail':
+      return t(lang, 'performance.sourceTestrail');
     default:
       return t(lang, 'performance.sourceUnknown');
   }

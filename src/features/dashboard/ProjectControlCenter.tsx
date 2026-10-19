@@ -7,6 +7,7 @@ import { formatDate, todayEpochDays } from '../../lib/dates/dates';
 import { withProjectCycle } from '../../domain/cycles';
 import { assignedPeople, isAssignmentCurrent, projectMetrics, projectRiskSignals, type RiskContext } from '../../domain/qaMetrics';
 import { MetricsGrid, RiskBadge, RiskList, useIsQaAdmin, useTesters } from '../cycles/parts';
+import { ProjectReferenceCard } from '../../components/ProjectReferenceCard';
 import { personOptionText, personOptions, selectableMembers } from '../../domain/teamMembers';
 import type { Language } from '../../types';
 
@@ -24,6 +25,9 @@ export function ProjectControlCenter({ lang }: { lang: Language }) {
   const [pick, setPick] = useState('');
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // Collapsed by default: the Risk badge above already gives the at-a-glance
+  // state; the details are one click away.
+  const [open, setOpen] = useState(false);
   const today = formatDate(todayEpochDays());
   const state = reports.state;
   const project = state.projects.find((p) => p.id === state.activeProjectId) ?? null;
@@ -81,93 +85,109 @@ export function ProjectControlCenter({ lang }: { lang: Language }) {
       <div className="dr-button-row">
         <h2 id="cc-title">{t(lang, 'cc.title')}</h2>
         <RiskBadge lang={lang} signals={signals} />
+        <button
+          type="button"
+          className="btn btn-ghost panel-toggle"
+          aria-expanded={open}
+          aria-controls="cc-panel-body"
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span className="panel-toggle-chevron" aria-hidden="true">{open ? '▼' : '▶'}</span>
+          {t(lang, open ? 'common.collapse' : 'common.expand')}
+        </button>
       </div>
-      <dl className="cc-facts">
-        <dt>{t(lang, 'cc.cycle')}</dt>
-        <dd>
-          {isAdmin && cycles.length > 0 ? (
-            <select className="input" aria-label={t(lang, 'cc.cycle')} value={project.cycleId ?? ''} onChange={(e) => moveCycle(e.target.value)}>
-              <option value="">{t(lang, 'cc.noCycle')}</option>
-              {cycles
-                .filter((c) => c.status !== 'archived' || c.id === project.cycleId)
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                    {c.version === undefined ? '' : ` (${c.version})`}
-                  </option>
-                ))}
-            </select>
-          ) : cycle !== null ? (
-            `${cycle.name}${cycle.version === undefined ? '' : ` (${cycle.version})`}`
+      {open ? (
+        <div id="cc-panel-body" className="panel-toggle-body">
+          <dl className="cc-facts">
+            <dt>{t(lang, 'cc.cycle')}</dt>
+            <dd>
+              {isAdmin && cycles.length > 0 ? (
+                <select className="input" aria-label={t(lang, 'cc.cycle')} value={project.cycleId ?? ''} onChange={(e) => moveCycle(e.target.value)}>
+                  <option value="">{t(lang, 'cc.noCycle')}</option>
+                  {cycles
+                    .filter((c) => c.status !== 'archived' || c.id === project.cycleId)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                        {c.version === undefined ? '' : ` (${c.version})`}
+                      </option>
+                    ))}
+                </select>
+              ) : cycle !== null ? (
+                `${cycle.name}${cycle.version === undefined ? '' : ` (${cycle.version})`}`
+              ) : (
+                t(lang, 'cc.noCycle')
+              )}
+            </dd>
+            <dt>{t(lang, 'cc.schedule')}</dt>
+            <dd>
+              {project.inputs.startDate} → {project.inputs.targetCompletionDate ?? '—'}
+            </dd>
+            <dt>{t(lang, 'cc.latestActivity')}</dt>
+            <dd>{lastActivity === '' ? t(lang, 'cc.noActivity') : lastActivity}</dd>
+            <dt>{t(lang, 'cc.tickets')}</dt>
+            <dd>{tickets}</dd>
+          </dl>
+
+          <MetricsGrid lang={lang} m={metrics} />
+
+          <ProjectReferenceCard lang={lang} project={project} />
+
+          <h3>{t(lang, 'cc.risk')}</h3>
+          <RiskList lang={lang} signals={signals} />
+
+          <h3>{t(lang, 'cc.testers')}</h3>
+          {people.length === 0 ? (
+            <p>{t(lang, 'cc.nobody')}</p>
           ) : (
-            t(lang, 'cc.noCycle')
+            <ul className="cc-people">
+              {people.map((person) => {
+                const account = person.userId === undefined ? undefined : testers?.find((x) => x.id === person.userId);
+                const disabled = account?.status === 'disabled';
+                return (
+                  <li key={person.assignmentId}>
+                    {account?.displayName ?? person.name}
+                    {account === undefined ? '' : ` (${account.email})`}
+                    {disabled ? ` — ⏸ ${t(lang, 'tenancy.userStatus.disabled')}` : ''}
+                    {isAdmin ? (
+                      <button type="button" className="btn btn-ghost" onClick={() => endAssignment(person.assignmentId)}>
+                        {t(lang, 'cc.endAssignment')}
+                      </button>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
           )}
-        </dd>
-        <dt>{t(lang, 'cc.schedule')}</dt>
-        <dd>
-          {project.inputs.startDate} → {project.inputs.targetCompletionDate ?? '—'}
-        </dd>
-        <dt>{t(lang, 'cc.latestActivity')}</dt>
-        <dd>{lastActivity === '' ? t(lang, 'cc.noActivity') : lastActivity}</dd>
-        <dt>{t(lang, 'cc.tickets')}</dt>
-        <dd>{tickets}</dd>
-      </dl>
-
-      <MetricsGrid lang={lang} m={metrics} />
-
-      <h3>{t(lang, 'cc.risk')}</h3>
-      <RiskList lang={lang} signals={signals} />
-
-      <h3>{t(lang, 'cc.testers')}</h3>
-      {people.length === 0 ? (
-        <p>{t(lang, 'cc.nobody')}</p>
-      ) : (
-        <ul className="cc-people">
-          {people.map((person) => {
-            const account = person.userId === undefined ? undefined : testers?.find((x) => x.id === person.userId);
-            const disabled = account?.status === 'disabled';
-            return (
-              <li key={person.assignmentId}>
-                {account?.displayName ?? person.name}
-                {account === undefined ? '' : ` (${account.email})`}
-                {disabled ? ` — ⏸ ${t(lang, 'tenancy.userStatus.disabled')}` : ''}
-                {isAdmin ? (
-                  <button type="button" className="btn btn-ghost" onClick={() => endAssignment(person.assignmentId)}>
-                    {t(lang, 'cc.endAssignment')}
-                  </button>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {canAssign ? (
-        <div className="tenancy-controls">
-          <label>
-            {t(lang, 'cc.assignTester')}
-            <select className="input" value={pick} onChange={(e) => setPick(e.target.value)}>
-              <option value="">{t(lang, 'cc.assignPlaceholder')}</option>
-              {available.map((x) => (
-                <option key={x.memberId} value={x.memberId}>
-                  {personOptionText(lang, x)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button type="button" className="btn btn-primary" disabled={busy || pick === ''} onClick={() => void assign()}>
-            {t(lang, 'cc.assign')}
-          </button>
+          {canAssign ? (
+            <div className="tenancy-controls">
+              <label>
+                {t(lang, 'cc.assignTester')}
+                <select className="input" value={pick} onChange={(e) => setPick(e.target.value)}>
+                  <option value="">{t(lang, 'cc.assignPlaceholder')}</option>
+                  {available.map((x) => (
+                    <option key={x.memberId} value={x.memberId}>
+                      {personOptionText(lang, x)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" className="btn btn-primary" disabled={busy || pick === ''} onClick={() => void assign()}>
+                {t(lang, 'cc.assign')}
+              </button>
+            </div>
+          ) : isAdmin ? (
+            <p className="link-help">{t(lang, 'cc.accountsNeedWeb')}</p>
+          ) : null}
+          <div aria-live="polite">
+            {message === null ? null : (
+              <p role={message.kind === 'error' ? 'alert' : 'status'} className={`data-controls-message ${message.kind}`}>
+                {message.text}
+              </p>
+            )}
+          </div>
         </div>
-      ) : isAdmin ? (
-        <p className="link-help">{t(lang, 'cc.accountsNeedWeb')}</p>
       ) : null}
-      <div aria-live="polite">
-        {message === null ? null : (
-          <p role={message.kind === 'error' ? 'alert' : 'status'} className={`data-controls-message ${message.kind}`}>
-            {message.text}
-          </p>
-        )}
-      </div>
     </section>
   );
 }

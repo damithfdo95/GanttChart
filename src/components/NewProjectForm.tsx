@@ -5,6 +5,7 @@ import { t, type TranslationKey } from '../i18n';
 import { isValidJiraProjectKey, normalizeJiraProjectKey } from '../domain/jira';
 import { newProjectRecord } from '../domain/projects';
 import { personOptions, selectableMembers } from '../domain/teamMembers';
+import { normalizeOwnerText } from '../domain/projectOwners';
 import {
   defaultNewProjectForm,
   validateNewProjectForm,
@@ -109,6 +110,18 @@ export function NewProjectForm({ open, onClose, onCreated }: NewProjectFormProps
 
   const validation = useMemo(() => validateNewProjectForm(form), [form]);
 
+  // Owning options: previously registered Project Owners first (assignee then
+  // project), then the directory's Team Members. Prefixed values let the
+  // create path tell the two apart without guessing.
+  const ownerEntries = useMemo(
+    () =>
+      [...(reportsApi.state.projectOwners ?? [])].sort(
+        (a, b) => a.assignee.localeCompare(b.assignee) || a.project.localeCompare(b.project),
+      ),
+    [reportsApi.state.projectOwners],
+  );
+  const memberOptions = personOptions(lang, selectableMembers(reportsApi.state.rcsMembers ?? [], { today: formatDate(todayEpochDays()) }), formatDate(todayEpochDays()));
+
   const set = (patch: Partial<NewProjectForm>): void => setForm((prev) => ({ ...prev, ...patch }));
 
   // Calculation preview — the same workday method as the whole system
@@ -171,14 +184,38 @@ export function NewProjectForm({ open, onClose, onCreated }: NewProjectFormProps
       nowIso,
       reportsApi.state.projects,
     );
-    // The owner is a Team Member of this workspace (a dropdown, never typed); the name is kept alongside as a snapshot for exports.
-    const ownerMember = (reportsApi.state.rcsMembers ?? []).find((m) => m.id === form.ownerMemberId);
+    // The owner is picked from the dropdown: a Team Member of this workspace (a
+    // directory profile, never typed) or a previously registered Project Owner
+    // assignee (free text that may not be a member). The name is kept alongside
+    // as a snapshot for exports. For a `po:` pick, ownerMemberId is stored ONLY
+    // when a member's name matches the registered assignee exactly — worker
+    // rules validate ownerMemberId against members, so an unmatched id is never
+    // stored.
+    const ownerValue = form.ownerMemberId;
+    let ownerMemberId: string | undefined;
+    let ownerName: string | undefined;
+    if (ownerValue.startsWith('mem:')) {
+      const member = (reportsApi.state.rcsMembers ?? []).find((m) => m.id === ownerValue.slice(4));
+      if (member !== undefined) {
+        ownerMemberId = member.id;
+        ownerName = member.name;
+      }
+    } else if (ownerValue.startsWith('po:')) {
+      const entry = (reportsApi.state.projectOwners ?? []).find((e) => e.id === ownerValue.slice(3));
+      if (entry !== undefined) {
+        ownerName = entry.assignee;
+        const assignee = normalizeOwnerText(entry.assignee);
+        const matched = (reportsApi.state.rcsMembers ?? []).find((m) => normalizeOwnerText(m.name) === assignee);
+        if (matched !== undefined) ownerMemberId = matched.id;
+      }
+    }
+    const ownerFields = ownerName === undefined ? {} : { owner: ownerName, ...(ownerMemberId === undefined ? {} : { ownerMemberId }) };
     const normalizedJiraKey = normalizeJiraProjectKey(jiraProjectKey);
     reportsApi.addProject({
       ...record,
       description: form.description.trim(),
       ...(normalizedJiraKey !== '' ? { jiraProjectKey: normalizedJiraKey } : {}),
-      ...(ownerMember === undefined ? {} : { ownerMemberId: ownerMember.id, owner: ownerMember.name }),
+      ...ownerFields,
     });
     activateProjectRecord(reportsApi, app, record);
     onCreated();
@@ -243,11 +280,24 @@ export function NewProjectForm({ open, onClose, onCreated }: NewProjectFormProps
               <Field label={t(lang, 'newProject.owner')}>
                 <select className="input" value={form.ownerMemberId} onChange={(e) => set({ ownerMemberId: e.target.value })}>
                   <option value="">{t(lang, 'newProject.ownerNone')}</option>
-                  {personOptions(lang, selectableMembers(reportsApi.state.rcsMembers ?? [], { today: formatDate(todayEpochDays()) }), formatDate(todayEpochDays())).map((o) => (
-                    <option key={o.memberId} value={o.memberId}>
-                      {o.label}
-                    </option>
-                  ))}
+                  {ownerEntries.length === 0 ? null : (
+                    <optgroup label={t(lang, 'po.optGroupOwners')}>
+                      {ownerEntries.map((entry) => (
+                        <option key={entry.id} value={`po:${entry.id}`}>
+                          {entry.assignee} ({entry.project})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {memberOptions.length === 0 ? null : (
+                    <optgroup label={t(lang, 'po.optGroupMembers')}>
+                      {memberOptions.map((o) => (
+                        <option key={o.memberId} value={`mem:${o.memberId}`}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </Field>
               <Field label={t(lang, 'newProject.status')}>

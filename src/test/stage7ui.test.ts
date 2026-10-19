@@ -62,7 +62,7 @@ describe('navigation by role', () => {
   it('every item is a real, translated screen (no dead entries) and ids are unique', () => {
     expect(new Set(NAV_ITEMS.map((i) => i.id)).size).toBe(NAV_ITEMS.length);
     for (const item of NAV_ITEMS) for (const lang of ['en', 'ja'] as const) expect(dictionaries[lang][item.key], `${lang} ${item.key}`).toBeTruthy();
-    expect(dictionaries.en['nav.overall']).toBe('Projects / Test Executions');
+    expect(dictionaries.en['nav.overall']).toBe('Projects');
   });
 });
 
