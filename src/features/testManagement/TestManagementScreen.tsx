@@ -38,6 +38,8 @@ import { ExecutionTable } from './ExecutionTable';
 import { RegisteredWarning, ScopeTotalInput, SummaryBlock, TotalsPanel, pct } from './SummaryParts';
 import { useBusinessToday, usePeopleDirectory, useTestManagement } from './useTestManagement';
 import { JiraImportDialog } from './JiraImportDialog';
+import { TestRailScopeImportDialog } from './TestRailScopeImportDialog';
+import { TestRailScopeProgress } from './TestRailScopeProgress';
 import type { Language, ProjectRecord } from '../../types';
 
 type Tab = 'overview' | 'scopes' | 'cases' | 'execution';
@@ -225,6 +227,7 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
   const [note, setNote] = useState<Note>(null);
   const [pick, setPick] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [testRailImporting, setTestRailImporting] = useState(false);
   const assignments = tm.reports.state.testerAssignments ?? [];
 
   const open = (scope: TestScope | null): void => {
@@ -273,6 +276,15 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
       return { ...state, scopes: state.scopes.map((x) => (x.id === made.value.id ? made.value : x)) };
     });
     setNote(failed === null ? null : { kind: 'error', text: errorText(lang, failed) });
+  };
+
+  const testRailDone = (imported: number, duplicates: number): void => {
+    setTestRailImporting(false);
+    const text =
+      duplicates > 0
+        ? `${t(lang, 'tm.testrailImport.done', { count: imported })} ${t(lang, 'tm.testrailImport.doneSkipped', { duplicates })}`
+        : t(lang, 'tm.testrailImport.done', { count: imported });
+    setNote({ kind: 'ok', text });
   };
 
   const archive = async (scope: TestScope, archive: boolean): Promise<void> => {
@@ -325,11 +337,23 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
         <button type="button" className="btn btn-primary" onClick={() => open(null)}>
           {t(lang, 'tm.scope.add')}
         </button>
+        <button type="button" className="btn" onClick={() => { setTestRailImporting(true); setEditing(null); setNote(null); }}>
+          {t(lang, 'tm.testrailImport.open')}
+        </button>
       </div>
       <p className="dr-summary">{t(lang, 'tm.scope.help')}</p>
       <p className="link-help">{t(lang, 'tm.total.help')}</p>
       <RegisteredWarning lang={lang} totals={projectTotals(project, tm.scopes, tm.testCases)} />
       <Notice note={note} />
+      {testRailImporting ? (
+        <TestRailScopeImportDialog
+          lang={lang}
+          project={project}
+          tm={tm}
+          onClose={() => setTestRailImporting(false)}
+          onDone={testRailDone}
+        />
+      ) : null}
       {editing === null ? null : (
         <form
           className="tenancy-form"
@@ -391,6 +415,8 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
                     <th scope="row" className="tenancy-user-cell">
                       <strong>{scope.name}</strong>
                       {scope.code === undefined ? null : <span>{scope.code}</span>}
+                      {/* Linked scopes show the LIVE TestRail run progress (device-local fetch; counts never persist). */}
+                      {scope.testrail === undefined ? null : <TestRailScopeProgress lang={lang} scope={scope} />}
                     </th>
                     <td>
                       <ScopeTotalInput lang={lang} value={scope.totalTestCases} label={`${t(lang, 'tm.total.input')}: ${scope.name}`} onCommit={(next) => setTotal(scope, next)} />

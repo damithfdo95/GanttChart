@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { ProjectLifecycleStatus, ProjectRecord } from '../../types';
+import type { ProjectRecord } from '../../types';
 import { useAppStateCtx, useReportsStateCtx, activateProject } from '../../app/state-contexts';
-import { t, resolveBilingualName, otherLanguage, LANGUAGES, type TranslationKey } from '../../i18n';
+import { t, resolveBilingualName, otherLanguage, LANGUAGES } from '../../i18n';
 import { formatDate, formatDateDisplay, parseDate, todayEpochDays } from '../../lib/dates/dates';
 import { calculateMultiDayProjection } from '../../lib/calculations/planning';
 import { WORK_DAY_END, WORK_LUNCH } from '../../lib/calculations/workday';
@@ -15,23 +15,7 @@ import { MultiDayTimeline } from '../../components/MultiDayTimeline';
 import { GanttChartView } from '../../components/GanttChartView';
 import { MeetingView, type MeetingSession } from '../meeting/MeetingView';
 import { ProjectReferenceEditor } from './ProjectReferenceEditor';
-
-const LIFECYCLE_KEY: Record<ProjectLifecycleStatus, TranslationKey> = {
-  todo: 'overall.todo',
-  ongoing: 'overall.ongoing',
-  extended: 'overall.extended',
-  onHold: 'overall.onHold',
-  done: 'overall.done',
-};
-
-const PLANNING_KEY: Record<ReturnType<typeof projectPlanningStatus>, TranslationKey> = {
-  onTrack: 'status.onTrack',
-  atRisk: 'status.atRisk',
-  capacityShortage: 'status.capacityShortage',
-  completed: 'status.completed',
-  noTarget: 'plan.noTargetSet',
-  onHold: 'status.onHold',
-};
+import { LIFECYCLE_KEY, PLANNING_KEY } from '../../lib/statusKeys';
 
 type GanttStatusFilter = 'active' | 'all' | 'todo' | 'ongoing' | 'extended' | 'onHold' | 'done';
 

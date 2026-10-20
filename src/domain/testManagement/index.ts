@@ -10,11 +10,13 @@ import {
   nextCaseKey,
   normalizeCaseKey,
   normalizeScopeCode,
+  testrailLinkOk,
   type CasePriority,
   type CaseResult,
   type CaseStatus,
   type TestCase,
   type TestScope,
+  type TestRailScopeLink,
 } from '../../../shared/testManagement';
 import type { TesterProjectAssignment } from '../../types';
 import { cleanTotal } from './totals';
@@ -22,6 +24,7 @@ import { cleanTotal } from './totals';
 export * from '../../../shared/testManagement';
 export { parseBulkCases, type BulkParse, type BulkRow, type BulkRowError } from './bulk';
 export * from './jiraImport';
+export * from './testrailScopeImport';
 export * from './totals';
 
 /**
@@ -133,6 +136,7 @@ export type TmError =
   | 'scope_invalid_name'
   | 'scope_invalid_code'
   | 'scope_invalid_total'
+  | 'scope_invalid_testrail'
   | 'scope_code_taken'
   | 'scope_not_found'
   | 'scope_archived'
@@ -150,7 +154,7 @@ const clean = (v: string | undefined): string | undefined => {
 
 export function newScope(
   state: Pick<TestManagementState, 'scopes'>,
-  input: { projectId: string; name: string; code?: string; description?: string; totalTestCases?: number },
+  input: { projectId: string; name: string; code?: string; description?: string; totalTestCases?: number; testrail?: TestRailScopeLink },
   now: string,
   id: string = `scp_${crypto.randomUUID()}`,
 ): Made<TestScope> {
@@ -162,7 +166,8 @@ export function newScope(
   const mine = state.scopes.filter((s) => s.projectId === input.projectId);
   const order = mine.reduce((m, s) => Math.max(m, s.order), 0) + 10;
   if (input.totalTestCases !== undefined && cleanTotal(input.totalTestCases) === null) return { ok: false, error: 'scope_invalid_total' };
-  const scope: TestScope = { id, projectId: input.projectId, name, ...(code === undefined ? {} : { code }), ...(clean(input.description) === undefined ? {} : { description: clean(input.description) }), ...(input.totalTestCases === undefined ? {} : { totalTestCases: input.totalTestCases }), status: 'active', order, createdAt: now, updatedAt: now };
+  if (input.testrail !== undefined && !testrailLinkOk(input.testrail)) return { ok: false, error: 'scope_invalid_testrail' };
+  const scope: TestScope = { id, projectId: input.projectId, name, ...(code === undefined ? {} : { code }), ...(clean(input.description) === undefined ? {} : { description: clean(input.description) }), ...(input.totalTestCases === undefined ? {} : { totalTestCases: input.totalTestCases }), ...(input.testrail === undefined ? {} : { testrail: input.testrail }), status: 'active', order, createdAt: now, updatedAt: now };
   return checkScope(scope).ok ? { ok: true, value: scope } : { ok: false, error: 'scope_invalid_name' };
 }
 

@@ -18,9 +18,12 @@ import type {
   TestRailConnection,
   TestRailResultRow,
   TestRailResultsRequest,
+  TestRailRunProgress,
   TestRailRunRef,
+  TestRailTestRow,
   TestRailUser,
 } from '../../../shared/testrail';
+import { runProgressFromCounts } from '../../../shared/testrail';
 import type { FetchLike } from '../tenancy/api';
 import { encodeBasicAuth } from '../jira/client';
 
@@ -40,6 +43,14 @@ export interface TestRailClient {
   getPlanRuns(planId: number): Promise<TestRailRunRef[]>;
   /** One standalone run (the target of a /runs/view URL). */
   getRun(runId: number): Promise<TestRailRunRef>;
+  /** The current status counts of one run (get_run). */
+  getRunProgress(runId: number): Promise<TestRailRunProgress>;
+  /**
+   * All tests of a run (get_tests, paged). Each row is the test's CURRENT
+   * state — status_id and assignedto_id at fetch time. Used for the
+   * per-tester progress breakdown of a linked scope.
+   */
+  getTestsForRun(runId: number): Promise<TestRailTestRow[]>;
   /** All results of a run (paged), optionally bounded by creation time. */
   getResultsForRun(runId: number, request?: TestRailResultsRequest): Promise<TestRailResultRow[]>;
 }
@@ -79,6 +90,13 @@ interface RawRun {
   name?: unknown;
   suite_id?: unknown;
   config?: unknown;
+  // The flat status counts get_run / plan entries expose (custom_status*_count
+  // are read dynamically by runProgressFromCounts through the Record cast).
+  passed_count?: unknown;
+  blocked_count?: unknown;
+  retest_count?: unknown;
+  failed_count?: unknown;
+  untested_count?: unknown;
 }
 
 interface RawPlanEntry {
@@ -100,6 +118,12 @@ interface RawResult {
   assignedto_id?: unknown;
 }
 
+interface RawTest {
+  id?: unknown;
+  assignedto_id?: unknown;
+  status_id?: unknown;
+}
+
 function num(v: unknown): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
   return Number.isFinite(n) ? n : null;
@@ -113,14 +137,21 @@ function mapUser(raw: RawUser): TestRailUser {
   };
 }
 
-function mapRun(raw: RawRun): TestRailRunRef {
+function mapRun(raw: RawRun, planId?: number): TestRailRunRef {
   const suiteId = num(raw.suite_id);
   return {
     id: num(raw.id) ?? -1,
     name: typeof raw.name === 'string' ? raw.name : '',
+    ...(planId === undefined ? {} : { planId }),
     ...(suiteId !== null ? { suiteId } : {}),
     ...(typeof raw.config === 'string' && raw.config !== '' ? { config: raw.config } : {}),
+    // The counts that ride with the run object itself; a missing field maps to 0 (defensive).
+    progress: runProgressFromCounts(raw as unknown as Record<string, unknown>),
   };
+}
+
+function runProgressOf(raw: RawRun): TestRailRunProgress {
+  return runProgressFromCounts(raw as unknown as Record<string, unknown>);
 }
 
 function mapResult(raw: RawResult, runId: number): TestRailResultRow {
@@ -133,6 +164,16 @@ function mapResult(raw: RawResult, runId: number): TestRailResultRow {
     createdOn: num(raw.created_on) ?? 0,
     createdBy: num(raw.created_by) ?? -1,
     assignedToId: num(raw.assignedto_id) === null ? null : Math.trunc(num(raw.assignedto_id) as number),
+  };
+}
+
+function mapTest(raw: RawTest): TestRailTestRow {
+  const statusId = num(raw.status_id);
+  const assignedToId = num(raw.assignedto_id);
+  return {
+    testId: num(raw.id) ?? -1,
+    assignedToId: assignedToId === null ? null : Math.trunc(assignedToId),
+    statusId: statusId === null ? null : Math.trunc(statusId),
   };
 }
 
@@ -242,13 +283,18 @@ export function createTestRailClient(conn: TestRailConnection, fetchLike: FetchL
     return `${base}/index.php?/api/v2/${method}${qs}`;
   }
 
-  /** GET a paged list endpoint: bare arrays (older servers) and `{<key>: []}` envelopes are both handled. */
+  /**
+   * GET a paged list endpoint: bare arrays (older servers) and
+   * `{<key>: []}` envelopes are both handled. The 6.7+ envelope may name the
+   * next-page link `links` (newer) or `_links` (older servers in the same
+   * line); both are honored.
+   */
   async function getPaged<T>(
     method: string,
     query: Record<string, string | number | undefined>,
     timeoutMs: number,
     maxTotal: number,
-    listKey: 'results' | 'projects' = 'results',
+    listKey: 'results' | 'projects' | 'tests' | 'users' = 'results',
   ): Promise<T[]> {
     const out: T[] = [];
     let offset = 0;
@@ -262,8 +308,14 @@ export function createTestRailClient(conn: TestRailConnection, fetchLike: FetchL
         out.length = maxTotal;
         break;
       }
-      const links = envelope?._links as { next?: unknown } | undefined;
-      const hasNext = typeof links?.next === 'string' && links.next !== '';
+      const nextOf = (key: string): string | null => {
+        const links = envelope?.[key];
+        return typeof links === 'object' && links !== null && typeof (links as { next?: unknown }).next === 'string'
+          ? ((links as { next: string }).next as string)
+          : null;
+      };
+      const nextLink = nextOf('links') ?? nextOf('_links');
+      const hasNext = nextLink !== null && nextLink !== '';
       if (!hasNext && page.length < PAGE_SIZE) break;
       if (page.length === 0) break;
       offset += page.length;
@@ -274,7 +326,7 @@ export function createTestRailClient(conn: TestRailConnection, fetchLike: FetchL
   return {
     testConnection: () => getPaged<unknown>('get_projects', {}, DEFAULT_TIMEOUT_MS, PAGE_SIZE, 'projects').then((projects) => projects.length),
 
-    getUsers: () => getPaged<RawUser>('get_users', {}, DEFAULT_TIMEOUT_MS, PAGE_SIZE * 4).then((users) => users.map(mapUser)),
+    getUsers: () => getPaged<RawUser>('get_users', {}, DEFAULT_TIMEOUT_MS, PAGE_SIZE * 4, 'users').then((users) => users.map(mapUser)),
 
     getPlanRuns: async (planId: number) => {
       const plan = await doRequest<RawPlan>(api(`get_plan/${planId}`, {}), DEFAULT_TIMEOUT_MS);
@@ -282,7 +334,9 @@ export function createTestRailClient(conn: TestRailConnection, fetchLike: FetchL
       if (Array.isArray(plan?.entries)) {
         for (const entry of plan.entries as RawPlanEntry[]) {
           if (!Array.isArray(entry?.runs)) continue;
-          for (const raw of entry.runs as RawRun[]) runs.push(mapRun(raw));
+          // Every nested run belongs to THIS plan — stamp it so a scope created
+          // from the run can carry the link (planId, runId) without a second call.
+          for (const raw of entry.runs as RawRun[]) runs.push(mapRun(raw, planId));
         }
       }
       return runs;
@@ -291,6 +345,17 @@ export function createTestRailClient(conn: TestRailConnection, fetchLike: FetchL
     getRun: async (runId: number) => {
       const run = await doRequest<RawRun>(api(`get_run/${runId}`, {}), DEFAULT_TIMEOUT_MS);
       return mapRun(run);
+    },
+
+    getRunProgress: async (runId: number) => {
+      const run = await doRequest<RawRun>(api(`get_run/${runId}`, {}), DEFAULT_TIMEOUT_MS);
+      return runProgressOf(run);
+    },
+
+    getTestsForRun: (runId: number) => {
+      // Same defensive hard cap as getResultsForRun: never page unbounded.
+      const maxTotal = Math.max(1, Math.min(DEFAULT_MAX_TOTAL, HARD_CAP_TOTAL));
+      return getPaged<RawTest>(`get_tests/${runId}`, {}, DEFAULT_TIMEOUT_MS, maxTotal, 'tests').then((rows) => rows.map((raw) => mapTest(raw)));
     },
 
     getResultsForRun: (runId: number, request: TestRailResultsRequest = {}) => {

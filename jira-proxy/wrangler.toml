@@ -1,0 +1,7 @@
+name = "jira-proxy"
+main = "src/worker.js"
+compatibility_date = "2025-06-01"
+
+[vars]
+# The JIRA root the worker forwards to (Data Center base URL, including the /jira context path).
+JIRA_ORIGIN = "https://jira.rakuten-it.com/jira"

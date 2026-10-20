@@ -25,8 +25,7 @@ import { NextDaySection } from './NextDaySection';
 import { MorningScheduleSection } from './MorningScheduleSection';
 import { TablePager } from '../../components/TablePager';
 import { usePagedRows } from '../../lib/pagination/usePagedRows';
-
-const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+import { XLSX_MIME } from '../../lib/statusKeys';
 
 function nowIso(): string {
   return new Date().toISOString();

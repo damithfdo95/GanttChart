@@ -1,25 +1,9 @@
-import type { Language, ProjectLifecycleStatus, ProjectRecord } from '../types';
-import { t, resolveBilingualName, type TranslationKey } from '../i18n';
+import type { Language, ProjectRecord } from '../types';
+import { t, resolveBilingualName } from '../i18n';
 import { formatDate, parseDate, todayEpochDays } from '../lib/dates/dates';
 import { formatInteger, formatNumber } from '../lib/formatting/format';
 import { compareByStartDateTime, projectPlanningStatus, projectProgress } from '../domain/projects';
-
-const LIFECYCLE_KEY: Record<ProjectLifecycleStatus, TranslationKey> = {
-  todo: 'overall.todo',
-  ongoing: 'overall.ongoing',
-  extended: 'overall.extended',
-  onHold: 'overall.onHold',
-  done: 'overall.done',
-};
-
-const PLANNING_KEY: Record<ReturnType<typeof projectPlanningStatus>, TranslationKey> = {
-  onTrack: 'status.onTrack',
-  atRisk: 'status.atRisk',
-  capacityShortage: 'status.capacityShortage',
-  completed: 'status.completed',
-  noTarget: 'plan.noTargetSet',
-  onHold: 'status.onHold',
-};
+import { LIFECYCLE_KEY, PLANNING_KEY } from '../lib/statusKeys';
 
 interface GanttChartViewProps {
   projects: ProjectRecord[];
@@ -94,7 +78,7 @@ export function GanttChartView({ projects, activeProjectId, lang, onSelect }: Ga
     return <p className="dr-empty">{t(lang, 'gantt.chart.noDates')}</p>;
   }
 
-  let minEpoch = Math.min(...candidates.map((row) => row.startEpoch), today);
+  const minEpoch = Math.min(...candidates.map((row) => row.startEpoch), today);
   let maxEpoch = Math.max(...candidates.map((row) => row.deadlineEpoch ?? row.startEpoch), today);
   if (maxEpoch <= minEpoch) maxEpoch = minEpoch + 1; // avoid a zero-span domain
   const span = maxEpoch - minEpoch;

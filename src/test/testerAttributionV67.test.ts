@@ -197,7 +197,7 @@ describe('V6.7 tester performance sync', () => {
     });
     const assignments = [assignment({ testerName: 'Tanaka' }), assignment({ testerName: 'Sato' })];
     let plan = buildTesterPerformanceSyncPlan([prj], assignments);
-    let records = applyTesterPerformanceSync([], plan.items);
+    const records = applyTesterPerformanceSync([], plan.items);
     expect(records).toHaveLength(4); // 2 testers × 2 days — no duplicates
     expect(plan.toCreate).toBe(4);
 

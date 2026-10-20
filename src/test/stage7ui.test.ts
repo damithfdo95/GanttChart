@@ -382,7 +382,7 @@ describe('Testers (the QA-facing name of the User role)', () => {
   it('QA-facing administration text never calls a tester a "user" (the role value stays "user" internally)', () => {
     const keys = Object.keys(en).filter((k) => k.startsWith('tenancy.users.') || k.startsWith('team.') || k === 'nav.team' || k.startsWith('tenancy.storage.') || k.startsWith('dashboard.empty.') || k.startsWith('tenancy.audit.action.user.'));
     for (const k of keys) {
-      expect(en[k], k).not.toMatch(/users?/i);
+      expect(en[k], k).not.toMatch(/users?/i);
       expect(ja[k], k).not.toContain('ユーザー');
     }
   });

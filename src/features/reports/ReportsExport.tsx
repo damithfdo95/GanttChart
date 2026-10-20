@@ -39,8 +39,7 @@ import { createBackupPayload, parseBackupPayload } from '../../lib/backup/backup
 import { sanitizeRestoredAccountLinks } from '../../lib/backup/restoreLinks';
 import { useTenant } from '../../app/tenant-context';
 import { persistWorkspaceAsync } from '../../lib/storage/db/persistenceBackend';
-
-const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+import { XLSX_MIME } from '../../lib/statusKeys';
 
 interface DatasetConfig {
   id: string;

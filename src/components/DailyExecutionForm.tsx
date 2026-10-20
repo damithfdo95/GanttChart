@@ -61,8 +61,7 @@ interface DailyExecutionFormProps {
 type InputMode = 'DAY' | 'TOTAL';
 
 const DELTA_KEYS = ['pass', 'fail', 'notApplicable', 'spo', 'blocked', 'retest', 'questioned'] as const;
-const STATUS_KEYS = [...DELTA_KEYS, 'uncategorizedCompleted'] as const;
-type StatusKey = (typeof STATUS_KEYS)[number];
+type StatusKey = (typeof DELTA_KEYS)[number] | 'uncategorizedCompleted';
 
 export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, todayOnly = false, blockedReason }: DailyExecutionFormProps) {
   const { state, updateField, saveDailyExecutionEntry } = useAppStateCtx();

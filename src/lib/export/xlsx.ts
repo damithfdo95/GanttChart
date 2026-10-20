@@ -135,7 +135,7 @@ function esc(text: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;')
     // strip control characters that are illegal in XML 1.0
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ''); // eslint-disable-line no-control-regex -- control chars are exactly what is being stripped
 }
 
 function colName(index: number): string {

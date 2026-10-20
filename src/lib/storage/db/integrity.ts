@@ -18,6 +18,7 @@ import type { ReportsState } from '../../../types';
 import type { PersistenceManifest } from './manifest';
 import type { DailyActualRow } from './workspace';
 import { STORE_ATTENDANCE, STORE_DAILY_ACTUALS, STORE_METADATA, STORE_PROJECTS, STORE_REPORTS, STORE_TOPICS } from './repository';
+import { PROJECT_LIFECYCLE_STATUSES as PROJECT_LIFECYCLE_STATUSES_ALL } from '../../statusKeys';
 export type IntegritySeverity = 'warning' | 'failure';
 
 export type IntegrityCategory = 'projects' | 'reports' | 'dailyActuals' | 'attendance' | 'topics' | 'metadata' | 'identity';
@@ -42,7 +43,7 @@ export interface PersistenceIntegrityResult {
   revision?: number;
 }
 
-const PROJECT_LIFECYCLE_STATUSES = new Set(['todo', 'ongoing', 'extended', 'onHold', 'done']);
+const PROJECT_LIFECYCLE_STATUSES = new Set(PROJECT_LIFECYCLE_STATUSES_ALL);
 const ATTENDANCE_STATUS_SET = new Set(['PRESENT', 'ABSENT', 'PAID_LEAVE', 'HALF_DAY', 'LATE', 'OTHER']);
 
 function isMissingString(v: unknown): boolean {

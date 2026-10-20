@@ -27,8 +27,8 @@ import { downloadBinaryFile, downloadTextFile, fileStamp } from '../../lib/expor
 import { formatDateDisplay, formatDate, parseDate, todayEpochDays } from '../../lib/dates/dates';
 import { formatInteger, formatNumber } from '../../lib/formatting/format';
 import { personOptions, personOptionText, selectableMembers } from '../../domain/teamMembers';
-
-const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+import { XLSX_MIME } from '../../lib/statusKeys';
+import { toggleSort, type SortState } from '../../lib/sortState';
 
 /** Select values for the project-scope filter (never a real JIRA key). */
 const SCOPE_ALL_MAPPED = '__allMapped__';
@@ -46,26 +46,10 @@ const EMPTY_ISSUES: JiraIssue[] = [];
 
 // ---- sorting (the Overall tri-state pattern: ascending → descending → default) ----
 
-interface SortState<K extends string> {
-  key: K;
-  dir: 'asc' | 'desc';
-}
-
 type MemberSortKey = 'memberName' | 'team' | 'total' | 'open' | 'inProgress' | 'done' | 'resolvedRate' | 'lastActivity';
 type MemberSortState = SortState<MemberSortKey>;
 type TicketSortKey = 'issueKey' | 'summary' | 'statusName' | 'typeName' | 'reporterName' | 'updated';
 type TicketSortState = SortState<TicketSortKey>;
-
-function toggleSort<K extends string>(
-  key: K,
-  current: SortState<K> | null,
-  commit: (next: SortState<K> | null) => void,
-  reset: SortState<K> | null,
-): void {
-  if (current === null || current.key !== key) commit({ key, dir: 'asc' });
-  else if (current.dir === 'asc') commit({ key, dir: 'desc' });
-  else commit(reset);
-}
 
 /** Status-category → the app's existing chip tone (text always carries the status). */
 const STATUS_TONE: Record<TicketRow['statusCategory'], 'good' | 'bad' | 'default'> = {

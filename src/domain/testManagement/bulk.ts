@@ -50,7 +50,7 @@ const norm = (s: string): string => s.normalize('NFKC').trim().toLowerCase();
 
 export function parseBulkCases(text: string, existingKeys: Iterable<string>): BulkParse {
   const existing = new Set([...existingKeys].map((k) => k.toUpperCase()));
-  const lines = text.replace(/^﻿/, '').split(/\r\n|\n|\r/);
+  const lines = text.replace(/^\uFEFF/, '').split(/\r\n|\n|\r/);
   const rows: BulkRow[] = [];
   const errors: BulkRowError[] = [];
   const seen = new Map<string, number>();

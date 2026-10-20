@@ -34,7 +34,7 @@ export function printHtml(title: string, bodyHtml: string): boolean {
       'th{background:#f4f6f8;}' +
       '</style></head><body>' +
       `<h1>${escapeHtml(title)}</h1>${bodyHtml}` +
-      '<script>window.onload=function(){window.print();}<\/script>' +
+      '<script>window.onload=function(){window.print();}</' + 'script>' +
       '</body></html>',
   );
   win.document.close();

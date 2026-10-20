@@ -136,7 +136,7 @@ describe('TestRail client', () => {
       id: 32716,
       name: 'Release 4.1.0',
       entries: [
-        { id: 'e1', runs: [{ id: 9001, name: 'Chrome', config: 'Chrome' }, { id: 9002, name: 'Android 14', config: 'Android 14' }] },
+        { id: 'e1', runs: [{ id: 9001, name: 'Chrome', config: 'Chrome', passed_count: 10, untested_count: 20 }, { id: 9002, name: 'Android 14', config: 'Android 14' }] },
         { id: 'e2', runs: [{ id: 9003, name: 'Suite B', suite_id: 7 }] },
         { id: 'e3', runs: [] },
       ],
@@ -149,11 +149,43 @@ describe('TestRail client', () => {
     expect(calls[0]?.url).toContain('get_plan/32716');
   });
 
+  it('stamps every plan run with its parent planId and the run counts (progress)', async () => {
+    const plan = {
+      id: 32716,
+      entries: [
+        {
+          runs: [
+            { id: 9001, name: 'Chrome', passed_count: 10, blocked_count: 2, retest_count: 1, failed_count: 3, untested_count: 20, custom_status1_count: 4, custom_status2_count: 5 },
+          ],
+        },
+      ],
+    };
+    const { fetch } = recordingFetch((call) => (call.url.includes('get_plan') ? response(200, plan) : response(200, [])));
+    const runs = await createTestRailClient(CONN, fetch).getPlanRuns(32716);
+    expect(runs[0]?.planId).toBe(32716);
+    // a scope created from this run carries the link WITHOUT a second call, and
+    // the preview shows the current counts from the same plan payload
+    expect(runs[0]).toMatchObject({
+      id: 9001,
+      planId: 32716,
+      progress: { passed: 10, blocked: 2, retest: 1, failed: 3, untested: 20, custom: 9, total: 45 },
+    });
+  });
+
   it('fetches one standalone run', async () => {
     const { fetch } = recordingFetch((call) => (call.url.includes('get_run') ? response(200, { id: 42, name: 'Sanity' }) : response(200, [])));
     const run = await createTestRailClient(CONN, fetch).getRun(42);
     expect(run.id).toBe(42);
     expect(run.name).toBe('Sanity');
+    expect(run.planId).toBeUndefined();
+  });
+
+  it('getRunProgress maps the flat counts of one run (missing custom → 0)', async () => {
+    const raw = { id: 42, name: 'Sanity', passed_count: 12, failed_count: 3, untested_count: 5 };
+    const { fetch, calls } = recordingFetch((call) => (call.url.includes('get_run') ? response(200, raw) : response(200, [])));
+    const progress = await createTestRailClient(CONN, fetch).getRunProgress(42);
+    expect(progress).toEqual({ passed: 12, blocked: 0, retest: 0, failed: 3, untested: 5, custom: 0, total: 20 });
+    expect(calls[0]?.url).toContain('get_run/42');
   });
 
   it('pages results with limit/offset following _links.next and stamps the run id', async () => {
@@ -189,6 +221,54 @@ describe('TestRail client', () => {
     expect(rows.map((r) => r.id)).toEqual([9]);
   });
 
+  it('pages get_tests following the 6.7+ links.next envelope (list key "tests")', async () => {
+    const testRow = (id: number, status: number): Record<string, unknown> => ({ id, status_id: status, assignedto_id: status === 3 ? null : 5 });
+    const page1 = {
+      offset: 0,
+      limit: 250,
+      size: 2,
+      links: { next: '/api/v2/get_tests/9001&limit=250&offset=2' },
+      tests: [testRow(100, 1), testRow(101, 2)],
+    };
+    const page2 = {
+      offset: 2,
+      limit: 250,
+      size: 1,
+      links: { next: null },
+      tests: [testRow(102, 3)],
+    };
+    const { fetch, calls } = recordingFetch((call) => (call.url.includes('offset=2') ? response(200, page2) : response(200, page1)));
+    const rows = await createTestRailClient(CONN, fetch).getTestsForRun(9001);
+    expect(rows).toEqual([
+      { testId: 100, assignedToId: 5, statusId: 1 },
+      { testId: 101, assignedToId: 5, statusId: 2 },
+      { testId: 102, assignedToId: null, statusId: 3 },
+    ]);
+    expect(calls[0]?.url).toBe('https://rkong.testrail.com/index.php?/api/v2/get_tests/9001&limit=250&offset=0');
+    expect(calls[1]?.url).toBe('https://rkong.testrail.com/index.php?/api/v2/get_tests/9001&limit=250&offset=2');
+  });
+
+  it('accepts a bare array of tests (older TestRail servers)', async () => {
+    const { fetch } = recordingFetch(() => response(200, [{ id: 9, status_id: 3, assignedto_id: null }]));
+    const rows = await createTestRailClient(CONN, fetch).getTestsForRun(1);
+    expect(rows).toEqual([{ testId: 9, assignedToId: null, statusId: 3 }]);
+  });
+
+  it('normalizes test rows defensively (string ids, null status, null assignee)', async () => {
+    const raw = [
+      { id: '5', status_id: '2', assignedto_id: 7 },
+      { id: 6, status_id: null, assignedto_id: null },
+      { id: 7, status_id: 6, assignedto_id: '8' },
+    ];
+    const { fetch } = recordingFetch(() => response(200, raw));
+    const rows = await createTestRailClient(CONN, fetch).getTestsForRun(9001);
+    expect(rows).toEqual([
+      { testId: 5, assignedToId: 7, statusId: 2 },
+      { testId: 6, assignedToId: null, statusId: null },
+      { testId: 7, assignedToId: 8, statusId: 6 },
+    ]);
+  });
+
   it('normalizes result rows defensively (null status, null assignee)', async () => {
     const raw = [
       resultRow({ id: 5, test_id: 55, status_id: null, assignedto_id: null }),
@@ -207,5 +287,15 @@ describe('TestRail client', () => {
     expect(await createTestRailClient(CONN, a.fetch).testConnection()).toBe(2);
     const b = recordingFetch(() => response(200, { offset: 0, limit: 250, size: 1, _links: { next: null }, projects: [{ id: 1 }] }));
     expect(await createTestRailClient(CONN, b.fetch).testConnection()).toBe(1);
+  });
+
+  it('getUsers parses the 6.7+ users envelope (not an empty array)', async () => {
+    const { fetch, calls } = recordingFetch(() => response(200, { offset: 0, limit: 250, size: 2, links: { next: null }, users: [{ id: 5, name: 'Ann', email: 'ann@example.com' }, { id: 6, name: 'Bo' }] }));
+    const users = await createTestRailClient(CONN, fetch).getUsers();
+    expect(users).toEqual([
+      { id: 5, name: 'Ann', email: 'ann@example.com' },
+      { id: 6, name: 'Bo' },
+    ]);
+    expect(calls[0]?.url).toBe('https://rkong.testrail.com/index.php?/api/v2/get_users&limit=250&offset=0');
   });
 });

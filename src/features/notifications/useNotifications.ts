@@ -58,7 +58,6 @@ export function useDueNotifications() {
     const mine = members.find((m) => m.userId === principal.userId);
     const who: Recipient = { role: principal.role === 'admin' ? 'admin' : 'user', memberId: mine?.id ?? null, memberActive: mine === undefined ? true : mine.active };
     return dueFor(defs, acks, principal.userId, who, businessClock(now)).filter((d) => !closed.has(`${d.def.id}\u0000${d.occurrence.key}`));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, principal, members, defs, acks, now, closed]);
 
   const acknowledge = useCallback(

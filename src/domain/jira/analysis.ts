@@ -52,7 +52,7 @@ export function isValidJiraProjectKey(key: string): boolean {
 }
 
 // JIRA field values that need no quoting (alphanumerics, underscore, dash).
-const JQL_SAFE_TOKEN = /^[A-Za-z0-9_\-]+$/;
+const JQL_SAFE_TOKEN = /^[A-Za-z0-9_-]+$/;
 
 /** Quote a JQL value only when it needs it; embedded quotes are doubled (JQL escaping). */
 function jqlToken(value: string): string {

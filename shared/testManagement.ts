@@ -44,6 +44,28 @@ export const TM_LIMITS = {
   bulkRows: 500,
 } as const;
 
+/**
+ * The link of a scope to one TestRail test run (Stage: TestRail run import).
+ *
+ * The plan id is the run's parent plan (populated when the run was fetched
+ * through `get_plan`); the run id is the unit the app tracks. This is SHARED
+ * data — it rides inside the ordinary `scope` record, so it syncs with the
+ * workspace exactly like the other scope fields. The run's live progress
+ * counts are NEVER persisted here: they are fetched on demand and kept in the
+ * browser only (see the client and the progress readout).
+ */
+export interface TestRailScopeLink {
+  /** A positive TestRail plan id. */
+  planId: number;
+  /** A positive TestRail run id (the run of `planId` that this scope tracks). */
+  runId: number;
+}
+
+const isPositiveInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v > 0;
+
+/** True exactly for a whole `TestRailScopeLink` (planId + runId, positive integers). */
+export const testrailLinkOk = (v: unknown): v is TestRailScopeLink => isObj(v) && isPositiveInt(v.planId) && isPositiveInt(v.runId);
+
 export interface TestScope {
   id: string;
   /** Stable project id ("PRJ-001"), the same one assignments use. */
@@ -57,6 +79,11 @@ export interface TestScope {
    * registered (those may be fewer, equal, or - with a warning - more). Absent = not set. Integer 0..TOTAL_TEST_CASES_MAX.
    */
   totalTestCases?: number;
+  /**
+   * Stage (TestRail run import): when present, this scope tracks ONE TestRail test run — its Total Test Cases came from the run,
+   * and the run's live progress can be shown next to the scope. Shared (synced) data; run counts never ride along.
+   */
+  testrail?: TestRailScopeLink;
   status: ScopeStatus;
   order: number;
   createdAt: string;
@@ -168,6 +195,8 @@ export function checkScope(raw: unknown): Check<TestScope> {
   if (raw.code !== undefined && normalizeScopeCode(raw.code) !== raw.code) return { ok: false, error: 'scope_invalid_code' };
   if (raw.description !== undefined && !text(raw.description, TM_LIMITS.scopeDescription)) return { ok: false, error: 'scope_invalid_description' };
   if (raw.totalTestCases !== undefined && !(typeof raw.totalTestCases === 'number' && Number.isInteger(raw.totalTestCases) && raw.totalTestCases >= 0 && raw.totalTestCases <= TOTAL_TEST_CASES_MAX)) return { ok: false, error: 'scope_invalid_total' };
+  // The TestRail link is lenient exactly like the other optional fields: absent = fine, present but malformed = rejected.
+  if (raw.testrail !== undefined && !testrailLinkOk(raw.testrail)) return { ok: false, error: 'scope_invalid_testrail' };
   if (typeof raw.status !== 'string' || !(SCOPE_STATUSES as readonly string[]).includes(raw.status)) return { ok: false, error: 'scope_invalid_status' };
   if (!orderOk(raw.order)) return { ok: false, error: 'scope_invalid_order' };
   if (!stamp(raw.createdAt) || !stamp(raw.updatedAt)) return { ok: false, error: 'scope_invalid_timestamp' };

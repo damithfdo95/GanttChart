@@ -40,23 +40,7 @@ import { createProjectBackupPayload, importProjectIntoRegistry } from '../../lib
 import { detectImportFile } from '../../lib/backup/importFile';
 import { sanitizeRestoredAccountLinks } from '../../lib/backup/restoreLinks';
 import { downloadTextFile } from '../../lib/export/download';
-
-const LIFECYCLE_KEY: Record<ProjectLifecycleStatus, TranslationKey> = {
-  todo: 'overall.todo',
-  ongoing: 'overall.ongoing',
-  extended: 'overall.extended',
-  onHold: 'overall.onHold',
-  done: 'overall.done',
-};
-
-const PLANNING_KEY: Record<ReturnType<typeof projectPlanningStatus>, TranslationKey> = {
-  onTrack: 'status.onTrack',
-  atRisk: 'status.atRisk',
-  capacityShortage: 'status.capacityShortage',
-  completed: 'status.completed',
-  noTarget: 'plan.noTargetSet',
-  onHold: 'status.onHold',
-};
+import { LIFECYCLE_KEY, PLANNING_KEY } from '../../lib/statusKeys';
 
 const GROUP_VERDICT_KEY: Record<PortfolioVerdict, TranslationKey> = {
   onTrack: 'status.onTrack',
@@ -512,7 +496,8 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
               {importMessage.text}
             </span>
           ) : null}
-        </div>        <div className="dr-filter-bar">
+        </div>
+        <div className="dr-filter-bar">
           <label>
             {t(lang, 'overall.lifecycleStatus')}
             <select

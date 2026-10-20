@@ -1,0 +1,7 @@
+name = "testrail-proxy"
+main = "src/worker.js"
+compatibility_date = "2025-06-01"
+
+[vars]
+# The TestRail instance the worker forwards to (hosted cloud base URL, no trailing slash).
+TESTRAIL_ORIGIN = "https://rkong.testrail.com"

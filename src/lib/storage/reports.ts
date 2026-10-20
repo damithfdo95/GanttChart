@@ -37,7 +37,7 @@ export const REPORTS_STORAGE_KEY = 'ganttchart.reports.v1';
 
 export const REPORTS_SCHEMA_VERSION = 1;
 
-const PROJECT_LIFECYCLE_STATUSES: readonly string[] = ['todo', 'ongoing', 'extended', 'onHold', 'done'];
+import { PROJECT_LIFECYCLE_STATUSES } from '../statusKeys';
 
 /** Default automatic-backup configuration (disabled until the user opts in). */
 export const DEFAULT_AUTO_BACKUP_SETTINGS: AutoBackupSettings = {
@@ -427,7 +427,7 @@ function isQaInputsShape(v: unknown): v is QaInputs {
 function isProjectStatusChange(v: unknown): v is ProjectStatusChange {
   if (typeof v !== 'object' || v === null) return false;
   const r = v as Record<string, unknown>;
-  return PROJECT_LIFECYCLE_STATUSES.includes(String(r.status)) && typeof r.changedAt === 'string';
+  return (PROJECT_LIFECYCLE_STATUSES as readonly string[]).includes(String(r.status)) && typeof r.changedAt === 'string';
 }
 
 const REVIEW_PERIOD_TYPE_SET = new Set<string>(REVIEW_PERIOD_TYPES);
@@ -521,7 +521,7 @@ function isProjectRecord(v: unknown): v is ProjectRecord {
     typeof r.nameEn === 'string' &&
     typeof r.nameJa === 'string' &&
     typeof r.team === 'string' &&
-    PROJECT_LIFECYCLE_STATUSES.includes(String(r.status)) &&
+    (PROJECT_LIFECYCLE_STATUSES as readonly string[]).includes(String(r.status)) &&
     Array.isArray(r.statusHistory) &&
     r.statusHistory.every((h: unknown) => isProjectStatusChange(h)) &&
     (r.completedAt === null || typeof r.completedAt === 'string') &&

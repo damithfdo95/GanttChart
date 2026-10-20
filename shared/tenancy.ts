@@ -64,7 +64,7 @@ export const CLOSE_CODES = {
 
 // ---- email identity ----
 
-const EMAIL_FORBIDDEN = /[\s<>()[\]\\,;:"\u0000-\u001f\u007f]/;
+const EMAIL_FORBIDDEN = /[\s<>()[\]\\,;:"\u0000-\u001f\u007f]/; // eslint-disable-line no-control-regex -- control chars are exactly what is being rejected
 
 /**
  * Canonical form of an email identity: Unicode NFKC (folds full-width and

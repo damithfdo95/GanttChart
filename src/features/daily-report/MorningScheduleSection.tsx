@@ -39,7 +39,7 @@ export function MorningScheduleSection({ lang, suggestions, items, readOnly, onC
       <ol className="dr-nextday-list">
         {items.map((item, index) => (
           <li key={item.id} className={item.source === 'SUGGESTED' || item.source === 'AUTO' ? 'dr-suggested' : undefined}>
-            <span>　・{item.text}</span>
+            <span>{'\u3000'}・{item.text}</span>
             {readOnly !== true ? (
               <span className="dr-row-actions">
                 <button

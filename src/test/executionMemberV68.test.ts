@@ -39,7 +39,7 @@ function record(overrides: Partial<TesterDailyPerformance> = {}): TesterDailyPer
 
 describe('V6.8 daily execution with member identity', () => {
   it('upserts a member-based record and persists the stable member id', () => {
-    let records = upsertTesterDailyPerformance([], 'PRJ-001', {
+    const records = upsertTesterDailyPerformance([], 'PRJ-001', {
       date: '2026-09-10',
       testerName: 'Yamauchi Kentaro',
       memberId: 'USER0003',

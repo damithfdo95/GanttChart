@@ -41,7 +41,14 @@ export interface TestRailUser {
   email?: string;
 }
 
-/** One test run of a plan (or a standalone run). */
+/**
+ * One test run of a plan (or a standalone run).
+ *
+ * `progress` carries the run's CURRENT status counts exactly as TestRail's
+ * plan/run objects expose them (flat `*_count` fields — there is no total in
+ * the API, so `total` is the sum). The counts are per-run facts fetched
+ * together with the run; they are not results and never become records.
+ */
 export interface TestRailRunRef {
   id: number;
   name: string;
@@ -49,6 +56,150 @@ export interface TestRailRunRef {
   suiteId?: number;
   /** Config label(s), e.g. "Chrome" — plan entries create one run per config. */
   config?: string;
+  /** The run's parent plan id — only present when the run was fetched through a plan. */
+  planId?: number;
+  /** The run's current status counts (missing on unusual servers → all zeros). */
+  progress?: TestRailRunProgress;
+}
+
+/**
+ * The status counts of one TestRail run. TestRail's API has no `total`: it
+ * is the sum of the nine counts below (five built-ins + the seven custom
+ * statuses). Custom statuses may be absent on older servers — the mapper
+ * treats a missing field as 0, so a total computed here is always exact.
+ */
+export interface TestRailRunProgress {
+  passed: number;
+  blocked: number;
+  retest: number;
+  failed: number;
+  untested: number;
+  /** Sum of custom_status1_count … custom_status7_count. */
+  custom: number;
+  /** passed + blocked + retest + failed + untested + custom. */
+  total: number;
+}
+
+/** Read one `*_count` field defensively: missing / non-numeric → 0, never NaN or a negative total. */
+function countOf(raw: Record<string, unknown>, key: string): number {
+  const v = raw[key];
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
+}
+
+/**
+ * Map the flat count fields of a TestRail plan-run / run object into the
+ * normalized `TestRailRunProgress`. Pure, defensive: any absent or broken
+ * field counts as 0 (older servers omit the custom fields; a corrupt value
+ * must never poison the sum).
+ */
+export function runProgressFromCounts(raw: Record<string, unknown>): TestRailRunProgress {
+  const passed = countOf(raw, 'passed_count');
+  const blocked = countOf(raw, 'blocked_count');
+  const retest = countOf(raw, 'retest_count');
+  const failed = countOf(raw, 'failed_count');
+  const untested = countOf(raw, 'untested_count');
+  let custom = 0;
+  for (let i = 1; i <= 7; i += 1) custom += countOf(raw, `custom_status${i}_count`);
+  return { passed, blocked, retest, failed, untested, custom, total: passed + blocked + retest + failed + untested + custom };
+}
+
+/**
+ * The run's "passed %" exactly like TestRail's plan screen shows it:
+ * passed / total, and 0 when the run is empty. Never NaN, never negative.
+ */
+export function passedPct(p: TestRailRunProgress): number {
+  return p.total === 0 ? 0 : p.passed / p.total;
+}
+
+/**
+ * One normalized TEST row of a run (get_tests). Unlike a result, a test row
+ * is the CURRENT state of one run × case instance: its status and its
+ * assigned tester at fetch time. This is what the per-tester progress
+ * breakdown of a linked run is built from (each test belongs to exactly one
+ * group, so the group totals partition the run — they sum to the aggregate
+ * line exactly).
+ */
+export interface TestRailTestRow {
+  /** The test's id (the run × case instance; get_tests uses `id`). */
+  testId: number;
+  /** The assigned tester's TestRail user id; null = unassigned. */
+  assignedToId: number | null;
+  /** Built-in IDs: 1 Passed, 2 Blocked, 3 Untested, 4 Retest, 5 Failed; 6+ custom. */
+  statusId: number | null;
+}
+
+/**
+ * The per-tester progress of one linked run. One entry per assigned tester
+ * plus one for unassigned tests (`testerId: null`); the sums of every row
+ * equal the run's aggregate `TestRailRunProgress`.
+ */
+export interface TestRailTesterProgress {
+  /** The assigned tester's TestRail user id; null = unassigned tests. */
+  testerId: number | null;
+  passed: number;
+  blocked: number;
+  retest: number;
+  failed: number;
+  untested: number;
+  /** Statuses with id ≥ 6 (custom statuses). */
+  custom: number;
+  /** passed + blocked + retest + failed + untested + custom. */
+  total: number;
+}
+
+/**
+ * Group the test rows of a run by assigned tester and count their statuses.
+ * Pure and defensive: every row lands in exactly one group and one bucket, so
+ * the group totals are a partition of the run (they sum to the aggregate
+ * line). Built-in status ids map to their named bucket; ids ≥ 6 count as
+ * custom; anything unusable (null / non-positive) counts as untested — the
+ * API default for a test without a meaningful status. Sorted by total
+ * descending, unassigned last (deterministic tie-break: tester id).
+ */
+export function testerProgressFromTests(tests: readonly TestRailTestRow[]): TestRailTesterProgress[] {
+  interface Acc {
+    testerId: number | null;
+    passed: number;
+    blocked: number;
+    retest: number;
+    failed: number;
+    untested: number;
+    custom: number;
+  }
+  const newAcc = (testerId: number | null): Acc => ({ testerId, passed: 0, blocked: 0, retest: 0, failed: 0, untested: 0, custom: 0 });
+  const bucket = (statusId: number | null): keyof Omit<Acc, 'testerId'> => {
+    switch (statusId) {
+      case 1:
+        return 'passed';
+      case 2:
+        return 'blocked';
+      case 4:
+        return 'retest';
+      case 5:
+        return 'failed';
+      case 3:
+        return 'untested';
+      default:
+        return statusId !== null && statusId >= 6 ? 'custom' : 'untested';
+    }
+  };
+
+  const byTester = new Map<number | null, Acc>();
+  for (const row of tests) {
+    const acc = byTester.get(row.assignedToId) ?? newAcc(row.assignedToId);
+    acc[bucket(row.statusId)] += 1;
+    byTester.set(row.assignedToId, acc);
+  }
+
+  return [...byTester.values()]
+    .map((acc) => ({ ...acc, total: acc.passed + acc.blocked + acc.retest + acc.failed + acc.untested + acc.custom }))
+    .sort((a, b) => {
+      if (a.testerId === null && b.testerId !== null) return 1; // unassigned last
+      if (a.testerId !== null && b.testerId === null) return -1;
+      if (a.total !== b.total) return b.total - a.total; // total desc
+      return (a.testerId ?? -1) - (b.testerId ?? -1); // deterministic tie-break
+    });
 }
 
 /**

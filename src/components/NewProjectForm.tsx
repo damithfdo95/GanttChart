@@ -25,14 +25,7 @@ import { formatDateDisplay, formatDate, nowMinutesOfDay, todayEpochDays } from '
 import { formatClock, formatDuration, formatInteger } from '../lib/formatting/format';
 import { Field } from './Field';
 import { MetricCard } from './MetricCard';
-
-const LIFECYCLE_KEY: Record<ProjectLifecycleStatus, TranslationKey> = {
-  todo: 'overall.todo',
-  ongoing: 'overall.ongoing',
-  extended: 'overall.extended',
-  onHold: 'overall.onHold',
-  done: 'overall.done',
-};
+import { LIFECYCLE_KEY } from '../lib/statusKeys';
 
 interface NewProjectFormProps {
   open: boolean;

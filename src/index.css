@@ -3482,6 +3482,33 @@ textarea:focus-visible,
   color: var(--text-muted, #52606d);
   font-size: 0.9rem;
 }
+/* Collapsed-by-default per-tester breakdown of a linked TestRail run. */
+.testrail-by-tester {
+  margin: 8px 0 0;
+}
+.testrail-by-tester summary {
+  cursor: pointer;
+  user-select: none;
+}
+.testrail-tester-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.testrail-tester-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.testrail-tester-list strong {
+  font-weight: 600;
+}
+.testrail-tester-list li > strong:first-child {
+  min-width: 6em;
+}
 .link-confirm {
   display: flex;
   flex-direction: column;

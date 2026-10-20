@@ -3,20 +3,12 @@ import { useAppStateCtx } from '../app/state-contexts';
 import { JIRA_JQL_PLACEHOLDER } from '../lib/jira/jql';
 import { useJiraSearch } from '../lib/jira/useJiraSearch';
 import { JiraErrorHint } from './JiraErrorHint';
-import { t, type TranslationKey } from '../i18n';
+import { t } from '../i18n';
 import type { Language } from '../types';
 import type { JiraIssue } from '../../shared/jira';
 import { BLOCKING_CATEGORIES, type BlockingCategory, type BlockingEvent } from '../types';
 import { editableNoteText, jiraIssuesToBlockingEvents, mergeBlockingEvents, withNoteText } from '../domain/blocking/jiraBlockers';
-
-const BLOCKING_CAT_KEY: Record<BlockingCategory, TranslationKey> = {
-  ENVIRONMENT: 'blocking.cat.ENVIRONMENT',
-  BUILD: 'blocking.cat.BUILD',
-  TEST_DATA: 'blocking.cat.TEST_DATA',
-  REQUIREMENT: 'blocking.cat.REQUIREMENT',
-  SYSTEM_ISSUE: 'blocking.cat.SYSTEM_ISSUE',
-  OTHER: 'blocking.cat.OTHER',
-};
+import { BLOCKING_CAT_KEY } from '../lib/statusKeys';
 
 /** The unavailable minutes each imported event starts with (editable per row afterwards). */
 const DEFAULT_MINUTES = 30;

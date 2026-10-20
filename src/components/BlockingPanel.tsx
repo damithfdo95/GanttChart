@@ -16,20 +16,12 @@ import {
 } from '../lib/calculations/blocking';
 import { BLOCKING_CATEGORIES, type BlockingCategory, type BlockingEvent } from '../types';
 import { formatCases, formatDuration, formatInteger, formatNumber } from '../lib/formatting/format';
-import { t, type TranslationKey } from '../i18n';
+import { t } from '../i18n';
 import { MetricCard } from './MetricCard';
 import { TablePager } from './TablePager';
 import { usePagedRows } from '../lib/pagination/usePagedRows';
 import { JiraBlockingImport } from './JiraBlockingImport';
-
-const BLOCKING_CAT_KEY: Record<BlockingCategory, TranslationKey> = {
-  ENVIRONMENT: 'blocking.cat.ENVIRONMENT',
-  BUILD: 'blocking.cat.BUILD',
-  TEST_DATA: 'blocking.cat.TEST_DATA',
-  REQUIREMENT: 'blocking.cat.REQUIREMENT',
-  SYSTEM_ISSUE: 'blocking.cat.SYSTEM_ISSUE',
-  OTHER: 'blocking.cat.OTHER',
-};
+import { BLOCKING_CAT_KEY } from '../lib/statusKeys';
 
 interface BlockingPanelProps {
   /** Current wall-clock minutes-of-day (drives the live time metrics). */
