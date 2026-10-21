@@ -165,7 +165,7 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
       } catch {
         /* self-hosted instances may restrict get_users to admins */
       }
-      const day = linkTestRailMembers(aggregateTestRailDay(results, users, DEFAULT_TESTRAIL_STATUS_MAP, date), users, reports.state.rcsMembers ?? []);
+      const day = linkTestRailMembers(aggregateTestRailDay(results, users, DEFAULT_TESTRAIL_STATUS_MAP, date), users, reports.state.rcsMembers ?? [], reports.state.externalIdentities ?? []);
       if (day.totals.executed === 0) {
         setTestrailMessage({ kind: 'note', text: t(lang, 'exec.testrailNoResults', { date }) });
         return;
@@ -223,7 +223,7 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
       setTestrailMessage({ kind: 'error', text: t(lang, 'exec.testrailCsvFailed', { file: fileName }) });
       return;
     }
-    const day = linkTestRailMembers(imported.day, [], reports.state.rcsMembers ?? []);
+    const day = linkTestRailMembers(imported.day, [], reports.state.rcsMembers ?? [], reports.state.externalIdentities ?? []);
     const merged = mergeTestRailTesterRecords(state.testerDailyPerformance ?? [], activeProject.projectId, day);
     updateField('testerDailyPerformance', merged.records);
     setForm((prev) => applyTestRailDayToEntry(prev, day, previous, mode));

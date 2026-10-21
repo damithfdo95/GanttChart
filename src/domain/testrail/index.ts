@@ -1,6 +1,7 @@
 import type { TestRailResultRow, TestRailUser } from '../../../shared/testrail';
 import type {
   DailyExecutionEntry,
+  ExternalIdentity,
   PerformanceRecordSource,
   RcsMember,
   TesterDailyPerformance,
@@ -148,6 +149,8 @@ export interface TestRailDayImport {
   unassignedCount: number;
   /** Results skipped because their latest status is Untested / empty. */
   skippedUntested: number;
+  /** Tester rows that resolved to NO member profile (kept in `testers`, listed here for the UI). */
+  unlinked: TestRailTesterDay[];
   totals: TestRailDayTotals;
 }
 
@@ -165,7 +168,7 @@ const EMPTY_TOTALS: TestRailDayTotals = {
 };
 
 function emptyDay(date: string): TestRailDayImport {
-  return { date, testers: [], unassignedCount: 0, skippedUntested: 0, totals: { ...EMPTY_TOTALS } };
+  return { date, testers: [], unassignedCount: 0, skippedUntested: 0, unlinked: [], totals: { ...EMPTY_TOTALS } };
 }
 
 /**
@@ -271,28 +274,47 @@ export function aggregateTestRailDay(
     .sort((a, b) => a.testerName.localeCompare(b.testerName));
 
   totals.testers = testers.length;
-  return { date, testers, unassignedCount, skippedUntested, totals };
+  return { date, testers, unassignedCount, skippedUntested, unlinked: [], totals };
 }
 
 /**
- * Link tester rows to Team Members by email (TestRail user → RcsMember,
- * lower-case compare; Stage 8D email identity). Rows that link to the same
- * member are merged so one person is one row. Pure — `day` is not mutated.
+ * Link tester rows to Team Members. Resolution order (the JIRA reporter
+ * rule): 1) an ACTIVE external identity with provider 'testrail' and the
+ * row's TestRail user id (the SV's explicit link always wins); 2) a unique
+ * email match (lower-case compare; Stage 8D email identity). Rows that
+ * link to the same member are merged so one person is one row. Pure —
+ * `day` is not mutated.
  */
 export function linkTestRailMembers(
   day: TestRailDayImport,
   users: readonly TestRailUser[],
   members: readonly RcsMember[],
+  externalIdentities: readonly ExternalIdentity[] = [],
 ): TestRailDayImport {
   const usersById = new Map(users.map((u) => [u.id, u] as const));
   const memberByEmail = new Map(
     members.filter((m) => m.email !== undefined).map((m) => [(m.email as string).toLowerCase(), m] as const),
   );
+  // ACTIVE testrail identity links by TestRail user id (stringified — the
+  // ExternalIdentity.externalId is a string by design).
+  const memberByTestrailId = new Map(
+    externalIdentities
+      .filter((e) => e.active && e.provider === 'testrail')
+      .map((e) => [e.externalId, e.memberId] as const),
+  );
+  const memberById = new Map(members.map((m) => [m.id, m] as const));
+  const resolveMember = (testrailUserId: number, email: string | undefined): RcsMember | undefined => {
+    // Rule 1: the SV's explicit link (external identity) always wins.
+    const linkedMemberId = memberByTestrailId.get(String(testrailUserId));
+    if (linkedMemberId !== undefined) return memberById.get(linkedMemberId);
+    // Rule 2: a unique email match.
+    return email !== undefined ? memberByEmail.get(email.toLowerCase()) : undefined;
+  };
   const byMember = new Map<string, TestRailTesterDay>();
   const unlinked: TestRailTesterDay[] = [];
   for (const row of day.testers) {
     const email = usersById.get(row.testrailUserId)?.email;
-    const member = email !== undefined ? memberByEmail.get(email.toLowerCase()) : undefined;
+    const member = resolveMember(row.testrailUserId, email);
     if (member === undefined) {
       unlinked.push(row);
       continue;
@@ -317,7 +339,7 @@ export function linkTestRailMembers(
     });
   }
   const testers = [...byMember.values(), ...unlinked].sort((a, b) => a.testerName.localeCompare(b.testerName));
-  return { ...day, testers };
+  return { ...day, testers, unlinked };
 }
 
 // ---- Tester-record merge ---------------------------------------------------------------

@@ -1,13 +1,17 @@
 import { useMemo, useState } from 'react';
 import { useReportsStateCtx } from '../../app/state-contexts';
 import { newScope, planImportRows, type TestManagementState, type TestRailScopeImportPlan } from '../../domain/testManagement';
+import { planTestRailAssignments, type UnmatchedTestRailTester } from '../../domain/testManagement/testrailAssignments';
+import { buildExternalIdentityLink } from '../../domain/attribution';
+import { personOptionText, personOptions, selectableMembers } from '../../domain/teamMembers';
 import { createTestRailClient } from '../../lib/testrail/client';
 import { parseTestRailUrl } from '../../domain/testrail';
-import { passedPct } from '../../../shared/testrail';
+import { passedPct, type TestRailTestRow, type TestRailUser } from '../../../shared/testrail';
 import { TestRailErrorHint } from '../../components/TestRailErrorHint';
 import type { TestRailClientError } from '../../../shared/testrail';
 import { t, type TranslationKey } from '../../i18n';
 import { dictionaries } from '../../i18n/dictionaries';
+import { businessDate } from '../../../shared/businessTime';
 import type { Language, ProjectRecord } from '../../types';
 import type { useTestManagement } from './useTestManagement';
 
@@ -43,6 +47,24 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
   const [selected, setSelected] = useState<Record<number, boolean>>({});
   const [committing, setCommitting] = useState(false);
   const [failKey, setFailKey] = useState<TranslationKey | null>(null);
+  /** After the scopes commit: the tester-assignment step (TestRail testers → Team Members). */
+  const [assignStep, setAssignStep] = useState<{
+    plan: ReturnType<typeof planTestRailAssignments>;
+    scopeIdsByRunId: Map<number, string>;
+    /** The TestRail user list fetched for the step (kept for re-planning after a link). */
+    users: TestRailUser[];
+    /** The runs' tests (kept for re-planning after a link). */
+    testsByRunId: Map<number, TestRailTestRow[]>;
+  } | null>(null);
+  const [assignBusy, setAssignBusy] = useState(false);
+  const [assignNote, setAssignNote] = useState<string | null>(null);
+
+  // The member dropdown for linking unmatched TestRail users (the JIRA
+  // unmatched-reporter idiom: active testers, name order, never an id).
+  const memberOptions = useMemo(
+    () => personOptions(lang, selectableMembers(reports.state.rcsMembers ?? [], { role: 'tester', today: businessDate() }), businessDate()),
+    [lang, reports.state.rcsMembers],
+  );
 
   // Duplicate detection is per project: a run already linked by ANY scope of
   // THIS project is skipped; links in other projects never block.
@@ -72,8 +94,23 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
     try {
       const client = createTestRailClient(conn);
       const runs = await client.getPlanRuns(link.id);
+      // Some TestRail versions omit the flat *_count fields on plan-entry
+      // runs — a run showing total 0 would import a scope with Total 0 and
+      // the project's derived Total would silently stay behind. Backfill
+      // each count-less run with its real counts (one get_run per run).
+      const backfilled = await Promise.all(
+        runs.map(async (run) => {
+          if (run.progress !== undefined && run.progress.total > 0) return run;
+          try {
+            const progress = await client.getRunProgress(run.id);
+            return { ...run, progress };
+          } catch {
+            return run; // keep the plan's own counts (0) — the SV can fix the Total by hand
+          }
+        }),
+      );
       setPlanId(link.id);
-      setPlan(planImportRows(runs, scopesOfProject, project.projectId));
+      setPlan(planImportRows(backfilled, scopesOfProject, project.projectId));
       setNames({});
       setSelected({});
     } catch (e) {
@@ -95,6 +132,7 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
     const now = new Date().toISOString();
     let failed: string | null = null;
     let imported = 0;
+    const scopeIdsByRunId = new Map<number, string>();
     tm.update((state: TestManagementState) => {
       // Accumulate so each new scope sees the previous one's order (one scope
       // per run, never the same order twice); on any failure NOTHING writes.
@@ -110,6 +148,7 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
           failed = made.error;
           return state;
         }
+        scopeIdsByRunId.set(row.run.id, made.value.id);
         acc = { ...acc, scopes: [...acc.scopes, made.value] };
       }
       imported = rows.length;
@@ -119,10 +158,130 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
     if (failed !== null) {
       const key = `tm.error.${failed}` as TranslationKey;
       setFailKey(key in dictionaries.en ? key : 'tm.error.generic');
-    } else {
-      onDone(imported, plan.duplicateCount);
-      onClose();
+      return;
     }
+    // The scopes are in. Offer the tester-assignment step: the run's
+    // assigned TestRail testers, resolved to Team Members by email, become
+    // scope assignments (the Testers column of the Scopes tab reads them).
+    void prepareAssignStep(rows.map((r) => r.run.id), scopeIdsByRunId, imported);
+  };
+
+  /** Fetch the imported runs' tests + the TestRail user list and plan the assignments. */
+  const prepareAssignStep = async (runIds: readonly number[], scopeIdsByRunId: Map<number, string>, imported: number): Promise<void> => {
+    if (conn === undefined) {
+      onDone(imported, plan?.duplicateCount ?? 0);
+      onClose();
+      return;
+    }
+    setAssignBusy(true);
+    setAssignNote(null);
+    try {
+      const client = createTestRailClient(conn);
+      const testsByRunId = new Map<number, TestRailTestRow[]>();
+      await Promise.all(
+        runIds.map(async (runId) => {
+          try {
+            testsByRunId.set(runId, await client.getTestsForRun(runId));
+          } catch {
+            testsByRunId.set(runId, []); // a run's tests are optional for this step
+          }
+        }),
+      );
+      // Names are cosmetic: without user-list access the step still plans
+      // (unmatched) — same fallback rule as the progress readout.
+      let users: TestRailUser[] = [];
+      try {
+        users = await client.getUsers();
+      } catch {
+        /* self-hosted instances may restrict get_users to admins */
+      }
+      const assignPlan = planTestRailAssignments(
+        testsByRunId,
+        users,
+        reports.state.rcsMembers ?? [],
+        project.projectId,
+        scopeIdsByRunId,
+        reports.state.testerAssignments ?? [],
+        businessDate(),
+        reports.state.externalIdentities ?? [],
+      );
+      if (assignPlan.assignments.length === 0 && assignPlan.unmatched.length === 0) {
+        // No testers on any run: nothing to offer — finish like before.
+        onDone(imported, plan?.duplicateCount ?? 0);
+        onClose();
+        return;
+      }
+      setAssignStep({ plan: assignPlan, scopeIdsByRunId, users, testsByRunId });
+    } catch {
+      // The assignment step is best-effort: the scopes are already committed.
+      onDone(imported, plan?.duplicateCount ?? 0);
+      onClose();
+    } finally {
+      setAssignBusy(false);
+    }
+  };
+
+  /** Commit the planned assignments (one upsert each; the SV saw the preview). */
+  const confirmAssignments = (): void => {
+    if (assignStep === null || assignBusy) return;
+    setAssignBusy(true);
+    for (const assignment of assignStep.plan.assignments) {
+      reports.upsertTesterAssignment(assignment);
+    }
+    const importedCount = assignStep.plan.assignments.length;
+    const unmatchedCount = assignStep.plan.unmatched.length;
+    setAssignBusy(false);
+    setAssignStep(null);
+    const parts = [t(lang, 'tm.testrailImport.assignDone', { count: importedCount })];
+    if (unmatchedCount > 0) parts.push(t(lang, 'tm.testrailImport.assignUnmatchedHint', { count: unmatchedCount }));
+    onDoneWithAssign(importedCount, unmatchedCount, parts.join(' '));
+  };
+
+  /**
+   * Link one unmatched TestRail user to a Team Member: an ACTIVE external
+   * identity (provider 'testrail', the TestRail user id) is created — the
+   * same record the JIRA reporter linking writes — and the assignment plan
+   * is re-planned so the member's assignments appear immediately.
+   */
+  const linkTester = (testrailUserId: number, memberId: string): void => {
+    if (assignStep === null || memberId === '') return;
+    const user = assignStep.users.find((u) => u.id === testrailUserId);
+    reports.upsertExternalIdentity(
+      buildExternalIdentityLink({
+        provider: 'testrail',
+        externalId: String(testrailUserId),
+        memberId,
+        displayName: user?.name,
+        linkedAt: new Date().toISOString(),
+      }),
+    );
+    // Re-plan with the new identity in place (the link wins over email).
+    const nextPlan = planTestRailAssignments(
+      assignStep.testsByRunId,
+      assignStep.users,
+      reports.state.rcsMembers ?? [],
+      project.projectId,
+      assignStep.scopeIdsByRunId,
+      reports.state.testerAssignments ?? [],
+      businessDate(),
+      [...(reports.state.externalIdentities ?? []), buildExternalIdentityLink({
+        provider: 'testrail',
+        externalId: String(testrailUserId),
+        memberId,
+        displayName: user?.name,
+        linkedAt: new Date().toISOString(),
+      })],
+    );
+    setAssignStep({ ...assignStep, plan: nextPlan });
+  };
+
+  /** Finish the whole import (scopes + assignments) with one summary. */
+  const onDoneWithAssign = (assigned: number, unmatched: number, text: string): void => {
+    void assigned;
+    void unmatched;
+    setAssignNote(text);
+    onDone(plan?.rows.filter((r) => r.importable && selected[r.run.id] === true).length ?? 0, plan?.duplicateCount ?? 0);
+    onClose();
   };
 
   const selectedCount = plan === null ? 0 : plan.rows.filter((r) => r.importable && selected[r.run.id] === true).length;
@@ -258,6 +417,99 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
               {t(lang, 'tm.testrailImport.noneSelectable')}
             </p>
           ) : null}
+        </div>
+      )}
+
+      {/* ---- tester-assignment step (after the scopes committed) ---- */}
+      {assignBusy ? (
+        <p className="link-help" role="status">
+          {t(lang, 'tm.testrailImport.assignFetching')}
+        </p>
+      ) : null}
+      {assignNote !== null ? (
+        <p className="data-controls-message ok" role="status">
+          {assignNote}
+        </p>
+      ) : null}
+      {assignStep === null ? null : (
+        <div className="tenancy-table-wrap">
+          <h4>{t(lang, 'tm.testrailImport.assignTitle')}</h4>
+          <p className="link-help">{t(lang, 'tm.testrailImport.assignHelp')}</p>
+          {assignStep.plan.assignments.length > 0 ? (
+            <>
+              <p role="status">{t(lang, 'tm.testrailImport.assignFound', { count: assignStep.plan.assignments.length })}</p>
+              <table className="tenancy-table">
+                <thead>
+                  <tr>
+                    <th scope="col">{t(lang, 'tm.col.testers')}</th>
+                    <th scope="col">{t(lang, 'tm.col.scope')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {assignStep.plan.assignments.map((a) => (
+                    <tr key={a.id}>
+                      <td>{a.testerName}</td>
+                      <td>{plan?.rows.find((r) => assignStep.scopeIdsByRunId.get(r.run.id) === a.scopeId)?.name ?? a.scopeId}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          ) : (
+            <p className="link-help" role="status">{t(lang, 'tm.testrailImport.assignNone')}</p>
+          )}
+          {assignStep.plan.unmatched.length > 0 ? (
+            <>
+              <p className="qa-warning" role="status">
+                {t(lang, 'tm.testrailImport.assignUnmatched', { count: assignStep.plan.unmatched.length })}
+              </p>
+              <table className="tenancy-table">
+                <thead>
+                  <tr>
+                    <th scope="col">{t(lang, 'tm.testrailImport.assignColTester')}</th>
+                    <th scope="col" className="num">{t(lang, 'tm.testrailImport.assignUnmatchedTestsHeader')}</th>
+                    <th scope="col">{t(lang, 'tm.testrailImport.assignLinkToMember')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {assignStep.plan.unmatched.map((u: UnmatchedTestRailTester) => (
+                    <tr key={u.testrailUserId}>
+                      <td>{u.name}</td>
+                      <td className="num">{u.tests}</td>
+                      <td>
+                        <select
+                          className="table-input"
+                          aria-label={t(lang, 'tm.testrailImport.assignLinkToMember')}
+                          value=""
+                          onChange={(e) => linkTester(u.testrailUserId, e.target.value)}
+                        >
+                          <option value="">{t(lang, 'jira.tab.linkMemberPlaceholder')}</option>
+                          {memberOptions.map((option) => (
+                            <option key={option.memberId} value={option.memberId}>
+                              {personOptionText(lang, option)}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          ) : null}
+          <div className="dr-button-row">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={assignBusy || assignStep.plan.assignments.length === 0}
+              onClick={confirmAssignments}
+            >
+              {t(lang, 'tm.testrailImport.assignConfirm', { count: assignStep.plan.assignments.length })}
+            </button>
+            <button type="button" className="btn btn-ghost" disabled={assignBusy} onClick={() => { setAssignStep(null); onDone(plan?.rows.filter((r) => r.importable && selected[r.run.id] === true).length ?? 0, plan?.duplicateCount ?? 0); onClose(); }}>
+              {t(lang, 'tm.testrailImport.assignSkip')}
+            </button>
+          </div>
         </div>
       )}
     </div>

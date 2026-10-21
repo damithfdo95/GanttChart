@@ -9,6 +9,9 @@ import { Field } from '../../components/Field';
 import { MetricCard } from '../../components/MetricCard';
 import { SectionCard } from '../../components/SectionCard';
 import { DailyExecutionForm } from '../../components/DailyExecutionForm';
+import { TestRailErrorHint } from '../../components/TestRailErrorHint';
+import { passedPct } from '../../../shared/testrail';
+import type { TestRailExecutionStatus } from './hooks/useTestRailScopeProgress';
 import { formatInteger, formatNumber, formatDuration, formatSignedDuration, formatSignedMultiDayDuration, formatClock } from '../../lib/formatting/format';
 import type { Language } from '../../types';
 
@@ -158,6 +161,8 @@ export interface ExecutionSectionProps {
   projectedFinish: number | null;
   variance: number | null;
   varianceTone: 'good' | 'bad' | 'default';
+  /** Live TestRail progress of the project's linked scopes (refresh control). */
+  testrail: TestRailExecutionStatus;
 }
 
 export function ExecutionSection({
@@ -175,9 +180,33 @@ export function ExecutionSection({
   projectedFinish,
   variance,
   varianceTone,
+  testrail,
 }: ExecutionSectionProps) {
+  // The refresh control appears only when the project has at least one
+  // active scope linked to a TestRail run (Test Management → Scopes).
+  const testrailLinked = testrail.scopes.some((s) => s.status === 'active' && s.testrail !== undefined);
+  const testrailUpdatedTime =
+    testrail.fetchedAt === null ? null : new Date(testrail.fetchedAt).toLocaleTimeString(lang === 'ja' ? 'ja-JP' : 'en-US');
   return (
-    <SectionCard title={t(lang, 'sections.execution')} subtitle={t(sub, 'sections.execution')} span={12}>
+    <SectionCard
+      title={t(lang, 'sections.execution')}
+      subtitle={t(sub, 'sections.execution')}
+      span={12}
+      actions={
+        testrailLinked ? (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={testrail.loading}
+            aria-label={t(lang, 'tm.testrailProgress.refresh')}
+            title={t(lang, 'tm.testrailProgress.refresh')}
+            onClick={testrail.onRefresh}
+          >
+            {testrail.loading ? t(lang, 'tm.testrailProgress.fetching') : '⟳'}
+          </button>
+        ) : undefined
+      }
+    >
       {/* V7: daily execution entries are the single source of truth for
           actuals. This form records ONE day's counts (not cumulative);
           saving recomputes the canonical totals as Σ entries —
@@ -186,6 +215,31 @@ export function ExecutionSection({
       <h3 className="exec-subsection-title" id="todays-execution">{t(lang, 'exec.todayTitle')}</h3>
       <DailyExecutionForm lang={lang} date={executionDate} onDateChange={onExecutionDateChange} todayOnly={tester} blockedReason={blockedReason} />
       <h3 className="exec-subsection-title exec-subsection-derived">{t(lang, 'exec.liveStatus')}</h3>
+      {/* Live TestRail progress of the linked scopes (device-local fetch;
+          counts never persist — same rule as Test Management → Scopes). */}
+      {testrailLinked && testrail.error !== null ? (
+        <TestRailErrorHint lang={lang} error={testrail.error} notConfiguredMessage="tm.testrailProgress.notConfigured" />
+      ) : null}
+      {testrail.lines !== null ? (
+        <div className="link-help testrail-progress" role="status">
+          {testrail.lines.map(({ scope, progress }) => (
+            <p key={scope.id} className="testrail-progress-line">
+              <strong>{scope.name}</strong>{' '}
+              <span>
+                {t(lang, 'tm.testrailProgress.line', {
+                  passed: progress.passed,
+                  blocked: progress.blocked,
+                  retest: progress.retest,
+                  failed: progress.failed,
+                  untested: progress.untested,
+                  pct: Math.round(passedPct(progress) * 100),
+                })}
+              </span>
+            </p>
+          ))}
+          {testrailUpdatedTime !== null ? <small>{t(lang, 'tm.testrailProgress.updatedAt', { time: testrailUpdatedTime })}</small> : null}
+        </div>
+      ) : null}
       <div className="metrics-grid execution-metrics">
         <MetricCard
           label={t(lang, 'metrics.executionStatus')}

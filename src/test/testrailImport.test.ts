@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TestRailResultRow, TestRailUser } from '../../shared/testrail';
-import type { DailyExecutionEntry, RcsMember, TesterDailyPerformance } from '../types';
+import type { DailyExecutionEntry, ExternalIdentity, RcsMember, TesterDailyPerformance } from '../types';
 import { parseDate } from '../lib/dates/dates';
 import {
   aggregateTestRailDay,
@@ -236,6 +236,39 @@ describe('linkTestRailMembers', () => {
     expect(hana?.casesFailed).toBe(1);
     const lead = linked.testers.find((t) => t.testerName === 'Lead Yamada');
     expect(lead?.memberId).toBeUndefined();
+  });
+
+  it('resolves by an ACTIVE testrail external identity before email (the JIRA reporter rule)', () => {
+    // Lead Yamada has NO member profile by email, but the SV linked his
+    // TestRail id (7) to Ken explicitly — the link must win.
+    const identities: ExternalIdentity[] = [
+      { id: 'EI1', provider: 'testrail', externalId: '7', memberId: 'USER0002', displayName: 'Lead Yamada', active: true, linkedAt: '2026-10-01T00:00:00Z' },
+    ];
+    const day = aggregateTestRailDay([result({ testId: 3, statusId: 1, assignedToId: 7 })], USERS, DEFAULT_TESTRAIL_STATUS_MAP, DAY);
+    const linked = linkTestRailMembers(day, USERS, MEMBERS, identities);
+    expect(linked.testers[0]).toMatchObject({ memberId: 'USER0002', team: 'RCS' });
+    expect(linked.testers.every((t) => t.memberId !== undefined)).toBe(true);
+  });
+
+  it('ignores retired testrail identities and other providers', () => {
+    const identities: ExternalIdentity[] = [
+      { id: 'EI1', provider: 'testrail', externalId: '7', memberId: 'USER0002', displayName: 'Lead Yamada', active: false, linkedAt: '2026-10-01T00:00:00Z' },
+      { id: 'EI2', provider: 'jira', externalId: '7', memberId: 'USER0001', displayName: 'Lead Yamada', active: true, linkedAt: '2026-10-01T00:00:00Z' },
+    ];
+    const day = aggregateTestRailDay([result({ testId: 3, statusId: 1, assignedToId: 7 })], USERS, DEFAULT_TESTRAIL_STATUS_MAP, DAY);
+    const linked = linkTestRailMembers(day, USERS, MEMBERS, identities);
+    expect(linked.testers.find((t) => t.testerName === 'Lead Yamada')?.memberId).toBeUndefined();
+  });
+
+  it('an explicit identity link overrides a matching email', () => {
+    // Hana's TestRail id (5) is linked to Ken — the SV's explicit link wins
+    // even though Hana's email matches her own member profile.
+    const identities: ExternalIdentity[] = [
+      { id: 'EI1', provider: 'testrail', externalId: '5', memberId: 'USER0002', displayName: 'Hana Sato', active: true, linkedAt: '2026-10-01T00:00:00Z' },
+    ];
+    const day = aggregateTestRailDay([result({ testId: 1, statusId: 1, assignedToId: 5 })], USERS, DEFAULT_TESTRAIL_STATUS_MAP, DAY);
+    const linked = linkTestRailMembers(day, USERS, MEMBERS, identities);
+    expect(linked.testers[0]).toMatchObject({ memberId: 'USER0002', team: 'RCS' });
   });
 });
 

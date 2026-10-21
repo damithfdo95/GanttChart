@@ -64,6 +64,7 @@ import { ProjectControlCenter } from './ProjectControlCenter';
 import { derivedTotalFor } from '../../domain/testManagement/totals';
 import { MultiDayTimeline } from '../../components/MultiDayTimeline';
 import { CapacityProjectionSections, ExecutionSection, InputSection } from './DashboardSections';
+import { useTestRailScopeProgress } from './hooks/useTestRailScopeProgress';
 import { formatDate, formatDateDisplay, parseDate, todayEpochDays } from '../../lib/dates/dates';
 import { buildDayTimeline, getActiveProjects, portfolioSummary, type OverallFocus } from '../../domain/projects';
 
@@ -151,6 +152,15 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
   const activeProjectStatus =
     reportsApi.state.projects.find((p) => p.id === reportsApi.state.activeProjectId)?.status;
   const showStatusCalculation = activeProjectStatus === undefined || activeProjectStatus === 'ongoing';
+
+  // Live TestRail progress of the ACTIVE project's linked scopes (Test
+  // Management → Scopes): fetched only when the Execution section's refresh
+  // control is clicked; counts never persist.
+  const linkedScopes = useMemo(
+    () => (reportsApi.state.scopes ?? []).filter((s) => s.projectId === activeProjectRecord?.projectId),
+    [reportsApi.state.scopes, activeProjectRecord?.projectId],
+  );
+  const testrail = useTestRailScopeProgress(linkedScopes);
 
   useEffect(() => {
     document.title = t(lang, 'dashboard.title');
@@ -571,6 +581,7 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
             projectedFinish={projectedFinish}
             variance={variance}
             varianceTone={varianceTone}
+            testrail={testrail}
           />
 
         <SectionCard title={t(lang, 'timeline.title')} subtitle={t(sub, 'timeline.title')} span={12}>

@@ -116,12 +116,15 @@ interface RawResult {
   created_on?: unknown;
   created_by?: unknown;
   assignedto_id?: unknown;
+  comment?: unknown;
+  defects?: unknown;
 }
 
 interface RawTest {
   id?: unknown;
   assignedto_id?: unknown;
   status_id?: unknown;
+  case_id?: unknown;
 }
 
 function num(v: unknown): number | null {
@@ -164,16 +167,20 @@ function mapResult(raw: RawResult, runId: number): TestRailResultRow {
     createdOn: num(raw.created_on) ?? 0,
     createdBy: num(raw.created_by) ?? -1,
     assignedToId: num(raw.assignedto_id) === null ? null : Math.trunc(num(raw.assignedto_id) as number),
+    ...(typeof raw.comment === 'string' && raw.comment.trim() !== '' ? { comment: raw.comment } : {}),
+    ...(typeof raw.defects === 'string' && raw.defects.trim() !== '' ? { defects: raw.defects } : {}),
   };
 }
 
 function mapTest(raw: RawTest): TestRailTestRow {
   const statusId = num(raw.status_id);
   const assignedToId = num(raw.assignedto_id);
+  const caseId = num(raw.case_id);
   return {
     testId: num(raw.id) ?? -1,
     assignedToId: assignedToId === null ? null : Math.trunc(assignedToId),
     statusId: statusId === null ? null : Math.trunc(statusId),
+    ...(caseId !== null ? { caseId: Math.trunc(caseId) } : {}),
   };
 }
 

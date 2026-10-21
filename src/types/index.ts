@@ -355,8 +355,8 @@ export interface ExternalIdentity {
   linkedAt: string;
 }
 
-/** Providers the data model is prepared for (V6.9-B: JIRA only). */
-export const EXTERNAL_IDENTITY_PROVIDERS: readonly string[] = ['jira'];
+/** Providers the data model is prepared for (V6.9-B: JIRA; TestRail joined later). */
+export const EXTERNAL_IDENTITY_PROVIDERS: readonly string[] = ['jira', 'testrail'];
 
 /**
  * One JIRA bug/ticket recorded for a project. `createdAt` is the JIRA

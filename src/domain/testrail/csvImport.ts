@@ -284,7 +284,7 @@ export function testrailDayFromCsv(text: string, fallbackDate: string): TestRail
     const testers = [...byTester.values()].sort((a, b) => a.testerName.localeCompare(b.testerName));
     const totals = sumTotals(testers);
     return {
-      day: { date, testers, unassignedCount: 0, skippedUntested: 0, totals },
+      day: { date, testers, unassignedCount: 0, skippedUntested: 0, unlinked: [], totals },
       errors,
       ok: errors.length === 0 && testers.length > 0,
     };
@@ -384,7 +384,7 @@ export function testrailDayFromCsv(text: string, fallbackDate: string): TestRail
   const testers = [...byTester.values()].sort((a, b) => a.testerName.localeCompare(b.testerName));
   const totals = sumTotals(testers);
   return {
-    day: { date: fallbackDate, testers, unassignedCount: 0, skippedUntested, totals },
+    day: { date: fallbackDate, testers, unassignedCount: 0, skippedUntested, unlinked: [], totals },
     errors,
     ok: errors.length === 0 && testers.length > 0,
   };

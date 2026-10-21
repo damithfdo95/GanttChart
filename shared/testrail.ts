@@ -127,6 +127,8 @@ export interface TestRailTestRow {
   assignedToId: number | null;
   /** Built-in IDs: 1 Passed, 2 Blocked, 3 Untested, 4 Retest, 5 Failed; 6+ custom. */
   statusId: number | null;
+  /** The underlying case id (get_tests exposes `case_id`); used to join results to cases. */
+  caseId?: number;
 }
 
 /**
@@ -223,6 +225,10 @@ export interface TestRailResultRow {
   createdBy: number;
   /** The assigned tester's user id; null = unassigned. */
   assignedToId: number | null;
+  /** The result's comment text (get_results `comment`); absent when the server sent none. */
+  comment?: string;
+  /** The result's linked defect ids (get_results `defects`, comma/space separated as sent); absent when empty. */
+  defects?: string;
 }
 
 /** Typed client failures so UI can show the right recovery hint. */
