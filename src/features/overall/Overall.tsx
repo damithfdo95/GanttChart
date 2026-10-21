@@ -1,5 +1,6 @@
 import { useAskConfirm } from '../../components/ConfirmDialog';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { LIFECYCLE_KEY } from '../../lib/statusKeys';
 import { useSharedGuard } from '../../app/useSharedGuard';
 import type { ProjectLifecycleStatus, ProjectRecord } from '../../types';
 import { useAppStateCtx, useReportsStateCtx, activateProject, activateProjectRecord } from '../../app/state-contexts';
@@ -14,33 +15,30 @@ import {
   filterProjects,
   isProjectOverdue,
   portfolioSummary,
-  projectDailyCapacity,
   projectPlanningStatus,
-  projectProgress,
   sortProjects,
   summarizeProjectGroup,
-  type LifecycleFilter,
   type OverallFocus,
-  type PlanningFilter,
   type PortfolioVerdict,
   type ProjectScheduleMetrics,
   type ProjectSortKey,
   type SortDirection,
 } from '../../domain/projects';
+import { OverallProjectTable, PortfolioToolbar } from './OverallTable';
 import {
   WORK_DAY_END,
   calculateWorkdayProjection,
   dayWindowsFromRows,
   projectDayWindowDefaults,
 } from '../../lib/calculations/workday';
-import { formatClock, formatInteger, formatNumber, formatSignedMultiDayDuration } from '../../lib/formatting/format';
+import { formatClock, formatInteger, formatSignedMultiDayDuration } from '../../lib/formatting/format';
 import { DEMO_STATE } from '../../lib/storage/storage';
 import { createBackupPayload } from '../../lib/backup/backup';
 import { createProjectBackupPayload, importProjectIntoRegistry } from '../../lib/backup/projectBackup';
 import { detectImportFile } from '../../lib/backup/importFile';
 import { sanitizeRestoredAccountLinks } from '../../lib/backup/restoreLinks';
 import { downloadTextFile } from '../../lib/export/download';
-import { LIFECYCLE_KEY, PLANNING_KEY } from '../../lib/statusKeys';
+
 
 const GROUP_VERDICT_KEY: Record<PortfolioVerdict, TranslationKey> = {
   onTrack: 'status.onTrack',
@@ -58,10 +56,6 @@ interface OverallProps {
   onProjectCreated: () => void;
 }
 
-interface SortableColumn {
-  key: ProjectSortKey;
-  labelKey: TranslationKey;
-}
 
 /**
  * Overall — the portfolio control center. Shows every project (not only
@@ -89,7 +83,6 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
   const [reopenFor, setReopenFor] = useState<string | null>(null);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [importMessage, setImportMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
-  const importFileRef = useRef<HTMLInputElement>(null);
   // Portfolio status card scope: which summary-card group the card
   // aggregates. Default = Total Projects (all projects); summary-card clicks
   // (and Clear filters) change it, search/dropdowns affect the table only.
@@ -404,16 +397,6 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
     }
   };
 
-  const sortableColumns: SortableColumn[] = [
-    { key: 'name', labelKey: 'columns.name' },
-    { key: 'status', labelKey: 'columns.status' },
-    { key: 'start', labelKey: 'columns.date' },
-    { key: 'deadline', labelKey: 'dashboard.deadline' },
-    { key: 'progress', labelKey: 'overall.progress' },
-    { key: 'remaining', labelKey: 'columns.remaining' },
-    { key: 'updated', labelKey: 'overall.updated' },
-  ];
-
   const summaryCards: { key: TranslationKey; value: number; focus: OverallFocus }[] = [
     { key: 'overall.totalProjects', value: summary.total, focus: { lifecycle: 'all' } },
     { key: 'overall.todo', value: summary.todo, focus: { lifecycle: 'todo' } },
@@ -458,273 +441,37 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
         ))}
       </div>
 
-      <section className="dr-section">
-        <div className="overall-search-row">
-          <input
-            className="input overall-search"
-            type="search"
-            placeholder={t(lang, 'overall.searchProjects')}
-            value={filters.search}
-            onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
-          />
-          {readOnly ? null : (
-            <>
-              <button type="button" className="btn" onClick={handleAddProject}>
-                {t(lang, 'overall.addProject')}
-              </button>
-              <button type="button" className="btn" onClick={handleExportAll}>
-                {t(lang, 'overall.exportAll')}
-              </button>
-              <button type="button" className="btn" onClick={() => importFileRef.current?.click()}>
-                {t(lang, 'overall.importData')}
-              </button>
-            </>
-          )}
-          <input
-            ref={importFileRef}
-            type="file"
-            accept="application/json,.json"
-            className="visually-hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleImportFile(file);
-              e.target.value = ''; // allow re-importing the same file
-            }}
-          />
-          {importMessage ? (
-            <span className={`data-controls-message ${importMessage.kind}`} role="status">
-              {importMessage.text}
-            </span>
-          ) : null}
-        </div>
-        <div className="dr-filter-bar">
-          <label>
-            {t(lang, 'overall.lifecycleStatus')}
-            <select
-              className="input"
-              value={filters.lifecycle}
-              onChange={(e) => setFilters((prev) => ({ ...prev, lifecycle: e.target.value as LifecycleFilter }))}
-            >
-              <option value="active">{t(lang, 'overall.active')}</option>
-              <option value="all">{t(lang, 'overall.all')}</option>
-              <option value="todo">{t(lang, 'overall.todo')}</option>
-              <option value="ongoing">{t(lang, 'overall.ongoing')}</option>
-              <option value="extended">{t(lang, 'overall.extended')}</option>
-              <option value="onHold">{t(lang, 'overall.onHold')}</option>
-              <option value="done">{t(lang, 'overall.done')}</option>
-            </select>
-          </label>
-          <label>
-            {t(lang, 'overall.planningStatus')}
-            <select
-              className="input"
-              value={filters.planning}
-              onChange={(e) => setFilters((prev) => ({ ...prev, planning: e.target.value as PlanningFilter }))}
-            >
-              <option value="all">{t(lang, 'overall.all')}</option>
-              <option value="onTrack">{t(lang, 'status.onTrack')}</option>
-              <option value="atRisk">{t(lang, 'status.atRisk')}</option>
-              <option value="overdue">{t(lang, 'status.overdue')}</option>
-              <option value="capacityShortage">{t(lang, 'status.capacityShortage')}</option>
-              <option value="completed">{t(lang, 'status.completed')}</option>
-              <option value="needsAttention">{t(lang, 'overall.needsAttention')}</option>
-              <option value="onHold">{t(lang, 'status.onHold')}</option>
-            </select>
-          </label>
-          {selected.size > 0 ? (
-            <label>
-              {t(lang, 'overall.bulkChangeStatus')} ({t(lang, 'overall.selectedCount', { count: selected.size })})
-              <select
-                className="input"
-                value=""
-                onChange={(e) => {
-                  if (e.target.value !== '') handleBulkStatus(e.target.value as ProjectLifecycleStatus);
-                }}
-              >
-                <option value="" />
-                <option value="todo">{t(lang, 'overall.setTodo')}</option>
-                <option value="ongoing">{t(lang, 'overall.setOngoing')}</option>
-                <option value="extended">{t(lang, 'overall.setExtended')}</option>
-                <option value="onHold">{t(lang, 'overall.setOnHold')}</option>
-                <option value="done">{t(lang, 'overall.setDone')}</option>
-              </select>
-            </label>
-          ) : null}
-          {filters.search !== '' || filters.lifecycle !== DEFAULT_PORTFOLIO_FILTERS.lifecycle || filters.planning !== DEFAULT_PORTFOLIO_FILTERS.planning ? (
-            <button type="button" className="btn btn-ghost" onClick={() => { setFilters({ ...DEFAULT_PORTFOLIO_FILTERS }); setStatusScope({ lifecycle: 'all' }); }}>
-              {t(lang, 'overall.clearFilters')}
-            </button>
-          ) : null}
-        </div>
-      </section>
+      <PortfolioToolbar
+        lang={lang}
+        readOnly={readOnly}
+        filters={filters}
+        onFiltersChange={(next) => setFilters(next)}        selectedCount={selected.size}
+        onAddProject={handleAddProject}
+        onExportAll={handleExportAll}
+        onImportFile={handleImportFile}
+        onBulkStatus={handleBulkStatus}
+        onClearFilters={() => { setFilters({ ...DEFAULT_PORTFOLIO_FILTERS }); setStatusScope({ lifecycle: 'all' }); }}
+        importMessage={importMessage}
+      />
 
-      <section className="dr-section">
-        <div className="table-wrap overall-scroll">
-          <table className="overall-table">
-            <thead>
-              <tr>
-                <th scope="col" className="overall-check">
-                  <input
-                    type="checkbox"
-                    aria-label={t(lang, 'overall.selectAll')}
-                    checked={visible.length > 0 && visible.every((p) => selected.has(p.id))}
-                    ref={(el) => {
-                      if (el !== null) {
-                        const selectedVisible = visible.filter((p) => selected.has(p.id)).length;
-                        el.indeterminate = selectedVisible > 0 && selectedVisible < visible.length;
-                      }
-                    }}
-                    onChange={(e) =>
-                      setSelected(e.target.checked ? new Set(visible.map((p) => p.id)) : new Set())
-                    }
-                  />
-                </th>
-                {sortableColumns.map((column) => (
-                  <th
-                    key={column.key}
-                    scope="col"
-                    className={sortKey === column.key ? 'sorted' : undefined}
-                    aria-sort={
-                      sortKey === column.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'
-                    }
-                  >
-                    <button type="button" className="th-sort" onClick={() => toggleSort(column.key)}>
-                      {t(lang, column.labelKey)}
-                      {sortKey === column.key ? (sortDirection === 'asc' ? ' ▲' : ' ▼') : ''}
-                    </button>
-                  </th>
-                ))}
-                <th scope="col" className="num">{t(lang, 'columns.totalCases')}</th>
-                <th scope="col" className="num">{t(lang, 'overall.completion')}</th>
-                <th scope="col" className="num">{t(lang, 'overall.capacity')}</th>
-                <th scope="col" className="num">{t(lang, 'overall.testers')}</th>
-                <th scope="col">{t(lang, 'overall.planningStatus')}</th>
-                <th scope="col">{t(lang, 'overall.actions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.length === 0 ? (
-                <tr>
-                  <td colSpan={14} className="dr-empty">
-                    {t(lang, 'overall.noProjects')}
-                  </td>
-                </tr>
-              ) : null}
-            {visible.map((project) => {
-              const progress = projectProgress(project);
-              const planning = planningStatuses.get(project.id) ?? 'noTarget';
-              const planningTone =
-                planning === 'atRisk' || planning === 'capacityShortage'
-                  ? 'bad'
-                  : planning === 'onTrack' || planning === 'completed'
-                    ? 'good'
-                    : 'default';
-              return (
-                <tr
-                  key={project.id}
-                  className={
-                    project.status === 'done' ? (selected.has(project.id) ? 'off selected' : 'off') : selected.has(project.id) ? 'selected' : undefined
-                  }
-                >
-                  <td className="overall-check">
-                    <input
-                      type="checkbox"
-                      aria-label={`${t(lang, 'overall.selectProject')}: ${resolveBilingualName(lang, { nameEn: project.nameEn, nameJa: project.nameJa }) || '—'}`}
-                      checked={selected.has(project.id)}
-                      onChange={() => toggleSelected(project.id)}
-                    />
-                  </td>
-                  <td className="overall-name">
-                    <span className="overall-project-name">
-                      {resolveBilingualName(lang, { nameEn: project.nameEn, nameJa: project.nameJa }) || '—'}
-                    </span>
-                  </td>
-                  <td>
-                    {project.status === 'done' && reopenFor === project.id ? (
-                      <span className="dr-row-actions">
-                        <span className="overall-reopen-label">{t(lang, 'overall.reopenAs')}:</span>
-                        <button type="button" className="btn btn-ghost" onClick={() => handleStatusChange(project, 'todo')}>
-                          {t(lang, 'overall.todo')}
-                        </button>
-                        <button type="button" className="btn btn-ghost" onClick={() => handleStatusChange(project, 'ongoing')}>
-                          {t(lang, 'overall.ongoing')}
-                        </button>
-                        <button type="button" className="btn btn-ghost" onClick={() => handleStatusChange(project, 'extended')}>
-                          {t(lang, 'overall.extended')}
-                        </button>
-                        <button type="button" className="btn btn-ghost" onClick={() => handleStatusChange(project, 'onHold')}>
-                          {t(lang, 'overall.onHold')}
-                        </button>
-                      </span>
-                    ) : readOnly ? (
-                      <span>{t(lang, LIFECYCLE_KEY[project.status])}</span>
-                    ) : (
-                      <select
-                        className="table-input"
-                        value={project.status}
-                        onChange={(e) => handleStatusChange(project, e.target.value as ProjectLifecycleStatus)}
-                      >
-                        {(['todo', 'ongoing', 'extended', 'onHold', 'done'] as const).map((status) => (
-                          <option key={status} value={status}>
-                            {t(lang, LIFECYCLE_KEY[status])}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    {!readOnly && project.status === 'done' && reopenFor !== project.id ? (
-                      <button type="button" className="btn btn-ghost" onClick={() => setReopenFor(project.id)}>
-                        {t(lang, 'overall.reopen')}
-                      </button>
-                    ) : null}
-                  </td>
-                  <td>{project.inputs.startDate}</td>
-                  <td>{project.inputs.targetCompletionDate ?? '—'}</td>
-                  <td className="num">{progress.ratio === null ? '—' : `${formatNumber(progress.ratio * 100, 2, lang)}%`}</td>
-                  <td className="num">{formatInteger(progress.remaining, lang)}</td>
-                  <td>{project.updatedAt.slice(0, 10)}</td>
-                  <td className="num">{formatInteger(project.inputs.totalCases, lang)}</td>
-                  <td className="num">
-                    {formatInteger(progress.completed, lang)}/{formatInteger(progress.total, lang)}
-                  </td>
-                  <td className="num">{formatInteger(projectDailyCapacity(project), lang)}</td>
-                  <td className="num">{formatInteger(project.inputs.currentTesters, lang)}</td>
-                  <td>
-                    <span className={`plan-status-tag tag-${planningTone}`}>{t(lang, PLANNING_KEY[planning])}</span>
-                  </td>
-                  <td className="dr-row-actions">
-                    <button type="button" className="btn" onClick={() => handleOpenGantt(project)}>
-                      {t(lang, 'overall.openGantt')}
-                    </button>
-                    {readOnly ? null : (
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      title={t(lang, 'overall.exportProject')}
-                      aria-label={`${t(lang, 'overall.exportProject')}: ${resolveBilingualName(lang, { nameEn: project.nameEn, nameJa: project.nameJa }) || '—'}`}
-                      onClick={() => handleExportProject(project)}
-                    >
-                      ⭳
-                    </button>
-                    )}
-                    {readOnly ? null : (
-                    <button
-                      type="button"
-                      className="btn btn-danger"
-                      title={t(lang, 'overall.deleteProject')}
-                      aria-label={`${t(lang, 'overall.deleteProject')}: ${resolveBilingualName(lang, { nameEn: project.nameEn, nameJa: project.nameJa }) || '—'}`}
-                      onClick={() => handleDeleteProject(project)}
-                    >
-                      ×
-                    </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          </table>
-        </div>
-      </section>
+      <OverallProjectTable
+        lang={lang}
+        readOnly={readOnly}
+        visible={visible}
+        planningStatuses={planningStatuses}
+        selected={selected}
+        sortKey={sortKey}
+        sortDirection={sortDirection}
+        reopenFor={reopenFor}
+        onToggleSelected={toggleSelected}
+        onToggleSort={toggleSort}
+        onSelectAll={setSelected}
+        onStatusChange={handleStatusChange}
+        onReopenFor={setReopenFor}
+        onOpenGantt={handleOpenGantt}
+        onExportProject={handleExportProject}
+        onDeleteProject={handleDeleteProject}
+      />
 
       {readOnly ? null : (
       <NewProjectForm

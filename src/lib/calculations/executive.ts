@@ -113,7 +113,8 @@ export function calculateExecutiveSummary(
   const expectedFinishDay = workdayProjection.expectedFinish;
   // Day-offset compound clock: "HH:mm (+Nd)" relative to the anchor (or the
   // first working day in the schedule view).
-  const compoundBaseDay = anchor !== undefined ? anchor.epochDay : workingDays.length > 0 ? workingDays[0] : null;
+  const firstWorkingDay = workingDays[0] ?? null;
+  const compoundBaseDay = anchor !== undefined ? anchor.epochDay : firstWorkingDay;
   const expectedFinish =
     expectedFinishDay === null || compoundBaseDay === null
       ? null

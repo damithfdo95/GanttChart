@@ -7,6 +7,7 @@ import { DEMO_STATE } from '../../lib/storage/storage';
 import { DEFAULT_AUTO_BACKUP_SETTINGS, defaultReportsState } from '../../lib/storage/reports';
 import { isFolderAccessSupported, pickBackupDirectory, readAutoBackupRecord } from '../../lib/backup/autoBackup';
 import { clearAllLocalDataAsync, getStorageDiagnostics, type StorageDiagnostics } from '../../lib/storage/db/persistenceBackend';
+import { BUILD_INFO, isTaggedRelease } from '../../lib/buildInfo';
 import { MIGRATION_FAILURE_LABEL_KEY, readMigrationFailureRecord } from '../../lib/storage/db/recovery';
 import { WorkspacePanel } from '../tenancy/WorkspacePanel';
 import { DataBackup } from './DataBackup';
@@ -398,6 +399,17 @@ export function Settings() {
             </span>
           ) : null}
         </div>
+      </section>
+
+      <section className="dr-section">
+        <h2>{t(lang, 'settings.releaseTitle')}</h2>
+        <p className="dr-summary" role="status">
+          {isTaggedRelease()
+            ? t(lang, 'settings.releaseTag', { release: BUILD_INFO.release })
+            : t(lang, 'settings.releaseUntagged')}
+          {` · ${t(lang, 'settings.releaseCommit', { commit: BUILD_INFO.commit || '?' })}`}
+          {` · ${t(lang, 'settings.releaseBuiltAt', { time: BUILD_INFO.builtAt.slice(0, 16).replace('T', ' ') })}`}
+        </p>
       </section>
     </div>
   );

@@ -275,10 +275,10 @@ export function advanceOverWorkDays(
     anchor.epochDay !== upcoming[0] &&
     !isNonWorkingCalendarDay(anchor.epochDay) &&
     !offDays.includes(anchor.epochDay);
-  const days = anchorImplicit ? [anchor.epochDay, ...upcoming] : upcoming;
+  const days = anchorImplicit && anchor !== undefined ? [anchor.epochDay, ...upcoming] : upcoming;
   let remaining = requiredMinutes;
   if (days.length > 0) {
-    let last = days[0];
+    let last = days[0] ?? anchor?.epochDay ?? days[days.length - 1] ?? 0;
     for (const day of days) {
       last = day;
       const win = windowOf(day);
@@ -306,7 +306,8 @@ export function advanceOverWorkDays(
   // non-working calendar day (weekend/Japanese holiday) or there is no
   // anchor and no listed days at all — an anchor on a business day always
   // enters the implicit-day path above, so it never produces weekend work.
-  const last = workingDays.length > 0 ? workingDays[workingDays.length - 1] : anchorDay;
+  const lastListed = workingDays[workingDays.length - 1] ?? anchorDay;
+  const last = lastListed !== null ? lastListed : anchorDay;
   if (remaining / dayMinutes > MAX_PROJECTION_BUSINESS_DAYS) return null;
   const rest = consumeBusinessDays(nextBusinessDayEpoch(Math.max(last, anchorDay)), remaining, dayMinutes);
   return { epochDay: rest.epoch, time: advanceThroughLunch(defaultWindow.start, rest.remaining, defaultWindow.lunch) };

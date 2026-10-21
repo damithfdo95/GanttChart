@@ -23,7 +23,13 @@ import { ActivitiesSection } from './ActivitiesSection';
 import { TopicsSection } from './TopicsSection';
 import { NextDaySection } from './NextDaySection';
 import { MorningScheduleSection } from './MorningScheduleSection';
-import { TablePager } from '../../components/TablePager';
+import {
+  EodPreviewSection,
+  FinalizedExistsBanner,
+  MorningPreviewSection,
+  ReportHistoryTable,
+  ViewingReportBanner,
+} from './DailyReportSections';
 import { usePagedRows } from '../../lib/pagination/usePagedRows';
 import { XLSX_MIME } from '../../lib/statusKeys';
 
@@ -448,71 +454,35 @@ export function DailyReport() {
       {message !== null ? <div className={`dr-message ${message.kind}`} role="status">{message.text}</div> : null}
 
       {viewingReport !== null ? (
-        <section className="dr-section dr-finalized">
-          <h2>
-            {t(uiLang, 'dailyReport.readOnly')} — {viewingReport.reportDate} (
-            {LANGUAGES.find((option) => option.code === viewingReport.language)?.native ?? viewingReport.language})
-            {viewingReport.revisionOf !== null ? ` · ${t(uiLang, 'dailyReport.revision', { date: viewingReport.reportDate })}` : ''}
-          </h2>
-          <p className="dr-summary">
-            {t(uiLang, 'columns.finalizedAt')}: {viewingReport.finalizedAt ?? '—'} · {t(uiLang, 'columns.finalizedBy')}:{' '}
-            {viewingReport.finalizedBy ?? '—'}
-          </p>
-          <pre className="dr-preview-readonly">{viewingReport.previewText}</pre>
-          <p className="exec-help">{t(uiLang, 'dailyReport.editRevisionHint')}</p>
-          <div className="dr-button-row">
-            <button type="button" className="btn" onClick={() => setViewingId(null)}>
-              {t(uiLang, 'buttons.close')}
-            </button>
-            <button type="button" className="btn" onClick={handleCreateRevision}>
-              {t(uiLang, 'buttons.revise')}
-            </button>
-          </div>
-        </section>
+        <ViewingReportBanner
+          uiLang={uiLang}
+          viewingReport={viewingReport}
+          onClose={() => setViewingId(null)}
+          onRevise={handleCreateRevision}
+        />
       ) : (
         <>
           {draft === undefined && finalizedForDate ? (
-            <section className="dr-section dr-finalized">
-              <h2>{t(uiLang, 'dailyReport.finalizedExistsTitle')}</h2>
-              <p className="dr-empty">{t(uiLang, 'dailyReport.finalizedExistsBody')}</p>
-              <div className="dr-button-row">
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => {
-                    const finalized = reportsApi.state.reports.find(
-                      (r) => r.reportDate === selectedDate && r.status === 'FINALIZED',
-                    );
-                    if (finalized !== undefined) createRevisionFrom(finalized);
-                  }}
-                >
-                  {t(uiLang, 'dailyReport.editRevision')}
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => {
-                    const finalized = reportsApi.state.reports.find(
-                      (r) => r.reportDate === selectedDate && r.status === 'FINALIZED',
-                    );
-                    if (finalized !== undefined) setViewingId(finalized.id);
-                  }}
-                >
-                  {t(uiLang, 'buttons.view')}
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() =>
-                    reportsApi.upsertReport(
-                      newDraft(selectedDate, uiLang, settings.supervisorName, nowIso(), activeProjectId),
-                    )
-                  }
-                >
-                  {t(uiLang, 'dailyReport.newDraftForDate')}
-                </button>
-              </div>
-            </section>
+            <FinalizedExistsBanner
+              uiLang={uiLang}
+              onEditRevision={() => {
+                const finalized = reportsApi.state.reports.find(
+                  (r) => r.reportDate === selectedDate && r.status === 'FINALIZED',
+                );
+                if (finalized !== undefined) createRevisionFrom(finalized);
+              }}
+              onView={() => {
+                const finalized = reportsApi.state.reports.find(
+                  (r) => r.reportDate === selectedDate && r.status === 'FINALIZED',
+                );
+                if (finalized !== undefined) setViewingId(finalized.id);
+              }}
+              onNewDraft={() =>
+                reportsApi.upsertReport(
+                  newDraft(selectedDate, uiLang, settings.supervisorName, nowIso(), activeProjectId),
+                )
+              }
+            />
           ) : null}
 
           <AttendanceSection
@@ -581,52 +551,21 @@ export function DailyReport() {
                 <p className="dr-empty">{t(uiLang, 'dailyReport.jiraFallbackHint')}</p>
               </section>
 
-              <section className="dr-section">
-                <h2>{t(uiLang, 'dailyReport.previewSection')}</h2>
-                <div className="dr-button-row">
-                  <button type="button" className="btn" disabled={draft === undefined} onClick={handleGenerate}>
-                    {t(uiLang, 'buttons.generate')}
-                  </button>
-                  <button type="button" className="btn" disabled={draft === undefined} onClick={handleRefreshData}>
-                    {t(uiLang, 'buttons.refreshData')}
-                  </button>
-                  <button type="button" className="btn" disabled={draft === undefined} onClick={handleSaveDraft}>
-                    {t(uiLang, 'buttons.saveDraft')}
-                  </button>
-                  <button type="button" className="btn" disabled={draft === undefined} onClick={handleFinalize}>
-                    {t(uiLang, 'buttons.finalize')}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-danger"
-                    disabled={draft === undefined}
-                    title={t(uiLang, 'dailyReport.deleteDraftHint')}
-                    onClick={handleDeleteDraft}
-                  >
-                    {t(uiLang, 'buttons.deleteDraft')}
-                  </button>
-                </div>
-                <textarea
-                  className="dr-preview"
-                  rows={20}
-                  value={previewText}
-                  onChange={(e) => setPreviewText(e.target.value)}
-                />
-                <div className="dr-button-row">
-                  <button type="button" className="btn" onClick={handleCopy}>
-                    {t(uiLang, 'buttons.copy')}
-                  </button>
-                  <button type="button" className="btn" onClick={handleExportTxt}>
-                    {t(uiLang, 'buttons.exportTxt')}
-                  </button>
-                  <button type="button" className="btn" onClick={handleExportPdf}>
-                    {t(uiLang, 'buttons.exportPdf')}
-                  </button>
-                  <button type="button" className="btn" onClick={handleExportExcel}>
-                    {t(uiLang, 'buttons.exportExcel')}
-                  </button>
-                </div>
-              </section>
+              <EodPreviewSection
+                uiLang={uiLang}
+                hasDraft={draft !== undefined}
+                previewText={previewText}
+                onPreviewChange={setPreviewText}
+                onGenerate={handleGenerate}
+                onRefreshData={handleRefreshData}
+                onSaveDraft={handleSaveDraft}
+                onFinalize={handleFinalize}
+                onDeleteDraft={handleDeleteDraft}
+                onCopy={handleCopy}
+                onExportTxt={handleExportTxt}
+                onExportPdf={handleExportPdf}
+                onExportExcel={handleExportExcel}
+              />
             </>
           ) : (
             <>
@@ -639,100 +578,26 @@ export function DailyReport() {
                 }
               />
 
-              <section className="dr-section">
-                <h2>{t(uiLang, 'dailyReport.morningPreviewSection')}</h2>
-                <div className="dr-button-row">
-                  <button type="button" className="btn" disabled={draft === undefined} onClick={handleGenerateMorning}>
-                    {t(uiLang, 'buttons.generate')}
-                  </button>
-                  <button type="button" className="btn" disabled={draft === undefined} onClick={handleRefreshMorning}>
-                    {t(uiLang, 'buttons.refreshData')}
-                  </button>
-                  <button type="button" className="btn" disabled={draft === undefined} onClick={handleSaveDraft}>
-                    {t(uiLang, 'buttons.saveDraft')}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-danger"
-                    disabled={draft === undefined}
-                    title={t(uiLang, 'dailyReport.deleteDraftHint')}
-                    onClick={handleDeleteDraft}
-                  >
-                    {t(uiLang, 'buttons.deleteDraft')}
-                  </button>
-                </div>
-                <textarea
-                  className="dr-preview"
-                  rows={20}
-                  value={morningPreview}
-                  onChange={(e) => setMorningPreview(e.target.value)}
-                />
-                <div className="dr-button-row">
-                  <button type="button" className="btn" onClick={handleCopyMorning}>
-                    {t(uiLang, 'buttons.copy')}
-                  </button>
-                  <button type="button" className="btn" onClick={handleExportMorningTxt}>
-                    {t(uiLang, 'buttons.exportTxt')}
-                  </button>
-                  <button type="button" className="btn" onClick={handleExportMorningPdf}>
-                    {t(uiLang, 'buttons.exportPdf')}
-                  </button>
-                  <button type="button" className="btn" onClick={handleExportMorningExcel}>
-                    {t(uiLang, 'buttons.exportExcel')}
-                  </button>
-                </div>
-              </section>
+              <MorningPreviewSection
+                uiLang={uiLang}
+                hasDraft={draft !== undefined}
+                morningPreview={morningPreview}
+                onPreviewChange={setMorningPreview}
+                onGenerate={handleGenerateMorning}
+                onRefreshData={handleRefreshMorning}
+                onSaveDraft={handleSaveDraft}
+                onDeleteDraft={handleDeleteDraft}
+                onCopy={handleCopyMorning}
+                onExportTxt={handleExportMorningTxt}
+                onExportPdf={handleExportMorningPdf}
+                onExportExcel={handleExportMorningExcel}
+              />
             </>
           )}
         </>
       )}
 
-      <section className="dr-section">
-        <h2>{t(uiLang, 'dailyReport.historySection')}</h2>
-        <div className="table-wrap">
-          <table className="dr-table">
-            <thead>
-              <tr>
-                <th scope="col">{t(uiLang, 'columns.date')}</th>
-                <th scope="col">{t(uiLang, 'columns.language')}</th>
-                <th scope="col">{t(uiLang, 'columns.status')}</th>
-                <th scope="col">{t(uiLang, 'columns.finalizedAt')}</th>
-                <th scope="col">{t(uiLang, 'columns.finalizedBy')}</th>
-                <th scope="col" />
-              </tr>
-            </thead>
-            <tbody>
-              {pager.pagedRows.map((report) => (
-                <tr
-                  key={report.id}
-                  className={
-                    report.status === 'FINALIZED' ? 'completes' : draft !== undefined && report.id === draft.id ? 'current-draft' : undefined
-                  }
-                >
-                  <td>{report.reportDate}</td>
-                  <td>{LANGUAGES.find((option) => option.code === report.language)?.native ?? report.language}</td>
-                <td>
-                  {report.status === 'FINALIZED'
-                    ? t(uiLang, 'dailyReport.statusFinalized')
-                    : t(uiLang, 'dailyReport.statusDraft')}
-                  {report.revisionOf !== null
-                    ? ` (${t(uiLang, 'dailyReport.revision', { date: report.reportDate })})`
-                    : ''}
-                </td>
-                <td>{report.finalizedAt ?? '—'}</td>
-                <td>{report.finalizedBy ?? '—'}</td>
-                <td>
-                  <button type="button" className="btn" onClick={() => setViewingId(report.id)}>
-                    {t(uiLang, 'buttons.view')}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          </table>
-        </div>
-        <TablePager lang={uiLang} pager={pager} />
-      </section>
+      <ReportHistoryTable uiLang={uiLang} pager={pager} currentDraftId={draft?.id} onView={setViewingId} />
     </div>
   );
 }

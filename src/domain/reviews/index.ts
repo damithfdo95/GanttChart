@@ -75,8 +75,10 @@ export function upsertTesterReview(
   const key = reviewIdentityKey(review, members);
   const index = reviews.findIndex((existing) => reviewIdentityKey(existing, members) === key && existing.periodStart === review.periodStart && existing.periodEnd === review.periodEnd);
   if (index === -1) return [...reviews, review];
+  const existing = reviews[index];
+  if (existing === undefined) return [...reviews, review];
   const copy = [...reviews];
-  copy[index] = { ...review, id: reviews[index].id, createdAt: reviews[index].createdAt };
+  copy[index] = { ...review, id: existing.id, createdAt: existing.createdAt };
   return copy;
 }
 

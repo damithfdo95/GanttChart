@@ -245,7 +245,9 @@ export function projectRiskSignals(project: ProjectRecord, ctx: RiskContext): Ri
 }
 
 export function highestSeverity(signals: ReadonlyArray<{ severity: RiskSeverity }>): RiskSeverity | null {
-  return signals.length === 0 ? null : signals.reduce((best, s) => (severityRank[s.severity] < severityRank[best] ? s.severity : best), signals[0].severity);
+  const first = signals[0];
+  if (first === undefined) return null;
+  return signals.reduce((best, s) => (severityRank[s.severity] < severityRank[best] ? s.severity : best), first.severity);
 }
 
 /** Needs Attention = at least one attention-level signal. */

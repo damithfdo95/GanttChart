@@ -64,7 +64,7 @@ export interface JiraBlockingDefaults {
 /** The JIRA key from a note in the shape `[JIRA KEY] ...` written by this module; null when absent. */
 export function jiraKeyFromNote(note: string): string | null {
   const m = note.trim().match(/^\[JIRA ([^\]]+)\]/);
-  return m === null ? null : m[1];
+  return m?.[1] ?? null;
 }
 
 const NOTE_PREFIX = /^\[JIRA [^\]]+\] ?/;

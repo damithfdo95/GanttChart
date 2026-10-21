@@ -130,8 +130,8 @@ export function projectsSheet(lang: Language, projects: ProjectRecord[]): XlsxSh
       return [
         project.projectId,
         project.nameEn !== '' ? project.nameEn : project.nameJa,
-        t(lang, LIFECYCLE_STATUS_KEY[project.status]),
-        t(lang, PLANNING_STATUS_KEY[projectPlanningStatus(project)]),
+        t(lang, LIFECYCLE_STATUS_KEY[project.status] ?? 'overall.todo'),
+        t(lang, PLANNING_STATUS_KEY[projectPlanningStatus(project)] ?? 'status.onTrack'),
         project.team,
         { kind: 'date', value: project.inputs.startDate },
         project.inputs.targetCompletionDate === null ? t(lang, 'report.dueDateNone') : { kind: 'date', value: project.inputs.targetCompletionDate },

@@ -220,7 +220,7 @@ async function persistToIndexedDb(
     // manifest/journal pair stays monotonic.
     const importedHead =
       options?.replaceJournal !== undefined && options.replaceJournal.length > 0
-        ? options.replaceJournal[options.replaceJournal.length - 1].revision
+        ? options.replaceJournal[options.replaceJournal.length - 1]?.revision ?? 0
         : 0;
     // Integrity gate (§11): a workspace that is known to be structurally
     // invalid is not committed, and its revision is not advanced (§2).

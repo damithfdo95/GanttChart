@@ -67,8 +67,10 @@ export function upsertTesterDailyPerformance(
     return record.testerName === testerName && record.memberId === undefined;
   });
   if (index === -1) return [...records, next];
+  const existing = records[index];
+  if (existing === undefined) return [...records, next];
   const copy = [...records];
-  copy[index] = { ...next, id: records[index].id };
+  copy[index] = { ...next, id: existing.id };
   return copy;
 }
 

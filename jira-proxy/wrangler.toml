@@ -5,3 +5,6 @@ compatibility_date = "2025-06-01"
 [vars]
 # The JIRA root the worker forwards to (Data Center base URL, including the /jira context path).
 JIRA_ORIGIN = "https://jira.rakuten-it.com/jira"
+# The origin allowed to call this proxy (CORS). Falls back to the built-in
+# default when unset; set it here when the app is served from a new address.
+# APP_ORIGIN = "https://ganttchart.damithfdo.workers.dev"

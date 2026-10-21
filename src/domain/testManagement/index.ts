@@ -292,7 +292,10 @@ export function moveInOrder<T extends { id: string; order: number }>(sorted: rea
   const i = sorted.findIndex((x) => x.id === id);
   const j = i + direction;
   if (i < 0 || j < 0 || j >= sorted.length) return [];
-  return [{ ...sorted[i], order: sorted[j].order }, { ...sorted[j], order: sorted[i].order }];
+  const a = sorted[i];
+  const b = sorted[j];
+  if (a === undefined || b === undefined) return [];
+  return [{ ...a, order: b.order }, { ...b, order: a.order }];
 }
 
 // ---- results ------------------------------------------------------------------------

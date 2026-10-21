@@ -125,13 +125,16 @@ export function calculateProjectedCompletionDateTime(
   windows?: DayWindow[],
 ): ProjectedCompletionResult | null {
   if (dailyRows.length === 0) return null;
+  const firstRow = dailyRows[0];
+  if (firstRow === undefined) return null;
   if (totalCases <= 0) {
-    return { dayIndex: 0, date: dailyRows[0].date, time: workStartTime };
+    return { dayIndex: 0, date: firstRow.date, time: workStartTime };
   }
   const lunch: LunchWindow = { start: lunchStart, end: lunchEnd };
   let previousCumulative = 0;
   for (let i = 0; i < dailyRows.length; i++) {
     const row = dailyRows[i];
+    if (row === undefined) continue;
     if (row.cumulativeCapacity >= totalCases) {
       if (row.dailyCapacity <= 0) return null; // defensive; unreachable when totalCases > 0
       // Team hourly rate = dailyCapacity / productiveHours (capacity = rate × hours);
@@ -292,13 +295,17 @@ export function calculateMultiDayProjection(input: MultiDayProjectionInput): Mul
   }));
   const dayWindows: DayWindowsContext = {
     byDay: new Map<number, DayWindow>(
-      input.planningRows.map((row, i) => [parseDate(row.date) ?? -1, windows[i]] as const),
+      input.planningRows.flatMap((row, i) => {
+        const win = windows[i];
+        return win !== undefined ? ([[parseDate(row.date) ?? -1, win]] as const) : [];
+      }),
     ),
     default: defaults,
   };
   const capacityRows = calculateCumulativeCapacityByDay(input.planningRows, input.perHourPerTester, productiveHours, dayWindows);
   const rows = calculateRemainingCasesByDay(input.casesRemaining, capacityRows);
-  const totalPlannedCapacity = capacityRows.length > 0 ? capacityRows[capacityRows.length - 1].cumulativeCapacity : 0;
+  const lastCapacityRow = capacityRows[capacityRows.length - 1];
+  const totalPlannedCapacity = lastCapacityRow !== undefined ? lastCapacityRow.cumulativeCapacity : 0;
   const shortage = calculateShortage(input.casesRemaining, totalPlannedCapacity);
   const projectedCompletion = calculateProjectedCompletionDateTime(
     input.casesRemaining,

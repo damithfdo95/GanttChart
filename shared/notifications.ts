@@ -139,8 +139,10 @@ export const occurrenceKey = (date: string, time: string): string => `${date}T${
 export function parseOccurrenceKey(key: unknown): Occurrence | null {
   if (typeof key !== 'string') return null;
   const m = KEY.exec(key);
-  if (m === null || !isDateString(m[1])) return null;
-  return { key, date: m[1], time: m[2] };
+  const date = m?.[1];
+  const time = m?.[2];
+  if (date === undefined || time === undefined || !isDateString(date)) return null;
+  return { key, date, time };
 }
 
 export interface BusinessNow {

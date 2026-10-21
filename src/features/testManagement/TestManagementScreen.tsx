@@ -5,7 +5,7 @@ import { useConfirm } from '../../components/ConfirmDialog';
 import { resolveBilingualName, t, type TranslationKey } from '../../i18n';
 import { ApiError } from '../../lib/tenancy/api';
 import { dictionaries } from '../../i18n/dictionaries';
-import { assigneeLabel, compactNames, userLabel } from '../../domain/people';
+import { assigneeLabel } from '../../domain/people';
 import { personOptionText, personOptions, selectableMembers } from '../../domain/teamMembers';
 import {
   CASE_PRIORITIES,
@@ -17,15 +17,11 @@ import {
   newScope,
   newTestCase,
   parseBulkCases,
-  projectOverview,
   projectTotals,
-  detailedCoverage,
-  scopeAssignees,
   setCaseStatus,
   setScopeStatus,
   sortCases,
   sortScopes,
-  summarize,
   usedKeys,
   type BulkParse,
   type CasePriority,
@@ -33,13 +29,13 @@ import {
   type TestCase,
   type TestScope,
 } from '../../domain/testManagement';
-import { useTesters } from '../cycles/parts';
-import { ExecutionTable } from './ExecutionTable';
-import { RegisteredWarning, ScopeTotalInput, SummaryBlock, TotalsPanel, pct } from './SummaryParts';
-import { useBusinessToday, usePeopleDirectory, useTestManagement } from './useTestManagement';
+import { RegisteredWarning, ScopeTotalInput } from './SummaryParts';
+import { useBusinessToday, useTestManagement } from './useTestManagement';
 import { JiraImportDialog } from './JiraImportDialog';
 import { TestRailScopeImportDialog } from './TestRailScopeImportDialog';
 import { TestRailScopeProgress } from './TestRailScopeProgress';
+import { OverviewTab, useDirectory } from './OverviewTab';
+import { ExecutionTab } from './ExecutionTab';
 import type { Language, ProjectRecord } from '../../types';
 
 type Tab = 'overview' | 'scopes' | 'cases' | 'execution';
@@ -115,99 +111,6 @@ export function TestManagementScreen() {
       {tab === 'cases' ? <CasesTab lang={lang} project={project} /> : null}
       {tab === 'execution' ? <ExecutionTab lang={lang} project={project} /> : null}
     </div>
-  );
-}
-
-// ---- Overview ------------------------------------------------------------------------------
-
-function useDirectory() {
-  const { testers } = useTesters();
-  return { testers, directory: usePeopleDirectory(testers) };
-}
-
-function OverviewTab({ lang, project, onOpen }: { lang: Language; project: ProjectRecord; onOpen: () => void }) {
-  const tm = useTestManagement();
-  const today = useBusinessToday();
-  const { directory } = useDirectory();
-  const overview = useMemo(() => projectOverview(project.projectId, tm.state), [project.projectId, tm.state]);
-  const totals = useMemo(() => projectTotals(project, tm.scopes, tm.testCases), [project, tm.scopes, tm.testCases]);
-  const totalOf = (scopeId: string) => totals.scopes.find((r) => r.scope.id === scopeId);
-  const assignments = tm.reports.state.testerAssignments ?? [];
-  if (overview.rows.length === 0) {
-    return (
-      <section className="dr-section tenancy-empty" role="note">
-        <p>{t(lang, 'tm.empty.noScopes')}</p>
-        <button type="button" className="btn btn-primary" onClick={onOpen}>
-          {t(lang, 'tm.scope.add')}
-        </button>
-      </section>
-    );
-  }
-  const people = (scope: TestScope): string => compactNames(scopeAssignees(scope, assignments, today).map((who) => assigneeLabel(lang, who, directory)));
-  return (
-    <section className="dr-section">
-      <h2>{t(lang, 'tm.overview.title')}</h2>
-      <p className="link-help">{t(lang, 'tm.overview.sourceNote')}</p>
-      <TotalsPanel lang={lang} totals={totals} completed={project.inputs.casesCompleted} />
-      <h3>{t(lang, 'tm.overview.detailTitle')}</h3>
-      <p className="link-help">{t(lang, 'tm.overview.detailNote', { registered: totals.registered })}</p>
-      <SummaryBlock lang={lang} summary={overview.total} />
-      <div className="tenancy-table-wrap">
-        <table className="tenancy-table">
-          <caption className="sr-only">{t(lang, 'tm.overview.title')}</caption>
-          <thead>
-            <tr>
-              <th scope="col">{t(lang, 'tm.col.scope')}</th>
-              <th scope="col">{t(lang, 'tm.col.testers')}</th>
-              <th scope="col">{t(lang, 'tm.col.totalCases')}</th>
-              <th scope="col">{t(lang, 'tm.col.registered')}</th>
-              <th scope="col">{t(lang, 'tm.sum.completed')}</th>
-              <th scope="col">{t(lang, 'tm.col.coverage')}</th>
-              <th scope="col">{t(lang, 'tm.sum.passRate')}</th>
-              <th scope="col">{t(lang, 'tm.sum.fail')}</th>
-              <th scope="col">{t(lang, 'tm.sum.blocked')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {overview.rows.map(({ scope, summary }) => (
-              <tr key={scope.id} className={scope.status === 'archived' ? 'tm-archived' : undefined}>
-                <th scope="row" className="tenancy-user-cell">
-                  <strong>{scope.name}</strong>
-                  {scope.code === undefined ? null : <span>{scope.code}</span>}
-                  {scope.status === 'archived' ? <span>{t(lang, 'tm.status.archived')}</span> : null}
-                </th>
-                <td>{people(scope) || '—'}</td>
-                <td>{totalOf(scope.id)?.total ?? '—'}</td>
-                <td>
-                  {summary.total}
-                  {totalOf(scope.id)?.overRegistered === true ? <span title={t(lang, 'tm.total.warnOverHint')}> ⚠</span> : null}
-                </td>
-                <td>{summary.completed}</td>
-                <td>{pct(detailedCoverage(summary.completed, summary.total))}</td>
-                <td>{pct(summary.passRate)}</td>
-                <td>{summary.fail}</td>
-                <td>{summary.blocked}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="tm-cards">
-        {overview.rows
-          .filter((r) => r.scope.status === 'active')
-          .map(({ scope, summary }) => (
-            <article key={scope.id} className="summary-card tm-card">
-              <h3>
-                {scope.name} <small>{t(lang, 'tm.overview.casesCount', { count: summary.total })}</small>
-              </h3>
-              <SummaryBlock lang={lang} summary={summary} />
-              <p className="link-help">
-                {t(lang, 'tm.col.testers')}: {people(scope) || t(lang, 'tm.empty.noTesters')}
-              </p>
-            </article>
-          ))}
-      </div>
-    </section>
   );
 }
 
@@ -821,57 +724,3 @@ function CasesTab({ lang, project }: { lang: Language; project: ProjectRecord })
   );
 }
 
-// ---- Execution (SV) -----------------------------------------------------------------------------------
-
-function ExecutionTab({ lang, project }: { lang: Language; project: ProjectRecord }) {
-  const tm = useTestManagement();
-  const { directory } = useDirectory();
-  const scopes = useMemo(() => sortScopes(tm.scopes.filter((s) => s.projectId === project.projectId)), [tm.scopes, project.projectId]);
-  const [scopeId, setScopeId] = useState('all');
-  const active = scopes.filter((s) => s.status === 'active');
-  const chosen = scopeId === 'all' ? active : scopes.filter((s) => s.id === scopeId);
-  const ids = new Set(chosen.map((s) => s.id));
-  const cases = tm.testCases.filter((c) => ids.has(c.scopeId) && c.status === 'active');
-  const summary = useMemo(() => summarize(cases, tm.byCase), [cases, tm.byCase]);
-  const updaterIds = [...new Set(tm.caseResults.filter((r) => r.projectId === project.projectId && r.updatedByUserId !== null).map((r) => r.updatedByUserId as string))];
-  const scopeById = new Map(scopes.map((s) => [s.id, s]));
-
-  if (scopes.length === 0) {
-    return (
-      <section className="dr-section tenancy-empty" role="note">
-        <p>{t(lang, 'tm.empty.noScopes')}</p>
-      </section>
-    );
-  }
-  return (
-    <section className="dr-section">
-      <div className="dr-button-row">
-        <h2>{t(lang, 'tm.exec.title')}</h2>
-        <label className="dr-toolbar-field">
-          {t(lang, 'tm.col.scope')}
-          <select className="input" value={scopeId} onChange={(e) => setScopeId(e.target.value)}>
-            <option value="all">{t(lang, 'tm.exec.allScopes')}</option>
-            {scopes.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-                {s.status === 'archived' ? ` (${t(lang, 'tm.status.archived')})` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <SummaryBlock lang={lang} summary={summary} />
-      <ExecutionTable
-        lang={lang}
-        cases={cases}
-        scopes={scopes}
-        byCase={tm.byCase}
-        showScope={scopeId === 'all'}
-        canEdit={(tc) => tc.status === 'active' && scopeById.get(tc.scopeId)?.status === 'active'}
-        onPatch={(tc, patch) => tm.patchResult(tc, patch)}
-        nameOf={(id) => userLabel(lang, id, directory)}
-        updaters={updaterIds.map((id) => ({ id, label: userLabel(lang, id, directory) }))}
-      />
-    </section>
-  );
-}

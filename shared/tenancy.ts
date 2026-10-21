@@ -82,7 +82,8 @@ export function normalizeEmail(raw: unknown): string | null {
   if (local.length > 64 || EMAIL_FORBIDDEN.test(local) || EMAIL_FORBIDDEN.test(domain)) return null;
   const labels = domain.split('.');
   if (labels.length < 2 || labels.some((l) => l.length === 0 || l.startsWith('-') || l.endsWith('-'))) return null;
-  if (labels[labels.length - 1].length < 2) return null;
+  const tld = labels[labels.length - 1];
+  if (tld === undefined || tld.length < 2) return null;
   return e;
 }
 

@@ -20,11 +20,13 @@ export interface HistoryPage<T extends { revision: number }> {
 /** Turn what the server returned for `limit = pageSize + 1` into one page. */
 export function toPage<T extends { revision: number }>(fetched: readonly T[], pageSize: number): HistoryPage<T> {
   const rows = fetched.slice(0, pageSize);
+  const first = rows[0];
+  const last = rows[rows.length - 1];
   return {
     rows,
     hasMore: fetched.length > pageSize,
-    newest: rows.length === 0 ? null : rows[0].revision,
-    oldest: rows.length === 0 ? null : rows[rows.length - 1].revision,
+    newest: first !== undefined ? first.revision : null,
+    oldest: last !== undefined ? last.revision : null,
   };
 }
 

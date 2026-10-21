@@ -24,6 +24,9 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      - name: Typecheck (strict indexed access)
+        run: npm run typecheck:strict
+
       - name: Lint
         run: npm run lint
 

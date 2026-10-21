@@ -191,14 +191,16 @@ function resolveReporterMember(
     identityMemberIds.add(identity.memberId);
   }
   if (identityMemberIds.size === 1) {
-    const member = poolById.get([...identityMemberIds][0])!;
-    return { memberId: member.id, memberName: member.name };
+    const soleId = [...identityMemberIds][0];
+    const member = soleId !== undefined ? poolById.get(soleId) : undefined;
+    if (member !== undefined) return { memberId: member.id, memberName: member.name };
   }
 
   // Rule 2: unique name match among the pool (findUniqueMemberByName-style).
   const nameIds = nameIndex.get(normalized);
-  if (nameIds !== undefined && nameIds.length === 1) {
-    const member = poolById.get(nameIds[0])!;
+  const soleNameId = nameIds?.[0];
+  if (nameIds !== undefined && nameIds.length === 1 && soleNameId !== undefined) {
+    const member = poolById.get(soleNameId)!;
     return { memberId: member.id, memberName: member.name };
   }
   return undefined;

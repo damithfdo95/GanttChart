@@ -32,7 +32,6 @@ import {
 } from '../../shared/protocol';
 import { qaCommitError } from '../../shared/qaRules';
 import { memberRoleOf } from '../../shared/members';
-import { SV_ONLY_KINDS } from '../../shared/testerRules';
 import { businessClock, businessDate } from '../../shared/businessTime';
 import { ackId, ackIsPrunable, audienceIncludes, checkNotification, checkNotificationAck, isAckableOccurrence, type NotificationAck, type NotificationDef, type NotificationFields, type Recipient } from '../../shared/notifications';
 import { checkLogo, type BrandingRecord } from '../../shared/branding';
@@ -40,135 +39,39 @@ import { DEFAULT_PLAN_RETENTION_DAYS, RETENTION_CHOICES, retentionCutoff } from 
 import { TM_KINDS, authorizedScopeIds, filterForTester, testerMaySee } from '../../shared/testManagementAccess';
 import { CLOSE_CODES, canonicalRecordsHash, isTenantId, recordsHaveData, summarizeRecords, validateImportRecords } from '../../shared/tenancy';
 import { WorkspaceStore, type CommitResult, type RevisionFilter, type RevisionInfo } from './store';
+import {
+  ACCOUNT_FIELDS,
+  DAY_MS,
+  DEFAULT_RETENTION_DAYS,
+  FROZEN_FLAG,
+  IDENTITY_EMAIL_HEADER,
+  IDENTITY_EXPIRES_HEADER,
+  IDENTITY_ROLE_HEADER,
+  IDENTITY_USER_HEADER,
+  LEGACY_WORKSPACE_NAME,
+  MAX_RETENTION_DAYS,
+  RETENTION_FLAG,
+  SIZE_GUARD_BYTES,
+  SIZE_GUARD_RETENTION_DAYS,
+  TENANT_HEADER,
+  WS_CLOSE_MESSAGE_TOO_BIG,
+  WS_CLOSE_UNSUPPORTED_DATA,
+  type Attachment,
+  type ImportInput,
+  type ImportResult,
+  type LinkResult,
+  type MemberInfo,
+  type WorkspaceState,
+  definitionReaches,
+  isExpired,
+  isRole,
+  redactMemberEmail,
+  toMemberInfo,
+  visibleTo,
+} from './workspaceRoomShared';
 
-/** A Team Member profile as the Worker reads it (the fields it needs to decide; never the whole record). */
-export interface MemberInfo {
-  id: string;
-  name: string;
-  email?: string;
-  /** The word stored on the profile ("SV" / "Tester", or an older free-text role). */
-  role: string;
-  active: boolean;
-  userId?: string;
-}
-
-type LinkError = 'member_not_found' | 'member_already_linked' | 'account_already_linked' | 'member_inactive' | 'member_email_mismatch' | 'member_email_taken' | 'archived' | 'failed';
-type LinkResult = { ok: true; memberId: string; created: boolean; assignments: number } | { ok: false; error: LinkError };
-
-function toMemberInfo(id: string, o: Record<string, unknown>): MemberInfo {
-  return {
-    id,
-    name: typeof o.name === 'string' ? o.name : '',
-    ...(typeof o.email === 'string' ? { email: o.email } : {}),
-    role: typeof o.role === 'string' ? o.role : '',
-    active: o.active !== false,
-    ...(typeof o.userId === 'string' && o.userId !== '' ? { userId: o.userId } : {}),
-  };
-}
-
-/**
- * A Tester receives the roster (names, for showing who did what) but NOT other people's email addresses: the email belongs to the
- * directory an SV manages. Their own profile keeps its email.
- */
-function redactMemberEmail<T extends { kind: string; json?: string }>(item: T, userId: string): T {
-  if (item.kind !== 'member' || item.json === undefined) return item;
-  try {
-    const o = JSON.parse(item.json) as Record<string, unknown>;
-    if (o.email === undefined || (userId !== '' && o.userId === userId)) return item;
-    const { email: _email, ...rest } = o;
-    return { ...item, json: JSON.stringify(rest) };
-  } catch {
-    return item;
-  }
-}
-
-/** The date (business time) of the last housekeeping run: it runs at most once a day. */
-const RETENTION_FLAG = 'retention-last-run';
-
-/** Does this stored definition address this person (and is it on)? Unreadable definitions reach nobody. */
-function definitionReaches(json: string | undefined, who: Recipient): boolean {
-  if (json === undefined) return false;
-  try {
-    const c = checkNotification(JSON.parse(json));
-    return c.ok && c.value.enabled && audienceIncludes(c.value.audience, who);
-  } catch {
-    return false;
-  }
-}
-
-/** The parts of a Team Member profile that follow its login account, and so are not undone by restoring an older revision. */
-const ACCOUNT_FIELDS = ['userId', 'email', 'role', 'active', 'endDate', 'removedAt'] as const;
-
-/** Per-connection state that survives hibernation (limit: 16 KB). */
-interface Attachment {
-  email: string;
-  userId: string;
-  tenantId: string;
-  role: Role;
-  /** Set by the client's hello; commits before it are refused. */
-  clientId: string | null;
-  /** End of the Access session (ms epoch); null for the local dev identity. */
-  expiresAt: number | null;
-}
-
-const IDENTITY_EMAIL_HEADER = 'x-gc-verified-email';
-const IDENTITY_ROLE_HEADER = 'x-gc-verified-role';
-const IDENTITY_EXPIRES_HEADER = 'x-gc-verified-exp';
-const IDENTITY_USER_HEADER = 'x-gc-user';
-const TENANT_HEADER = 'x-gc-tenant';
-const DAY_MS = 24 * 60 * 60 * 1000;
-/**
- * Default history retention. Kept at 30 days (not longer) so the full-record
- * history stays far below the Workers Free 5 GB storage cap even with heavy use.
- */
-const DEFAULT_RETENTION_DAYS = 30;
-const MAX_RETENTION_DAYS = 365;
-/** Above this database size the alarm prunes harder (Workers Free storage cap is 5 GB). */
-const SIZE_GUARD_BYTES = 2 * 1024 * 1024 * 1024;
-const SIZE_GUARD_RETENTION_DAYS = 7;
-const WS_CLOSE_UNSUPPORTED_DATA = 1003;
-const WS_CLOSE_MESSAGE_TOO_BIG = 1009;
-/** The instance that served the pre-tenant (Stage 4) single workspace. */
-export const LEGACY_WORKSPACE_NAME = 'workspace';
-const FROZEN_FLAG = 'frozen';
-
-export { IDENTITY_EMAIL_HEADER, IDENTITY_EXPIRES_HEADER, IDENTITY_ROLE_HEADER, IDENTITY_USER_HEADER, TENANT_HEADER };
-
-function isExpired(attachment: Attachment): boolean {
-  return attachment.expiresAt !== null && Date.now() > attachment.expiresAt;
-}
-
-/** What a Tester receives: everything except the SV-only kinds (reviews, identity logs, reports, topics). */
-function visibleTo<T extends { kind: string }>(role: Role, items: T[]): T[] {
-  return role === 'admin' ? items : items.filter((i) => !SV_ONLY_KINDS.has(i.kind));
-}
-
-function isRole(value: string | null): value is Role {
-  return value === 'admin' || value === 'editor' || value === 'viewer';
-}
-
-export interface WorkspaceState {
-  revision: number;
-  hash: string;
-  counts: Record<string, number>;
-  hasData: boolean;
-  frozen: boolean;
-}
-
-export type ImportInput = {
-  /** Client-generated; repeating an import with the same id never applies it twice. */
-  migrationId: string;
-  records: unknown;
-  /** The server revision the uploader inspected. A mismatch means someone else changed it. */
-  expectedRevision: number;
-  /** Replace existing server data (the caller has already verified the typed confirmation). */
-  replace: boolean;
-  actor: string;
-};
-
-export type ImportResult =
-  | { ok: true; revision: number; hash: string; counts: Record<string, number>; alreadyApplied: boolean }
-  | { ok: false; error: 'invalid' | 'revision_mismatch' | 'server_not_empty' | 'failed'; message?: string; revision?: number };
+export { IDENTITY_EMAIL_HEADER, IDENTITY_EXPIRES_HEADER, IDENTITY_ROLE_HEADER, IDENTITY_USER_HEADER, TENANT_HEADER, LEGACY_WORKSPACE_NAME };
+export type { MemberInfo, WorkspaceState, ImportInput, ImportResult };
 
 export class WorkspaceRoom extends DurableObject<Env> {
   private readonly store: WorkspaceStore;

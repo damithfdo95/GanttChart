@@ -19,22 +19,47 @@
  *   - CORS is granted to APP_ORIGIN only, so other websites cannot relay
  *     through a visitor's browser.
  */
-const APP_ORIGIN = 'https://ganttchart.damithfdo.workers.dev';
+const DEFAULT_APP_ORIGIN = 'https://ganttchart.damithfdo.workers.dev';
 
-const CORS = {
-  'Access-Control-Allow-Origin': APP_ORIGIN,
-  'Access-Control-Allow-Methods': 'GET, POST, HEAD, OPTIONS',
-  'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept',
-  'Access-Control-Max-Age': '86400',
-  Vary: 'Origin',
-};
+/**
+ * Simple per-isolate rate limit: at most RATE_LIMIT_MAX requests per client IP
+ * per RATE_LIMIT_WINDOW ms. Best-effort (resets when the isolate recycles) —
+ * enough to blunt abuse on a free-plan relay, not a hard guarantee.
+ */
+const RATE_LIMIT_MAX = 120;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const hits = new Map();
+
+function rateLimited(ip) {
+  const now = Date.now();
+  const entry = hits.get(ip);
+  if (entry === undefined || now - entry.start >= RATE_LIMIT_WINDOW_MS) {
+    hits.set(ip, { start: now, count: 1 });
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > RATE_LIMIT_MAX;
+}
 
 export default {
   async fetch(request, env) {
+    const APP_ORIGIN = String(env.APP_ORIGIN ?? DEFAULT_APP_ORIGIN);
+    const CORS = {
+      'Access-Control-Allow-Origin': APP_ORIGIN,
+      'Access-Control-Allow-Methods': 'GET, POST, HEAD, OPTIONS',
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept',
+      'Access-Control-Max-Age': '86400',
+      Vary: 'Origin',
+    };
+
     if (request.method === 'OPTIONS') {
       // Preflight is only answered for the app's origin.
       if (request.headers.get('Origin') !== APP_ORIGIN) return new Response(null, { status: 403 });
       return new Response(null, { status: 204, headers: CORS });
+    }
+
+    if (rateLimited(request.headers.get('CF-Connecting-IP') ?? 'unknown')) {
+      return new Response('Too many requests', { status: 429, headers: CORS });
     }
 
     const url = new URL(request.url);

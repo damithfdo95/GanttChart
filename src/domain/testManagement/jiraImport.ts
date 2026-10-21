@@ -83,7 +83,7 @@ export function mapJiraPriority(priorityName: string | undefined): CasePriority 
 export function ticketRefFromCaseType(type: string | undefined): string | null {
   if (type === undefined) return null;
   const m = type.trim().match(/^\[([^\]]+)\]/);
-  return m === null ? null : m[1];
+  return m?.[1] ?? null;
 }
 
 /** Map a batch of JIRA issues to bulk-add-compatible rows (one per issue, in order). */

@@ -299,7 +299,7 @@ function useScopeTotalSync(app: AppStateApi, reports: ReportsStateApi, enabled: 
     if (derivedActive !== null && app.state.totalCases !== derivedActive) app.updateField('totalCases', derivedActive);
     const reconciled = reconcileProjectTotals(projects, scopes, cases, new Date().toISOString());
     if (reconciled === projects) return;
-    const others = reconciled.map((p, i) => (p.id === activeId ? projects[i] : p));
+    const others = reconciled.map((p, i) => (p.id === activeId ? projects[i] ?? p : p));
     if (others.some((p, i) => p !== projects[i])) reports.setProjects(others);
   }, [app, reports, enabled]);
 }

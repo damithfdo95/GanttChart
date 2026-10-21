@@ -71,7 +71,7 @@ export async function getRevisionsAfter(revision: number): Promise<WorkspaceRevi
 /** Latest committed journal revision (0 when the journal is empty/unreadable). */
 export async function getLatestRevision(): Promise<number> {
   const entries = await readAllRevisions();
-  return entries.length > 0 ? entries[entries.length - 1].revision : 0;
+  return entries[entries.length - 1]?.revision ?? 0;
 }
 
 /** Count of valid journal entries. */
@@ -144,7 +144,7 @@ export function verifyJournalIntegrity(entries: WorkspaceRevision[], manifestRev
     seen.add(entry.revision);
     previous = entry.revision;
   }
-  const latestRevision = entries.length > 0 ? entries[entries.length - 1].revision : 0;
+  const latestRevision = entries[entries.length - 1]?.revision ?? 0;
   if (manifestRevision > 0 && latestRevision === 0) {
     issues.push('journal.empty');
   } else if (manifestRevision > latestRevision) {

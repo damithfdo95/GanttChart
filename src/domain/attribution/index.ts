@@ -126,8 +126,9 @@ export function resolveAttribution(
 
   if (input.kind === 'externalId') {
     const memberIds = uniqueExternalIdentityMembers(externalIdentities, input.provider, input.externalId, members);
-    if (memberIds.length === 1) {
-      const member = findMemberById(members, memberIds[0])!;
+    const uniqueId = memberIds[0];
+    if (memberIds.length === 1 && uniqueId !== undefined) {
+      const member = findMemberById(members, uniqueId)!;
       return {
         status: 'resolved',
         memberId: member.id,

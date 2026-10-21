@@ -57,12 +57,12 @@ export function parseBulkCases(text: string, existingKeys: Iterable<string>): Bu
   let headerChecked = false;
 
   for (let i = 0; i < lines.length; i += 1) {
-    const raw = lines[i];
+    const raw = lines[i] ?? '';
     if (raw.trim() === '') continue;
     const cells = raw.split('\t').map((c) => c.trim());
     if (!headerChecked) {
       headerChecked = true;
-      if (cells.length >= 2 && HEADER_KEYS.has(norm(cells[0])) && HEADER_TITLES.has(norm(cells[1]))) continue;
+      if (cells.length >= 2 && HEADER_KEYS.has(norm(cells[0] ?? '')) && HEADER_TITLES.has(norm(cells[1] ?? ''))) continue;
     }
     if (rows.length + errors.length >= TM_LIMITS.bulkRows + 50) break; // far past the limit: stop reading
     const line = i + 1;

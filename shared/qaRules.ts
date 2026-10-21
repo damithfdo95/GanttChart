@@ -46,7 +46,7 @@ const ID_SHAPE = /^[A-Za-z0-9_.:-]{1,100}$/;
 /** A real calendar date in "YYYY-MM-DD" form (no month 13, no 31 February). */
 export function isIsoDate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [y, m, d] = value.split('-').map(Number);
+  const [y, m, d] = value.split('-').map(Number) as [number, number, number];
   const date = new Date(Date.UTC(y, m - 1, d));
   return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
 }

@@ -29,6 +29,8 @@ import {
   tokyoDayStartUnix,
 } from '../domain/testrail';
 import { Field } from './Field';
+import { CsvFileButton } from './CsvFileButton';
+import { testrailDayFromCsv } from '../domain/testrail/csvImport';
 import { businessDate } from '../../shared/businessTime';
 
 interface DailyExecutionFormProps {
@@ -206,6 +208,32 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
     setTestrailMessage(null);
   };
 
+  /**
+   * CSV import: a TestRail results export (or a per-tester summary sheet)
+   * becomes the SAME day import a live fetch produces — same merge rules
+   * (idempotent; manual records never overwritten), same editable proposal
+   * into the form. Works without a TestRail connection (offline / restricted
+   * API access). The date is the form's selected date unless the file has a
+   * parseable Date column.
+   */
+  const handleImportCsv = (text: string, fileName: string): void => {
+    if (activeProject === null) return;
+    const imported = testrailDayFromCsv(text, date);
+    if (imported.day === null || imported.day.totals.executed === 0) {
+      setTestrailMessage({ kind: 'error', text: t(lang, 'exec.testrailCsvFailed', { file: fileName }) });
+      return;
+    }
+    const day = linkTestRailMembers(imported.day, [], reports.state.rcsMembers ?? []);
+    const merged = mergeTestRailTesterRecords(state.testerDailyPerformance ?? [], activeProject.projectId, day);
+    updateField('testerDailyPerformance', merged.records);
+    setForm((prev) => applyTestRailDayToEntry(prev, day, previous, mode));
+    const parts = [t(lang, 'exec.testrailCsvLoaded', { file: fileName, executed: day.totals.executed, testers: day.totals.testers })];
+    if (day.skippedUntested > 0) parts.push(t(lang, 'exec.testrailUnassigned', { count: day.skippedUntested }));
+    if (merged.keptManual > 0) parts.push(t(lang, 'exec.testrailKeptManual', { count: merged.keptManual }));
+    if (imported.errors.length > 0) parts.push(t(lang, 'exec.testrailCsvRowErrors', { count: imported.errors.length }));
+    setTestrailMessage({ kind: imported.errors.length > 0 ? 'error' : 'ok', text: parts.join(' ') });
+  };
+
   return (
     <div className="daily-execution-form">
       <div className="execution-inputs-grid">
@@ -369,7 +397,9 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
 
       {/* TestRail import (opt-in): the SV links the project to a TestRail
           plan/run URL once, then fetches that day's results per tester. The
-          fetched counts land in the form above as an editable proposal. */}
+          fetched counts land in the form above as an editable proposal.
+          The CSV lane needs no connection: a TestRail results export (or a
+          per-tester summary sheet) follows the same path. */}
       {showTestRail ? (
         <div className="exec-mode-row exec-testrail-row" role="group" aria-label={t(lang, 'exec.testrailGroup')}>
           <span className="field-label">TestRail</span>
@@ -397,6 +427,7 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
               </button>
             </>
           )}
+          <CsvFileButton label={t(lang, 'exec.testrailImportCsv')} onText={handleImportCsv} />
         </div>
       ) : null}
       {showTestRail && testrailMessage !== null ? (

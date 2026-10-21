@@ -75,7 +75,8 @@ export function useAppState(initial?: AppState): AppStateApi {
   const mutateRows = useCallback((updater: (rows: PlanningRow[]) => PlanningRow[]): void => {
     setState((prev) => {
       const rows = updater(prev.planningRows);
-      return { ...prev, planningRows: rows, startDate: rows.length > 0 ? rows[0].date : prev.startDate };
+      const first = rows[0];
+      return { ...prev, planningRows: rows, startDate: first !== undefined ? first.date : prev.startDate };
     });
   }, []);
 
@@ -83,14 +84,16 @@ export function useAppState(initial?: AppState): AppStateApi {
     setState((prev) => {
       const newStart = parseDate(date);
       if (newStart === null) return prev;
-      const firstDate = prev.planningRows.length > 0 ? prev.planningRows[0].date : prev.startDate;
+      const firstRow = prev.planningRows[0];
+      const firstDate = firstRow !== undefined ? firstRow.date : prev.startDate;
       const oldStart = parseDate(firstDate);
       const delta = oldStart === null ? 0 : newStart - oldStart;
       const rows = prev.planningRows.map((row) => {
         const d = parseDate(row.date);
         return d === null ? row : { ...row, date: formatDate(d + delta) };
       });
-      return { ...prev, planningRows: rows, startDate: rows.length > 0 ? rows[0].date : date };
+      const newFirst = rows[0];
+      return { ...prev, planningRows: rows, startDate: newFirst !== undefined ? newFirst.date : date };
     });
   }, []);
 
@@ -104,7 +107,7 @@ export function useAppState(initial?: AppState): AppStateApi {
   const addPlanningRow = useCallback(
     (copyPrevious: boolean): void => {
       mutateRows((rows) => {
-        const last = rows.length > 0 ? rows[rows.length - 1] : undefined;
+        const last = rows[rows.length - 1];
         const lastEpoch = last !== undefined ? parseDate(last.date) ?? todayEpochDays() : todayEpochDays();
         const row: PlanningRow = {
           id: generateId(),
@@ -146,7 +149,9 @@ export function useAppState(initial?: AppState): AppStateApi {
         if (target < 0 || target >= rows.length) return rows;
         const next = [...rows];
         const moved = next[target];
-        next[target] = next[index];
+        const source = next[index];
+        if (moved === undefined || source === undefined) return rows;
+        next[target] = source;
         next[index] = moved;
         return next;
       });

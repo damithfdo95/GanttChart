@@ -460,9 +460,10 @@ export function findRecoveryOptions(baseline: RecoveryBaseline): RecoveryOptions
       const bv = b.result.varianceMinutes ?? Number.NEGATIVE_INFINITY;
       return bv - av;
     });
+  const best = evaluated[0] ?? null;
   return {
     options: evaluated,
-    best: evaluated.length > 0 ? evaluated[0] : null,
+    best,
     anyRecovered: evaluated.some((row) => row.result.recovered),
   };
 }

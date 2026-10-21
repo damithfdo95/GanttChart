@@ -73,5 +73,5 @@ export const DEFAULT_REPORT_TEMPLATES: Record<Language, string> = {
 
 /** Fill the template's {placeholders}; unknown placeholders are preserved. */
 export function renderReport(template: string, sections: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g, (match, name: string) => (name in sections ? sections[name] : match));
+  return template.replace(/\{(\w+)\}/g, (match, name: string) => (name in sections ? sections[name] ?? match : match));
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import type { JiraIssue } from '../../../shared/jira';
 import type { BugTicket, ExternalIdentity, RcsMember } from '../../types';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
@@ -15,20 +15,21 @@ import {
   buildTicketJql,
   isValidJiraProjectKey,
   normalizeJiraProjectKey,
-  type MemberTicketStats,
   type TicketAnalysis,
-  type TicketRow,
 } from '../../domain/jira';
 import { JiraImportTickets } from './JiraImportTickets';
+import { jiraIssuesFromCsv } from '../../domain/jira/csvImport';
+import { CsvFileButton } from '../../components/CsvFileButton';
 import { ticketAnalysisSheet } from '../../lib/export/exportData';
 import { buildXlsx } from '../../lib/export/xlsx';
 import { toCsv, csvValueFromCell } from '../../lib/export/csv';
 import { downloadBinaryFile, downloadTextFile, fileStamp } from '../../lib/export/download';
-import { formatDateDisplay, formatDate, parseDate, todayEpochDays } from '../../lib/dates/dates';
-import { formatInteger, formatNumber } from '../../lib/formatting/format';
-import { personOptions, personOptionText, selectableMembers } from '../../domain/teamMembers';
+import { formatDate, todayEpochDays } from '../../lib/dates/dates';
+import { formatInteger } from '../../lib/formatting/format';
+import { personOptions, selectableMembers } from '../../domain/teamMembers';
 import { XLSX_MIME } from '../../lib/statusKeys';
-import { toggleSort, type SortState } from '../../lib/sortState';
+import type { SortState } from '../../lib/sortState';
+import { MemberStatsTable, TicketListTable, UnmatchedReportersTable, type MemberSortKey, type TicketSortKey } from './JiraTables';
 
 /** Select values for the project-scope filter (never a real JIRA key). */
 const SCOPE_ALL_MAPPED = '__allMapped__';
@@ -46,20 +47,10 @@ const EMPTY_ISSUES: JiraIssue[] = [];
 
 // ---- sorting (the Overall tri-state pattern: ascending → descending → default) ----
 
-type MemberSortKey = 'memberName' | 'team' | 'total' | 'open' | 'inProgress' | 'done' | 'resolvedRate' | 'lastActivity';
 type MemberSortState = SortState<MemberSortKey>;
-type TicketSortKey = 'issueKey' | 'summary' | 'statusName' | 'typeName' | 'reporterName' | 'updated';
 type TicketSortState = SortState<TicketSortKey>;
-
-/** Status-category → the app's existing chip tone (text always carries the status). */
-const STATUS_TONE: Record<TicketRow['statusCategory'], 'good' | 'bad' | 'default'> = {
-  todo: 'default',
-  inProgress: 'default',
-  done: 'good',
-};
-
 /**
- * JIRA tab — "which tester reported how many bug tickets, and where do those
+ * JIRA tab 窶・"which tester reported how many bug tickets, and where do those
  * tickets stand now?". Fetches tickets through the shared JIRA search client,
  * analyzes them against the Team Member master (domain/jira), and presents
  * per-tester stats, unmatched reporters with SV-only linking, the full ticket
@@ -93,7 +84,7 @@ export function JiraScreen() {
   const [ticketSort, setTicketSort] = useState<TicketSortState | null>(null); // null = the domain's order (updated desc)
   // Project-mapping inputs while they are being edited (uncommitted drafts).
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  // "Import to Tickets" confirmation step (SV only) — open while the routing preview is shown.
+  // "Import to Tickets" confirmation step (SV only) 窶・open while the routing preview is shown.
   const [importOpen, setImportOpen] = useState(false);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
@@ -104,7 +95,7 @@ export function JiraScreen() {
     return () => window.clearTimeout(timer);
   }, [message]);
 
-  // ---- data derivations (memoized — no recalculation on row interactions) ----
+  // ---- data derivations (memoized 窶・no recalculation on row interactions) ----
 
   const mappedProjects = useMemo(
     () => projects.filter((p) => p.jiraProjectKey !== undefined && p.jiraProjectKey !== ''),
@@ -126,7 +117,7 @@ export function JiraScreen() {
 
   const dateRangeInvalid = period === 'custom' && from !== '' && to !== '' && from > to;
 
-  /** The exact query the Fetch button will run — also shown for transparency. */
+  /** The exact query the Fetch button will run 窶・also shown for transparency. */
   const jql = useMemo(
     () =>
       buildTicketJql({
@@ -147,17 +138,13 @@ export function JiraScreen() {
     () => personOptions(lang, selectableMembers(members, { today }), today),
     [lang, members, today],
   );
-  const memberOptionText = useMemo(
-    () => new Map(memberOptions.map((o) => [o.memberId, personOptionText(lang, o)])),
-    [memberOptions, lang],
-  );
 
   const analysis = useMemo<TicketAnalysis | null>(
     () => (issues === null ? null : analyzeTickets(issues, members, externalIdentities)),
     [issues, members, externalIdentities],
   );
 
-  // Reuse the analysis matching: issue key → the canonical reporter member
+  // Reuse the analysis matching: issue key 竊・the canonical reporter member
   // (stable id, not the display name) so imported tickets carry the same
   // reporter identity the tab already resolved for them.
   const reporterMemberByIssueKey = useMemo(() => {
@@ -254,6 +241,25 @@ export function JiraScreen() {
     }
   };
 
+  /**
+   * CSV import: a JIRA CSV export (or this tab's own CSV export) becomes
+   * the SAME `JiraIssue[]` a live fetch produces, so every downstream view
+   * (analysis, linking, Import to Tickets, exports) works unchanged. The
+   * filters above are NOT applied — the file's rows are the data.
+   */
+  const handleImportCsv = (text: string, fileName: string): void => {
+    const imported = jiraIssuesFromCsv(text);
+    if (imported.issues.length === 0 && imported.errors.length > 0) {
+      setMessage({ kind: 'error', text: t(lang, 'jira.tab.csvFailed', { file: fileName }) });
+      return;
+    }
+    setIssues(imported.issues);
+    setFetchedJql(null); // the shown rows are from a file, not the current JQL
+    const parts = [t(lang, 'jira.tab.csvLoaded', { file: fileName, count: imported.issues.length })];
+    if (imported.errors.length > 0) parts.push(t(lang, 'jira.tab.csvRowErrors', { count: imported.errors.length }));
+    setMessage({ kind: imported.errors.length > 0 ? 'error' : 'ok', text: parts.join(' ') });
+  };
+
   const handleLinkReporter = (reporterName: string, memberId: string): void => {
     if (memberId === '') return;
     if (!guard.guardWrite()) return;
@@ -318,19 +324,12 @@ export function JiraScreen() {
 
   const importDisabled = loading || issues === null || issues.length === 0;
 
-  /** Locale-aware date for an ISO timestamp (or a bare YYYY-MM-DD), '—' when absent. */
-  const formatIsoDay = (iso: string | undefined): string => {
-    if (iso === undefined || iso === '') return '—';
-    const epoch = parseDate(iso.slice(0, 10));
-    return epoch === null ? iso.slice(0, 10) : formatDateDisplay(epoch, lang);
-  };
-
   const projectName = (project: (typeof projects)[number]): string => {
     const name = resolveBilingualName(lang, { nameEn: project.nameEn, nameJa: project.nameJa });
     return name === '' ? project.projectId : `${name} (${project.jiraProjectKey ?? project.projectId})`;
   };
 
-  // ---- the not-configured guard (normally unreachable — the tab is hidden) ----
+  // ---- the not-configured guard (normally unreachable 窶・the tab is hidden) ----
 
   if (!configured) {
     return (
@@ -416,6 +415,7 @@ export function JiraScreen() {
           <button type="button" className="btn" disabled={loading || dateRangeInvalid || noMappedScope} onClick={() => void handleFetch()}>
             {loading ? t(lang, 'jira.import.fetching') : t(lang, 'jira.tab.fetch')}
           </button>
+          <CsvFileButton label={t(lang, 'jira.tab.importCsv')} onText={handleImportCsv} />
         </div>
         {issues !== null && fetchedJql !== null && fetchedJql !== jql ? (
           <p className="dr-summary" role="status">{t(lang, 'jira.tab.staleResults')}</p>
@@ -449,210 +449,39 @@ export function JiraScreen() {
           </div>
 
           {/* ---- per-tester table ---- */}
-          <section className="dr-section">
-            <h2>{t(lang, 'jira.tab.memberTableTitle')}</h2>
-            <div className="table-wrap overall-scroll">
-              <table className="overall-table">
-                <thead>
-                  <tr>
-                    {(
-                      [
-                        ['memberName', 'columns.member'],
-                        ['team', 'columns.team'],
-                        ['total', 'jira.tab.total'],
-                        ['open', 'jira.tab.open'],
-                        ['inProgress', 'jira.tab.inProgress'],
-                        ['done', 'jira.tab.done'],
-                        ['resolvedRate', 'jira.tab.resolvedRate'],
-                        ['lastActivity', 'jira.tab.lastActivity'],
-                      ] as [MemberSortKey, TranslationKey][]
-                    ).map(([key, labelKey]) => (
-                      <th
-                        key={key}
-                        scope="col"
-                        className={memberSort?.key === key ? 'sorted' : undefined}
-                        aria-sort={memberSort?.key === key ? (memberSort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
-                      >
-                        <button
-                          type="button"
-                          className="th-sort"
-                          onClick={() =>
-                            toggleSort<MemberSortKey>(
-                              key,
-                              memberSort,
-                              (next) => {
-                                if (next !== null) setMemberSort(next);
-                              },
-                              { key: 'total', dir: 'desc' },
-                            )
-                          }
-                        >
-                          {t(lang, labelKey)}
-                          {memberSort?.key === key ? (memberSort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
-                        </button>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedMembers.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="dr-empty">
-                        {t(lang, 'jira.tab.noMembers')}
-                      </td>
-                    </tr>
-                  ) : null}
-                  {sortedMembers.map((stats: MemberTicketStats) => (
-                    <tr key={stats.memberId}>
-                      <td>{stats.memberName}</td>
-                      <td>{stats.team}</td>
-                      <td className="num">{formatInteger(stats.total, lang)}</td>
-                      <td className="num">{formatInteger(stats.open, lang)}</td>
-                      <td className="num">{formatInteger(stats.inProgress, lang)}</td>
-                      <td className="num">{formatInteger(stats.done, lang)}</td>
-                      <td className="num">
-                        {stats.resolvedRate === null ? '—' : `${formatNumber(stats.resolvedRate * 100, 1, lang)}%`}
-                      </td>
-                      <td>{formatIsoDay(stats.lastActivity)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <MemberStatsTable
+            lang={lang}
+            sortedMembers={sortedMembers}
+            memberSort={memberSort}
+            setMemberSort={(next) => {
+              if (next !== null) setMemberSort(next);
+            }}
+          />
 
           {/* ---- JIRA reporters not on the team (SV-only linking) ---- */}
-          <section className="dr-section">
-            <h2>{t(lang, 'jira.tab.unmatchedTitle')}</h2>
-            {analysis.unmatchedReporters.length === 0 ? (
-              <p className="dr-empty">{t(lang, 'jira.tab.noUnmatched')}</p>
-            ) : (
-              <div className="table-wrap overall-scroll">
-                <table className="overall-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">{t(lang, 'jira.tab.reporter')}</th>
-                      <th scope="col" className="num">{t(lang, 'jira.tab.ticketCount')}</th>
-                      {isSv ? <th scope="col">{t(lang, 'jira.tab.linkToMember')}</th> : null}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {analysis.unmatchedReporters.map((reporter) => (
-                      <tr key={reporter.reporterName || '—'}>
-                        <td>{reporter.reporterName === '' ? '—' : reporter.reporterName}</td>
-                        <td className="num">{formatInteger(reporter.count, lang)}</td>
-                        {isSv ? (
-                          <td>
-                            <select
-                              className="table-input"
-                              aria-label={t(lang, 'jira.tab.linkToMember')}
-                              value=""
-                              onChange={(e) => handleLinkReporter(reporter.reporterName, e.target.value)}
-                            >
-                              <option value="">{t(lang, 'jira.tab.linkMemberPlaceholder')}</option>
-                              {memberOptions.map((option) => (
-                                <option key={option.memberId} value={option.memberId}>
-                                  {memberOptionText.get(option.memberId) ?? option.label}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                        ) : null}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
+          <UnmatchedReportersTable
+            lang={lang}
+            unmatchedReporters={analysis.unmatchedReporters}
+            isSv={isSv}
+            memberOptions={memberOptions}
+            onLinkReporter={handleLinkReporter}
+          />
 
           {/* ---- ticket list + export ---- */}
-          <section className="dr-section">
-            <h2>{t(lang, 'jira.tab.ticketListTitle')}</h2>
-            <div className="dr-button-row">
-              <button type="button" className="btn" disabled={!canExport} onClick={handleExportCsv}>
-                {t(lang, 'buttons.exportCsv')}
-              </button>
-              <button type="button" className="btn" disabled={!canExport} onClick={handleExportXlsx}>
-                {t(lang, 'buttons.exportXlsx')}
-              </button>
-              {!canExport ? <span className="dr-summary">{t(lang, 'jira.tab.noResultsExport')}</span> : null}
-              {isSv ? (
-                <>
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={importDisabled}
-                    aria-expanded={importOpen}
-                    onClick={() => setImportOpen((prev) => !prev)}
-                  >
-                    {t(lang, 'jira.importTickets.title')}
-                  </button>
-                  {importDisabled ? <span className="dr-summary">{t(lang, 'jira.importTickets.reasonFetch')}</span> : null}
-                </>
-              ) : null}
-            </div>
-            <div className="table-wrap overall-scroll">
-              <table className="overall-table">
-                <thead>
-                  <tr>
-                    {(
-                      [
-                        ['issueKey', 'jira.tab.key'],
-                        ['summary', 'jira.tab.summary'],
-                        ['statusName', 'columns.status'],
-                        ['typeName', 'jira.tab.type'],
-                        ['reporterName', 'jira.tab.reporter'],
-                        ['updated', 'overall.updated'],
-                      ] as [TicketSortKey, TranslationKey][]
-                    ).map(([key, labelKey]) => (
-                      <th
-                        key={key}
-                        scope="col"
-                        className={ticketSort?.key === key ? 'sorted' : undefined}
-                        aria-sort={ticketSort?.key === key ? (ticketSort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
-                      >
-                        <button type="button" className="th-sort" onClick={() => toggleSort<TicketSortKey>(key, ticketSort, setTicketSort, null)}>
-                          {t(lang, labelKey)}
-                          {ticketSort?.key === key ? (ticketSort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
-                        </button>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedTickets.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="dr-empty">
-                        {t(lang, 'jira.tab.noTickets')}
-                      </td>
-                    </tr>
-                  ) : null}
-                  {sortedTickets.map((ticket: TicketRow) => (
-                    <tr key={ticket.issueKey}>
-                      <td>{ticket.issueKey}</td>
-                      <td>{ticket.summary}</td>
-                      <td>
-                        <span className={`plan-status-tag tag-${STATUS_TONE[ticket.statusCategory]}`}>{ticket.statusName}</span>
-                      </td>
-                      <td>{ticket.typeName}</td>
-                      <td>
-                        {ticket.memberName ?? ticket.reporterName}
-                        {ticket.memberName === undefined ? (
-                          <>
-                            {' '}
-                            <span className="plan-status-tag tag-default">{t(lang, 'jira.tab.reporterUnmatched')}</span>
-                          </>
-                        ) : null}
-                      </td>
-                      <td>{formatIsoDay(ticket.updated)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {analysis.totals.fetched >= SEARCH_MAX_TOTAL ? <p className="dr-summary">{t(lang, 'jira.tab.fetchCapNote')}</p> : null}
-          </section>
+          <TicketListTable
+            lang={lang}
+            sortedTickets={sortedTickets}
+            ticketSort={ticketSort}
+            setTicketSort={setTicketSort}
+            canExport={canExport}
+            isSv={isSv}
+            importDisabled={importDisabled}
+            importOpen={importOpen}
+            onExportCsv={handleExportCsv}
+            onExportXlsx={handleExportXlsx}
+            onToggleImport={() => setImportOpen((prev) => !prev)}
+            fetchCapped={analysis.totals.fetched >= SEARCH_MAX_TOTAL}
+          />
         </>
       ) : null}
 
@@ -660,7 +489,7 @@ export function JiraScreen() {
         <p className="dr-summary">{t(lang, 'jira.tab.fetchHint')}</p>
       ) : null}
 
-      {/* ---- Import to Tickets (SV only): routing preview → confirm → per-project feedback ---- */}
+      {/* ---- Import to Tickets (SV only): routing preview 竊・confirm 竊・per-project feedback ---- */}
       {isSv && importOpen ? (
         <JiraImportTickets
           lang={lang}
@@ -688,7 +517,7 @@ export function JiraScreen() {
               {projects.map((project) => (
                 <Field
                   key={project.id}
-                  label={`${t(lang, 'jira.tab.projectKey')} — ${resolveBilingualName(lang, { nameEn: project.nameEn, nameJa: project.nameJa }) || project.projectId}`}
+                  label={`${t(lang, 'jira.tab.projectKey')} 窶・${resolveBilingualName(lang, { nameEn: project.nameEn, nameJa: project.nameJa }) || project.projectId}`}
                   error={draftInvalid(project.id) ? t(lang, 'jira.tab.projectKeyInvalid') : undefined}
                 >
                   <input

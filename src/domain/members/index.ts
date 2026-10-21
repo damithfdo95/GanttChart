@@ -28,9 +28,10 @@ export function seedRcsMembers(): RcsMember[] {
 export function upsertRcsMember(members: readonly RcsMember[], member: RcsMember): RcsMember[] {
   const index = members.findIndex((m) => m.id === member.id);
   if (index === -1) return [...members, member];
+  const existing = members[index];
   const copy = [...members];
   // The link to the person's account (Stage 8B) belongs to the server: an edit of the profile can never drop or change it.
-  const userId = members[index].userId;
+  const userId = existing?.userId;
   copy[index] = userId === undefined ? member : { ...member, userId };
   return copy;
 }
@@ -227,6 +228,9 @@ export function resolveMemberIdentityDetailed(
     };
   }
   const unique = inRange[0];
+  if (unique === undefined) {
+    return { status: 'ambiguous', name: trimmed, candidateMemberIds: inRange.map((candidate) => candidate.memberId), candidates };
+  }
   const base = {
     memberId: unique.memberId,
     matchedBy: unique.matchType === 'current' ? ('currentName' as const) : ('nameHistory' as const),

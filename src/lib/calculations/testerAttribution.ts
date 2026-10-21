@@ -303,14 +303,14 @@ export function suggestAttendanceAwareAllocation(
       key: tester.key,
       memberId: tester.memberId,
       testerName: tester.testerName,
-      cases: shares[index],
-      ...(granularSplits.get('casesPassed') !== undefined ? { casesPassed: granularSplits.get('casesPassed')![index] } : {}),
-      ...(granularSplits.get('casesFailed') !== undefined ? { casesFailed: granularSplits.get('casesFailed')![index] } : {}),
-      ...(granularSplits.get('casesNotApplicable') !== undefined ? { casesNotApplicable: granularSplits.get('casesNotApplicable')![index] } : {}),
-      ...(granularSplits.get('casesBlocked') !== undefined ? { casesBlocked: granularSplits.get('casesBlocked')![index] } : {}),
-      ...(granularSplits.get('casesRetest') !== undefined ? { casesRetest: granularSplits.get('casesRetest')![index] } : {}),
-      ...(granularSplits.get('casesQuestioned') !== undefined ? { casesQuestioned: granularSplits.get('casesQuestioned')![index] } : {}),
-      ...(granularSplits.get('casesSpoAssigned') !== undefined ? { casesSpoAssigned: granularSplits.get('casesSpoAssigned')![index] } : {}),
+      cases: shares[index] ?? 0,
+      ...Object.fromEntries(
+        GRANULAR_ALLOCATION_KEYS.flatMap((field) => {
+          const split = granularSplits.get(field);
+          const value = split?.[index];
+          return value !== undefined ? [[field, value]] : [];
+        }),
+      ),
     })),
     basis,
     attendingKeys: attending.map((tester) => tester.key),
@@ -422,7 +422,7 @@ export function buildTesterPerformanceSyncPlan(
           testerName: member?.name ?? assignment.testerName ?? '',
           team: assignment.team ?? member?.team,
           projectId,
-          casesTested: shares[index],
+          casesTested: shares[index] ?? 0,
           casesPassed: granularShares.get('casesPassed')?.[index],
           casesFailed: granularShares.get('casesFailed')?.[index],
           casesNotApplicable: granularShares.get('casesNotApplicable')?.[index],

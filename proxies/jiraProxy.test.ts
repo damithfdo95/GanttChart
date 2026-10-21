@@ -112,4 +112,28 @@ describe('jira-proxy worker', () => {
     expect(called[1].headers.Cookie).toBeUndefined();
     expect(called[1].headers['X-Custom']).toBeUndefined();
   });
+
+  it('honors an APP_ORIGIN override from the environment', async () => {
+    const custom = 'https://custom.example.org';
+    const preflight = await worker.fetch(
+      makeRequest('/rest/api/2/search', { method: 'OPTIONS', headers: { Origin: custom } }),
+      { APP_ORIGIN: custom },
+    );
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe(custom);
+
+    const res = await worker.fetch(makeRequest('/rest/api/2/myself', { headers: { Origin: custom } }), {
+      JIRA_ORIGIN,
+      APP_ORIGIN: custom,
+    });
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(custom);
+  });
+
+  it('rate-limits a client that exceeds the per-minute budget', async () => {
+    let last: Response | null = null;
+    for (let i = 0; i < 130; i += 1) {
+      last = await worker.fetch(makeRequest('/rest/api/2/myself'), { JIRA_ORIGIN });
+    }
+    expect(last?.status).toBe(429);
+  });
 });
