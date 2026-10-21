@@ -28,8 +28,10 @@ import {
   parseResultExport,
   rowsFromApi,
   type AnalysisFinding,
+  type AnalysisIssueKind,
   type AnalysisOptions,
   type AnalysisResult,
+  type AnalysisStatus,
   type TestRailAnalysisRow,
 } from '../../domain/testrail/resultAnalysis';
 import { useBusinessToday, useTestManagement } from './useTestManagement';
@@ -46,7 +48,15 @@ interface Loaded {
   /** Where the rows came from — the Untested hint depends on it. */
   source: 'csv' | 'api';
   fileName: string;
+  /** Distinct unrecognized Status values in the data (kept as Custom Status). */
+  unknownStatuses: string[];
 }
+
+/** A status word exactly as TestRail names it (localized label, canonical meaning). */
+const statusLabel = (lang: Language, s: AnalysisStatus): string => t(lang, `tm.analysis.status.${s}` as TranslationKey);
+
+/** One issue kind, localized (確認項目). */
+const issueLabel = (lang: Language, k: AnalysisIssueKind): string => t(lang, `tm.analysis.issue.${k}` as TranslationKey);
 
 /** One sortable table of findings, with a keyword filter and a copy button. */
 function FindingsTable({
@@ -65,15 +75,23 @@ function FindingsTable({
     const keywords = q.trim().toLowerCase().split(/\s+/).filter((k) => k !== '');
     if (keywords.length === 0) return findings;
     return findings.filter((f) => {
-      const hay = `${f.testRun} ${f.row.testedBy} ${f.row.testedOn} ${f.row.testId} ${f.row.caseId} ${f.row.status} ${f.issues.join(' ')} ${f.row.comment}`.toLowerCase();
+      const hay = `${f.testRun} ${f.row.testedBy} ${f.row.testedOn} ${f.row.testId} ${f.row.caseId} ${statusLabel(lang, f.row.status)} ${f.issues.map((k) => issueLabel(lang, k)).join(' ')} ${f.row.comment}`.toLowerCase();
       return keywords.every((k) => hay.includes(k));
     });
-  }, [findings, q]);
+  }, [findings, q, lang]);
 
   const copyTable = (): void => {
-    const head = `<tr>${['TestRun', 'Tested By', 'Date', 'Test', 'Case', 'Status', 'Issues', 'Comment']
-      .map((h) => `<th style="padding:5px 8px;border:1px solid #ccc;background:#e8eaf6;">${h}</th>`)
-      .join('')}</tr>`;
+    const headers = [
+      t(lang, 'tm.analysis.col.testRun'),
+      t(lang, 'tm.analysis.col.testedBy'),
+      t(lang, 'tm.analysis.col.date'),
+      t(lang, 'tm.analysis.col.test'),
+      t(lang, 'tm.analysis.col.case'),
+      t(lang, 'tm.analysis.col.status'),
+      t(lang, 'tm.analysis.col.issues'),
+      t(lang, 'tm.analysis.col.comment'),
+    ];
+    const head = `<tr>${headers.map((h) => `<th style="padding:5px 8px;border:1px solid #ccc;background:#e8eaf6;">${h}</th>`).join('')}</tr>`;
     const body = rows
       .map((f) => {
         const url = `${baseUrl}/index.php?/tests/view/${f.row.testId}`;
@@ -82,9 +100,9 @@ function FindingsTable({
           f.row.testedBy,
           f.row.testedOn,
           `<a href="${url}">${f.row.testId}</a>`,
-          String(f.row.caseId),
-          f.row.status,
-          f.issues.join(', '),
+          f.row.caseId === 0 ? '' : String(f.row.caseId),
+          statusLabel(lang, f.row.status),
+          f.issues.map((k) => issueLabel(lang, k)).join(', '),
           f.row.comment.slice(0, 120),
         ]
           .map((c) => `<td style="padding:5px 8px;border:1px solid #ccc;">${c}</td>`)
@@ -142,8 +160,8 @@ function FindingsTable({
                     </a>
                   )}
                 </td>
-                <td>{f.row.status}</td>
-                <td>{f.issues.join(', ')}</td>
+                <td>{statusLabel(lang, f.row.status)}</td>
+                <td>{f.issues.map((k) => issueLabel(lang, k)).join(', ')}</td>
                 <td className="tm-analysis-comment">{f.row.comment.slice(0, 120)}</td>
               </tr>
             ))}
@@ -192,7 +210,7 @@ export function AnalysisTab({ lang, project }: { lang: Language; project: Projec
       setNote({ kind: 'error', text: t(lang, 'tm.analysis.csvFailed', { file: fileName }) });
       return;
     }
-    adoptRows({ rows: parsed.rows, source: 'csv', fileName });
+    adoptRows({ rows: parsed.rows, source: 'csv', fileName, unknownStatuses: parsed.unknownStatuses });
     if (parsed.errors.length > 0) {
       setNote({ kind: 'error', text: t(lang, 'tm.analysis.csvRowErrors', { count: parsed.errors.length }) });
     }
@@ -231,7 +249,7 @@ export function AnalysisTab({ lang, project }: { lang: Language; project: Projec
         setNote({ kind: 'error', text: t(lang, 'tm.analysis.apiEmpty') });
         return;
       }
-      adoptRows({ rows, source: 'api', fileName: 'TestRail API' });
+      adoptRows({ rows, source: 'api', fileName: 'TestRail API', unknownStatuses: [] });
     } catch (e) {
       setNote({ kind: 'error', text: (e as TestRailClientError).message });
     } finally {
@@ -313,6 +331,15 @@ export function AnalysisTab({ lang, project }: { lang: Language; project: Projec
         <p className={`data-controls-message ${note.kind}`} role={note.kind === 'error' ? 'alert' : 'status'}>
           {note.text}
         </p>
+      ) : null}
+      {loaded.unknownStatuses.length > 0 ? (
+        <div className="tm-warning" role="status">
+          <strong>
+            <span aria-hidden="true">⚠ </span>
+            {t(lang, 'tm.analysis.unknownStatuses', { list: loaded.unknownStatuses.join(', ') })}
+          </strong>
+          <span className="link-help"> {t(lang, 'tm.analysis.unknownStatusesHint')}</span>
+        </div>
       ) : null}
       {loaded.source === 'api' ? <p className="link-help">{t(lang, 'tm.analysis.apiNoSteps')}</p> : null}
 
@@ -478,7 +505,7 @@ export function AnalysisTab({ lang, project }: { lang: Language; project: Projec
                     </a>
                   </td>
                   <td>{c.date}</td>
-                  <td>{c.difference}</td>
+                  <td>{t(lang, 'tm.analysis.consistency.diff', { passed: c.passed, failed: c.failed })}</td>
                   <td>{c.testedBy}</td>
                 </tr>
               ))}

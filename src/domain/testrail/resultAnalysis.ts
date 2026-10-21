@@ -23,8 +23,11 @@ import type { TestRailResultRow, TestRailRunRef, TestRailTestRow, TestRailUser }
 
 // ---- normalized row ----------------------------------------------------------------
 
-/** The analysis status of one result row, normalized (never a TestRail id). */
+/** The analysis status of one result row, normalized (never a TestRail id). The words follow TestRail's own status names. */
 export type AnalysisStatus = 'passed' | 'failed' | 'retest' | 'blocked' | 'na' | 'untested' | 'custom';
+
+/** The detected issue kinds — the UI localizes them; the words align with TestRail statuses and the tool's 確認項目. */
+export type AnalysisIssueKind = 'untested' | 'device' | 'noComment' | 'noDefect' | 'build' | 'retest' | 'na';
 
 /** One normalized result row — the unit every rule and view works on. */
 export interface TestRailAnalysisRow {
@@ -55,7 +58,6 @@ export type ResultExportErrorCode =
   | 'csv_empty'
   | 'csv_unclosed_quote'
   | 'csv_no_status_column'
-  | 'csv_bad_status'
   | 'csv_bad_date';
 
 export interface ResultExportRowError {
@@ -68,6 +70,8 @@ export interface ResultExportRowError {
 export interface ResultExportParse {
   rows: TestRailAnalysisRow[];
   errors: ResultExportRowError[];
+  /** Distinct unrecognized Status values — the rows are KEPT (as Custom Status, TestRail's own convention) and the values are listed here. */
+  unknownStatuses: string[];
   /** True only when at least one row parsed and no row failed. */
   ok: boolean;
 }
@@ -154,14 +158,16 @@ export function cleanText(raw: string): string {
 // ---- CSV export parsing --------------------------------------------------------------
 
 /**
- * Parse a TestRail Test Results export CSV into normalized rows. Rows with an
- * unparseable status or date are skipped and reported; the rest still load.
+ * Parse a TestRail Test Results export CSV into normalized rows. A row with
+ * an unparseable date is skipped and reported; a row with an unrecognized
+ * STATUS is kept as Custom Status and its raw value listed in
+ * `unknownStatuses` (nothing is silently dropped).
  */
 export function parseResultExport(text: string): ResultExportParse {
   const parsed = parseCsv(text);
   if (!parsed.ok) {
     const code: ResultExportErrorCode = parsed.fatal.kind === 'empty' ? 'csv_empty' : 'csv_unclosed_quote';
-    return { rows: [], errors: [{ record: 0, code }], ok: false };
+    return { rows: [], errors: [{ record: 0, code }], unknownStatuses: [], ok: false };
   }
   const table = parsed.table;
   const cols = {
@@ -177,17 +183,17 @@ export function parseResultExport(text: string): ResultExportParse {
     testedOn: columnIndex(table.headers, 'testedOn'),
     assignedTo: columnIndex(table.headers, 'assignedTo'),
   };
-  if (cols.status === -1) return { rows: [], errors: [{ record: 0, code: 'csv_no_status_column' }], ok: false };
+  if (cols.status === -1) return { rows: [], errors: [{ record: 0, code: 'csv_no_status_column' }], unknownStatuses: [], ok: false };
 
   const errors: ResultExportRowError[] = [];
+  const unknown = new Set<string>();
   const rows: TestRailAnalysisRow[] = [];
   for (const record of table.rows) {
     const statusRaw = cell(record.cells, cols.status);
     const status = statusOf(statusRaw);
-    if (statusRaw.trim() !== '' && status === undefined) {
-      errors.push({ record: record.record, code: 'csv_bad_status', value: statusRaw });
-      continue;
-    }
+    // An unrecognized status is NOT dropped: it becomes Custom Status (like
+    // TestRail's id ≥ 6) and the raw value is listed for the user.
+    const finalStatus: AnalysisStatus = statusRaw.trim() === '' ? 'untested' : status ?? (unknown.add(statusRaw.trim()), 'custom');
     const dateRaw = cell(record.cells, cols.testedOn);
     const testedOn = dateRaw.trim() === '' ? '' : (dateOrInvalid(dateRaw) ?? '');
     if (dateRaw.trim() !== '' && testedOn === '') {
@@ -201,7 +207,7 @@ export function parseResultExport(text: string): ResultExportParse {
     rows.push({
       testId: idNum(cell(record.cells, cols.testId)),
       caseId: idNum(cell(record.cells, cols.caseId)),
-      status: status ?? 'untested',
+      status: finalStatus,
       stepsStatus: cleanText(cell(record.cells, cols.stepsStatus)),
       comment: cleanText(cell(record.cells, cols.comment)),
       run: cleanText(cell(record.cells, cols.run)),
@@ -212,7 +218,7 @@ export function parseResultExport(text: string): ResultExportParse {
       assignedTo: cleanText(cell(record.cells, cols.assignedTo)),
     });
   }
-  return { rows, errors, ok: errors.length === 0 && rows.length > 0 };
+  return { rows, errors, unknownStatuses: [...unknown].sort((a, b) => a.localeCompare(b)), ok: errors.length === 0 && rows.length > 0 };
 }
 
 // ---- API lane -----------------------------------------------------------------------
@@ -251,7 +257,7 @@ export function rowsFromApi(
     return {
       testId: r.testId,
       caseId: test?.caseId ?? 0,
-      status: (r.statusId !== null && r.statusId >= 6 ? 'custom' : API_STATUS[r.statusId ?? -1]) ?? 'custom',
+      status: r.statusId === null ? 'untested' : r.statusId >= 6 ? 'custom' : (API_STATUS[r.statusId] ?? 'custom'),
       stepsStatus: '', // the API lane has no step-level statuses
       comment: cleanText(r.comment ?? ''),
       run: run?.name ?? '',
@@ -287,8 +293,8 @@ export interface AnalysisFinding {
   row: TestRailAnalysisRow;
   /** The TestRun label "Run(Config)". */
   testRun: string;
-  /** Detected issue kinds, e.g. ['Untested', 'Device']. */
-  issues: string[];
+  /** Detected issue kinds, e.g. ['untested', 'device'] — localized by the UI. */
+  issues: AnalysisIssueKind[];
 }
 
 /** One consistency warning row (整合性チェック). */
@@ -296,8 +302,9 @@ export interface ConsistencyFinding {
   caseId: number;
   /** 'YYYY-MM-DD' of the newest row involved. */
   date: string;
-  /** e.g. "Passed ×2, Failed ×1". */
-  difference: string;
+  /** How many Passed / Failed results the case has — the UI formats the line. */
+  passed: number;
+  failed: number;
   testedBy: string;
 }
 
@@ -407,24 +414,24 @@ export function analyzeResults(rows: readonly TestRailAnalysisRow[], options: An
 
   for (const row of scope) {
     const testRun = testRunLabel(row.run, row.runConfig);
-    const issues: string[] = [];
-    if (untestedByTest.get(row.testId) === true) issues.push('Untested');
-    if (options.checkOs && deviceMismatch(row.runConfig, row.comment)) issues.push('Device');
-    if (isPassed(row.status) && row.comment === '') issues.push('NoComment');
-    if (row.status === 'failed' && row.defects === '') issues.push('NoDefect');
+    const issues: AnalysisIssueKind[] = [];
+    if (untestedByTest.get(row.testId) === true) issues.push('untested');
+    if (options.checkOs && deviceMismatch(row.runConfig, row.comment)) issues.push('device');
+    if (isPassed(row.status) && row.comment === '') issues.push('noComment');
+    if (row.status === 'failed' && row.defects === '') issues.push('noDefect');
     if (options.builds.length > 0 && isPassed(row.status)) {
       const com = row.comment.toLowerCase();
       const missing = options.builds.filter((b) => !com.includes(b.toLowerCase()));
       if (missing.length > 0) {
-        issues.push('Build');
-        buildCheck.push({ row, testRun, issues: ['Build'] });
+        issues.push('build');
+        buildCheck.push({ row, testRun, issues: ['build'] });
       }
     }
     if (issues.length > 0 && row.status !== 'retest' && row.status !== 'na') {
       needsReview.push({ row, testRun, issues });
     }
     if (row.status === 'retest' || row.status === 'na') {
-      retestNa.push({ row, testRun, issues: [row.status === 'retest' ? 'Retest' : 'N/A'] });
+      retestNa.push({ row, testRun, issues: [row.status === 'retest' ? 'retest' : 'na'] });
     }
     // Achievements: every in-scope row counts (Retest rows count in both columns, like the tool).
     if (row.testedBy !== '' && row.testedOn !== '') {
@@ -452,7 +459,8 @@ export function analyzeResults(rows: readonly TestRailAnalysisRow[], options: An
       consistency.push({
         caseId,
         date: acc.latest.testedOn,
-        difference: `Passed ×${acc.passed}, Failed ×${acc.failed}`,
+        passed: acc.passed,
+        failed: acc.failed,
         testedBy: acc.latest.testedBy,
       });
     }

@@ -71,10 +71,13 @@ describe('parseResultExport', () => {
     expect(r.errors[0]?.code).toBe('csv_no_status_column');
   });
 
-  it('skips and reports rows with an unknown status or date', () => {
-    const r = parseResultExport('ID,Status,Tested On\nT1,Weird,2026-10-21\nT2,Passed,not-a-date\nT3,Passed,2026-10-21');
-    expect(r.rows).toHaveLength(1);
-    expect(r.errors.map((e) => e.code)).toEqual(['csv_bad_status', 'csv_bad_date']);
+  it('keeps unrecognized statuses as Custom Status and lists them', () => {
+    const r = parseResultExport('ID,Status,Tested On\nT1,Weird,2026-10-21\nT2,Passed,2026-10-21\nT3,Also Weird,2026-10-21');
+    expect(r.rows).toHaveLength(3);
+    expect(r.rows[0]).toMatchObject({ status: 'custom' });
+    expect(r.rows[2]).toMatchObject({ status: 'custom' });
+    expect(r.unknownStatuses).toEqual(['Also Weird', 'Weird']);
+    expect(r.errors).toEqual([]);
   });
 
   it('accepts status ids and unix-second dates', () => {
@@ -142,13 +145,13 @@ describe('analyzeResults — needs review rules', () => {
       row({ testId: 0, stepsStatus: '1. Passed' }), // same test (ffill): also flagged
     ];
     const r = analyzeResults(rows, OPTS());
-    expect(r.needsReview.map((f) => f.issues)).toEqual([['Untested'], ['Untested']]);
+    expect(r.needsReview.map((f) => f.issues)).toEqual([['untested'], ['untested']]);
   });
 
   it('flags a Device mismatch (Android config vs iOS comment)', () => {
     const r = analyzeResults([row({ runConfig: 'Android', comment: 'checked on iPhone 15' })], OPTS());
-    expect(r.needsReview[0]?.issues).toContain('Device');
-    expect(r.needsReview[0]?.issues).not.toContain('NoComment');
+    expect(r.needsReview[0]?.issues).toContain('device');
+    expect(r.needsReview[0]?.issues).not.toContain('noComment');
   });
 
   it('does not flag Device when the check is off', () => {
@@ -159,29 +162,29 @@ describe('analyzeResults — needs review rules', () => {
   it('flags Passed without comment, but not other statuses', () => {
     const r = analyzeResults([row({ comment: '' }), row({ status: 'failed', comment: '', defects: 'JIRA-1' })], OPTS());
     expect(r.needsReview).toHaveLength(1);
-    expect(r.needsReview[0]?.issues).toEqual(['NoComment']);
+    expect(r.needsReview[0]?.issues).toEqual(['noComment']);
   });
 
   it('flags Failed without Defects', () => {
     const r = analyzeResults([row({ status: 'failed', comment: 'broken', defects: '' })], OPTS());
-    expect(r.needsReview[0]?.issues).toEqual(['NoDefect']);
+    expect(r.needsReview[0]?.issues).toEqual(['noDefect']);
   });
 
   it('flags Passed missing a selected Build and lists it in buildCheck', () => {
     const r = analyzeResults([row({ comment: 'Build: 10.1.0' })], OPTS({ builds: ['10.2.0'] }));
-    expect(r.needsReview[0]?.issues).toContain('Build');
+    expect(r.needsReview[0]?.issues).toContain('build');
     expect(r.buildCheck).toHaveLength(1);
   });
 
   it('combines multiple issues on one row', () => {
     const r = analyzeResults([row({ status: 'failed', comment: '', defects: '', stepsStatus: '1. Untested' })], OPTS());
-    expect(r.needsReview[0]?.issues).toEqual(['Untested', 'NoDefect']);
+    expect(r.needsReview[0]?.issues).toEqual(['untested', 'noDefect']);
   });
 
   it('excludes Retest and N/A rows from needs review (they go to other)', () => {
     const r = analyzeResults([row({ status: 'retest', comment: '' }), row({ status: 'na', comment: '' })], OPTS());
     expect(r.needsReview).toHaveLength(0);
-    expect(r.retestNa.map((f) => f.issues[0])).toEqual(['Retest', 'N/A']);
+    expect(r.retestNa.map((f) => f.issues[0])).toEqual(['retest', 'na']);
   });
 });
 
@@ -219,7 +222,7 @@ describe('analyzeResults — consistency', () => {
     ];
     const r = analyzeResults(rows, OPTS({ period: { kind: 'today' }, excludedTesters: ['samad'] }));
     expect(r.consistency).toHaveLength(1);
-    expect(r.consistency[0]).toMatchObject({ caseId: 500, difference: 'Passed ×1, Failed ×1' });
+    expect(r.consistency[0]).toMatchObject({ caseId: 500, passed: 1, failed: 1 });
   });
 
   it('does not warn when a case is only Passed', () => {
