@@ -5,8 +5,9 @@ import { planTestRailAssignments, type UnmatchedTestRailTester } from '../../dom
 import { buildExternalIdentityLink } from '../../domain/attribution';
 import { personOptionText, personOptions, selectableMembers } from '../../domain/teamMembers';
 import { createTestRailClient } from '../../lib/testrail/client';
+import { TestRailStatusLine } from '../../components/TestRailStatusLine';
 import { parseTestRailUrl } from '../../domain/testrail';
-import { passedPct, type TestRailTestRow, type TestRailUser } from '../../../shared/testrail';
+import { type TestRailTestRow, type TestRailUser } from '../../../shared/testrail';
 import { TestRailErrorHint } from '../../components/TestRailErrorHint';
 import type { TestRailClientError } from '../../../shared/testrail';
 import { t, type TranslationKey } from '../../i18n';
@@ -383,9 +384,7 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
                     {row.run.progress === undefined ? (
                       '—'
                     ) : (
-                      <span className="link-help">
-                        {t(lang, 'tm.testrailProgress.line', { passed: row.run.progress.passed, blocked: row.run.progress.blocked, retest: row.run.progress.retest, failed: row.run.progress.failed, untested: row.run.progress.untested, pct: Math.round(passedPct(row.run.progress) * 100) })}
-                      </span>
+                      <TestRailStatusLine lang={lang} progress={row.run.progress} className="link-help" />
                     )}
                   </td>
                   <td>

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useReportsStateCtx } from '../../app/state-contexts';
 import {
-  passedPct,
   testerProgressFromTests,
   type TestRailClientError,
   type TestRailRunProgress,
@@ -10,6 +9,7 @@ import {
 } from '../../../shared/testrail';
 import { createTestRailClient } from '../../lib/testrail/client';
 import { TestRailErrorHint } from '../../components/TestRailErrorHint';
+import { TestRailStatusLine } from '../../components/TestRailStatusLine';
 import { t } from '../../i18n';
 import type { TestScope } from '../../domain/testManagement';
 import type { Language } from '../../types';
@@ -122,14 +122,13 @@ export function TestRailScopeProgress({ lang, scope }: { lang: Language; scope: 
     ) : null;
   }
   const { progress, fetchedAt } = cache;
-  const pctValue = Math.round(passedPct(progress) * 100);
   const updatedTime = new Date(fetchedAt).toLocaleTimeString(lang === 'ja' ? 'ja-JP' : 'en-US');
   const testerRows = testerProgressFromTests(tests);
   return (
     <>
       <p className="link-help testrail-progress" role="status">
         <span>
-          {t(lang, 'tm.testrailProgress.line', { passed: progress.passed, blocked: progress.blocked, retest: progress.retest, failed: progress.failed, untested: progress.untested, pct: pctValue })}
+          <TestRailStatusLine lang={lang} progress={progress} />
         </span>
         <small>{t(lang, 'tm.testrailProgress.updatedAt', { time: updatedTime })}</small>
         <button type="button" className="btn btn-ghost" disabled={loading} aria-label={t(lang, 'tm.testrailProgress.refresh')} onClick={() => void fetchProgress()}>
@@ -143,16 +142,7 @@ export function TestRailScopeProgress({ lang, scope }: { lang: Language; scope: 
             {testerRows.map((row) => (
               <li key={row.testerId === null ? 'unassigned' : `t${row.testerId}`}>
                 <strong>{row.testerId === null ? t(lang, 'tm.testrailProgress.tester.unassigned') : nameOf(row.testerId)}</strong>
-                <span>
-                  {t(lang, 'tm.testrailProgress.tester.line', {
-                    passed: row.passed,
-                    blocked: row.blocked,
-                    retest: row.retest,
-                    failed: row.failed,
-                    untested: row.untested,
-                    pct: Math.round(passedPct(row) * 100),
-                  })}
-                </span>
+                <TestRailStatusLine lang={lang} progress={row} />
               </li>
             ))}
           </ul>

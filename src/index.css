@@ -2799,6 +2799,48 @@ textarea:focus-visible,
   color: var(--good-fg);
 }
 
+/* Live TestRail status line: bold numbers, one color per status so the
+   counts are readable at a glance (Dashboard Execution, scope progress,
+   per-tester breakdown). Untested keeps the default text color (black);
+   the passed rate is light green. */
+.testrail-status-line {
+  display: inline;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.testrail-status-line strong {
+  font-weight: 700;
+}
+
+.testrail-status-line strong + strong {
+  margin-left: 8px;
+}
+
+.testrail-status-line .tsl-passed {
+  color: var(--good-fg);
+}
+
+.testrail-status-line .tsl-blocked {
+  color: #e65100;
+}
+
+.testrail-status-line .tsl-retest {
+  color: #b58900;
+}
+
+.testrail-status-line .tsl-failed {
+  color: var(--bad-fg);
+}
+
+.testrail-status-line .tsl-untested {
+  color: var(--text);
+}
+
+.testrail-status-line .tsl-rate {
+  color: #43a047;
+}
+
 .exec-breakdown {
   margin-top: 10px;
   border-top: 1px dashed var(--border);

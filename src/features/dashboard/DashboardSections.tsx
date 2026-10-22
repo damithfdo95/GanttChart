@@ -10,7 +10,7 @@ import { MetricCard } from '../../components/MetricCard';
 import { SectionCard } from '../../components/SectionCard';
 import { DailyExecutionForm } from '../../components/DailyExecutionForm';
 import { TestRailErrorHint } from '../../components/TestRailErrorHint';
-import { passedPct } from '../../../shared/testrail';
+import { TestRailStatusLine } from '../../components/TestRailStatusLine';
 import type { TestRailExecutionStatus } from './hooks/useTestRailScopeProgress';
 import { formatInteger, formatNumber, formatDuration, formatSignedDuration, formatSignedMultiDayDuration, formatClock } from '../../lib/formatting/format';
 import type { Language } from '../../types';
@@ -225,16 +225,7 @@ export function ExecutionSection({
           {testrail.lines.map(({ scope, progress }) => (
             <p key={scope.id} className="testrail-progress-line">
               <strong>{scope.name}</strong>{' '}
-              <span>
-                {t(lang, 'tm.testrailProgress.line', {
-                  passed: progress.passed,
-                  blocked: progress.blocked,
-                  retest: progress.retest,
-                  failed: progress.failed,
-                  untested: progress.untested,
-                  pct: Math.round(passedPct(progress) * 100),
-                })}
-              </span>
+              <TestRailStatusLine lang={lang} progress={progress} />
             </p>
           ))}
           {testrailUpdatedTime !== null ? <small>{t(lang, 'tm.testrailProgress.updatedAt', { time: testrailUpdatedTime })}</small> : null}
