@@ -1948,6 +1948,7 @@
   "exec.testrailFetch": "TestRailから取得",
   "exec.testrailFetching": "取得中…",
   "exec.testrailUnlink": "リンク解除",
+  "exec.testrailLockedHint": "このプロジェクトはTestRailにリンクされています。ステータス件数は選択日のTestRail取得（またはCSV取込）のみで更新され、手入力はできません。手動編集するにはリンクを解除してください。",
   "exec.testrailFetched": "TestRail {date}: {testers}名のテスターによる{executed}件の結果を下のフォームに読み込みました。確認して保存してください。",
   "exec.testrailNoResults": "{date}のTestRail結果はありません。何も変更していません。",
   "exec.testrailUnassigned": "担当者のいない結果が{count}件ありました。合計には含まれますが、テスター別には計上されません。",

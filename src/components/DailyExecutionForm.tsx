@@ -129,6 +129,13 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
   const testrailConnection = reports.state.settings.testrail;
   const testrailLink = activeProject?.testrailPlanUrl !== undefined ? parseTestRailUrl(activeProject.testrailPlanUrl) : null;
   const showTestRail = access.canManage && testrailConnection !== undefined && activeProject !== null;
+  // While a TestRail link exists the status counts are READ-ONLY: they may
+  // only be filled by the TestRail fetch (or the CSV import of a TestRail
+  // export) — never typed by hand — so the day's entry always mirrors what
+  // TestRail actually recorded for that day. The time window, overtime,
+  // interval and tester count stay editable (they are the team's own facts,
+  // not TestRail data).
+  const testrailLocked = showTestRail && testrailLink !== null;
   const [testrailBusy, setTestrailBusy] = useState(false);
   const [testrailMessage, setTestrailMessage] = useState<{ kind: 'ok' | 'error' | 'note'; text: string } | null>(null);
   const [linkDraft, setLinkDraft] = useState('');
@@ -338,25 +345,25 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
 
       <div className="execution-inputs-grid">
         <Field label={withTotalSuffix(t(lang, 'fields.casesPassed'))}>
-          <input className="input" type="number" min={0} step={1} value={form.pass} onChange={(e) => setCount('pass', e.target.value)} />
+          <input className="input" type="number" min={0} step={1} value={form.pass} disabled={testrailLocked} onChange={(e) => setCount('pass', e.target.value)} />
         </Field>
         <Field label={withTotalSuffix(t(lang, 'fields.casesFailed'))}>
-          <input className="input" type="number" min={0} step={1} value={form.fail} onChange={(e) => setCount('fail', e.target.value)} />
+          <input className="input" type="number" min={0} step={1} value={form.fail} disabled={testrailLocked} onChange={(e) => setCount('fail', e.target.value)} />
         </Field>
         <Field label={withTotalSuffix(t(lang, 'fields.casesNotApplicable'))}>
-          <input className="input" type="number" min={0} step={1} value={form.notApplicable} onChange={(e) => setCount('notApplicable', e.target.value)} />
+          <input className="input" type="number" min={0} step={1} value={form.notApplicable} disabled={testrailLocked} onChange={(e) => setCount('notApplicable', e.target.value)} />
         </Field>
         <Field label={withTotalSuffix(t(lang, 'fields.spoAssigned'))}>
-          <input className="input" type="number" min={0} step={1} value={form.spo} onChange={(e) => setCount('spo', e.target.value)} />
+          <input className="input" type="number" min={0} step={1} value={form.spo} disabled={testrailLocked} onChange={(e) => setCount('spo', e.target.value)} />
         </Field>
         <Field label={withTotalSuffix(t(lang, 'fields.casesBlocked'))}>
-          <input className="input" type="number" min={0} step={1} value={form.blocked} onChange={(e) => setCount('blocked', e.target.value)} />
+          <input className="input" type="number" min={0} step={1} value={form.blocked} disabled={testrailLocked} onChange={(e) => setCount('blocked', e.target.value)} />
         </Field>
         <Field label={withTotalSuffix(t(lang, 'fields.casesRetest'))}>
-          <input className="input" type="number" min={0} step={1} value={form.retest} onChange={(e) => setCount('retest', e.target.value)} />
+          <input className="input" type="number" min={0} step={1} value={form.retest} disabled={testrailLocked} onChange={(e) => setCount('retest', e.target.value)} />
         </Field>
         <Field label={withTotalSuffix(t(lang, 'fields.casesQuestioned'))}>
-          <input className="input" type="number" min={0} step={1} value={form.questioned} onChange={(e) => setCount('questioned', e.target.value)} />
+          <input className="input" type="number" min={0} step={1} value={form.questioned} disabled={testrailLocked} onChange={(e) => setCount('questioned', e.target.value)} />
         </Field>
         <Field label={t(lang, 'exec.uncategorized')} error={undefined}>
           <input
@@ -366,10 +373,16 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
             step={1}
             value={form.uncategorizedCompleted ?? 0}
             title={t(lang, 'exec.uncategorizedHint')}
+            disabled={testrailLocked}
             onChange={(e) => setCount('uncategorizedCompleted', e.target.value)}
           />
         </Field>
       </div>
+      {testrailLocked ? (
+        <p className="exec-help" role="note">
+          {t(lang, 'exec.testrailLockedHint')}
+        </p>
+      ) : null}
 
       <div className="exec-form-actions">
         <button type="button" className="btn" onClick={handleSave} disabled={blockedReason !== undefined}>

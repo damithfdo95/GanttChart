@@ -1948,6 +1948,7 @@
   "exec.testrailFetch": "Fetch from TestRail",
   "exec.testrailFetching": "Fetching…",
   "exec.testrailUnlink": "Unlink",
+  "exec.testrailLockedHint": "This project is linked to TestRail: the status counts come from the TestRail fetch (or a CSV import) for the selected day and cannot be typed by hand. Unlink to edit them manually.",
   "exec.testrailFetched": "TestRail {date}: {executed} result(s) by {testers} tester(s) loaded below — review and Save.",
   "exec.testrailNoResults": "No TestRail results for {date}. Nothing was changed.",
   "exec.testrailUnassigned": "{count} result(s) had no assigned tester — they are counted in the totals only.",
