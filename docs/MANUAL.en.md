@@ -420,3 +420,19 @@ Executions (read-only), Gantt (read-only), Tickets, Performance (their own rows)
 * **Total Test Cases** is typed by an SV on **Test Management -> Scopes**. The project total is the sum of its scopes; you do not have to register every test case. A warning appears if more cases are registered than the total.
 * **Team Members** is the one list of people. Add a person with or without a login; create the login later and the same person is linked. SVs can change a role (SV / Tester), remove or reactivate a person.
 * **Meeting View** (SV): **Gantt -> Meeting View**, or **Open Morning Meeting / Open Evening Meeting** on the Dashboard. Morning shows today's plan for the whole team; Evening shows plan against actual and lets you prepare tomorrow's plan. **Present** hides the editing controls.
+
+### Test Management and the TestRail Result Analysis
+
+**Test Management** (SV) has five tabs for one project / test execution: **Overview**, **Scopes**, **Test Cases**, **Execution** and **Analysis**.
+
+* **Scopes**: create/edit scopes, type each scope's Total Test Cases, assign testers, archive/reactivate, and import TestRail runs as scopes (a run becomes one scope carrying its TestRail link).
+* **Test Cases**: register cases per scope (single form, bulk paste, or JIRA import). Keys are stable; archiving keeps history.
+* **Execution**: the per-case result grid (status, flags, memo) with filters and paging.
+* **Analysis** — the TestRail result analysis (a port of the "TestRail 分析ツール"):
+  * **Data**: import a TestRail **Test Results export (CSV)**, or **Fetch from TestRail** the results of every run linked by this project's scopes (needs the TestRail connection in Settings). Nothing loaded here is ever synced — it lives only on this device.
+  * **Filters**: period (today / all / custom), excluded testers (partial match on Assigned To), the OS-mismatch check toggle, and the auto-extracted **Build** and **TestRun** checkbox lists.
+  * **Views**: Needs review (Untested steps, Device mismatch, Passed without comment, Failed without Defects, missing Build info), Retest / N/A, Build check, Consistency (one Case ID both Passed and Failed), and Achievements (per tester per day).
+  * **Statuses** follow TestRail's own words (Passed / Failed / Retest / Blocked / N/A / Untested / Custom Status). Unrecognized statuses in a CSV are kept as Custom Status and listed in a warning banner — nothing is silently dropped.
+  * **Sorting**: click a column header to sort ascending, again for descending, a third time to clear. Works together with the keyword search.
+  * **Copy for Teams**: copies the current view as a rich HTML table (paste into Teams or Excel with Ctrl+V). Test and Case cells link to TestRail.
+  * **Limitation**: the live API fetch has no step-level statuses, so the Untested check runs only on CSV data (a hint says so).
