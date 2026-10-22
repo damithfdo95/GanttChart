@@ -90,6 +90,10 @@
   "units.testers": "testers",
 
   "timeline.title": "Timeline",
+  "timeline.dayNav": "Timeline day",
+  "timeline.prevDay": "Previous recorded day",
+  "timeline.nextDay": "Next recorded day",
+  "timeline.today": "Today",
   "timeline.start": "Start",
   "timeline.now": "Now",
   "timeline.expected": "Planned",

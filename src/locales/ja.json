@@ -90,6 +90,10 @@
   "units.testers": "人",
 
   "timeline.title": "タイムライン",
+  "timeline.dayNav": "タイムライン日",
+  "timeline.prevDay": "前の記録日",
+  "timeline.nextDay": "次の記録日",
+  "timeline.today": "今日",
   "timeline.start": "開始",
   "timeline.now": "現在",
   "timeline.expected": "計画",

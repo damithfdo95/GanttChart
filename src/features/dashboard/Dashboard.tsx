@@ -27,7 +27,7 @@ import {
   calculateProjectedActualFinish,
   calculateScheduleVariance,
 } from '../../lib/calculations/execution';
-import { effectiveTodayWindow } from '../../lib/calculations/dailyExecuted';
+import { effectiveTodayWindow, entryForDate, sortDailyExecuted } from '../../lib/calculations/dailyExecuted';
 import { calculateExecutiveSummary } from '../../lib/calculations/executive';
 import { generateDailyPlan, calculateCurrentGap } from '../../lib/calculations/dailyPlan';
 import { evaluateMilestones } from '../../lib/calculations/milestones';
@@ -110,6 +110,10 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
   // included) — owned here so the Daily Progress panel's per-row Edit
   // button can preload a recorded day.
   const [executionDate, setExecutionDate] = useState<string>(formatDate(todayEpochDays()));
+  // The Timeline section's selected day: defaults to today; ‹ › step
+  // through the RECORDED days (the daily execution entries), so the
+  // intraday bar can be reviewed for any day that has an entry.
+  const [timelineDate, setTimelineDate] = useState<string>(formatDate(todayEpochDays()));
 
   const lang = state.language;
   const sub = otherLanguage(lang);
@@ -221,7 +225,49 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
   const projectedFinish = calculateProjectedActualFinish(now, remainingCases, actualRate, todayWindow.lunch);
   const variance = calculateScheduleVariance(projectedFinish, WORK_DAY_END);
   const status = calculateScheduleStatus(state, now, { start: todayWindow.start, lunch: todayWindow.lunch }, buffer);
-  const progress = state.totalCases > 0 ? Math.min(1, state.casesCompleted / state.totalCases) : 1;
+
+  // ---- Timeline day navigation (‹ › over the RECORDED days) ----
+  // The intraday bar defaults to today; the buttons step through the days
+  // that have a daily execution entry (chronological), so any recorded day
+  // can be reviewed. A selected day that loses its entry falls back to
+  // today. The bar for a PAST day replays that day's recorded window
+  // (start / end / overtime / interval) and its completion as of that day;
+  // the live "now" marker only renders for today.
+  const recordedDays = useMemo(
+    () => sortDailyExecuted(state.dailyExecuted ?? []).map((e) => e.date),
+    [state.dailyExecuted],
+  );
+  const timelineDays = useMemo(
+    () => (recordedDays.includes(today) ? recordedDays : [...recordedDays, today].sort((a, b) => a.localeCompare(b))),
+    [recordedDays, today],
+  );
+  const timelineIndex = Math.max(0, timelineDays.indexOf(timelineDate));
+  const timelineDay = timelineDays[timelineIndex] ?? today;
+  const timelineEntry = entryForDate(state.dailyExecuted ?? [], timelineDay);
+  const timelineIsToday = timelineDay === today;
+  const stepTimeline = (direction: -1 | 1): void => {
+    const next = timelineDays[timelineIndex + direction];
+    if (next !== undefined) setTimelineDate(next);
+  };
+  // The selected day's window: the recorded entry's own times when it has
+  // them, else the planned/defaults window (the same rule the execution
+  // form's seed uses).
+  const timelineWindow = useMemo(
+    () => effectiveTodayWindow(state, timelineDay),
+    [state, timelineDay],
+  );
+  // Completion as of the selected day: the cumulative completed through
+  // that date (Σ entries up to and including it) over the total.
+  const timelineCompletedThrough = useMemo(() => {
+    const entries = sortDailyExecuted(state.dailyExecuted ?? []);
+    let sum = 0;
+    for (const e of entries) {
+      if (e.date > timelineDay) break;
+      sum += e.pass + e.fail + e.notApplicable + e.spo + (e.uncategorizedCompleted ?? 0);
+    }
+    return sum;
+  }, [state.dailyExecuted, timelineDay]);
+  const timelineProgress = state.totalCases > 0 ? Math.min(1, timelineCompletedThrough / state.totalCases) : 1;
 
   // ---- Level 2: executive summary, daily plan, blocking (single source of truth) ----
   const view = tester ? 'operator' : (state.dashboardView ?? 'operator');
@@ -557,18 +603,43 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
           />
 
         <SectionCard title={t(lang, 'timeline.title')} subtitle={t(sub, 'timeline.title')} span={12}>
+          {/* Day navigation: ‹ › steps through the recorded days (today by
+              default); the label shows which day the bar below describes. */}
+          <div className="mdt-toolbar timeline-day-nav" role="group" aria-label={t(lang, 'timeline.dayNav')}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={timelineIndex <= 0}
+              aria-label={t(lang, 'timeline.prevDay')}
+              onClick={() => stepTimeline(-1)}
+            >
+              ‹
+            </button>
+            <span className="mdt-label timeline-day-label">
+              {timelineIsToday ? t(lang, 'timeline.today') : formatDateDisplay(parseDate(timelineDay) ?? todayEpoch, lang)}
+            </span>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={timelineIndex >= timelineDays.length - 1}
+              aria-label={t(lang, 'timeline.nextDay')}
+              onClick={() => stepTimeline(1)}
+            >
+              ›
+            </button>
+          </div>
           <Timeline
-            startTime={state.startTime}
-            targetFinish={dayEnd}
+            startTime={timelineEntry?.startTime ?? timelineWindow.start}
+            targetFinish={timelineEntry?.endTime !== null && timelineEntry?.endTime !== undefined ? timelineEntry.endTime : dayEnd}
             lunch={WORK_LUNCH}
             expectedFinish={
               // Today's intraday chart only shows the marker when the
               // expected finish falls on TODAY (never a past/future day).
-              expectedFinish !== null && expectedFinish.epochDay === todayEpoch ? expectedFinish.time : null
+              timelineIsToday && expectedFinish !== null && expectedFinish.epochDay === todayEpoch ? expectedFinish.time : null
             }
-            projectedFinish={projectedFinish}
-            now={now}
-            progress={progress}
+            projectedFinish={timelineIsToday ? projectedFinish : null}
+            now={timelineIsToday ? now : (timelineEntry?.endTime ?? timelineWindow.end)}
+            progress={timelineProgress}
             labels={{
               start: t(lang, 'timeline.start'),
               now: t(lang, 'timeline.now'),
@@ -580,7 +651,7 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
               planned: t(lang, 'timeline.planned'),
               capacity: t(lang, 'timeline.capacity'),
             }}
-            plannedProgress={plannedProgressRatio}
+            plannedProgress={timelineIsToday ? plannedProgressRatio : null}
             capacityPerHour={capacityPerHour}
           />
           {dayTimeline.days.length > 1 ? <MultiDayTimeline data={dayTimeline} lang={lang} defaultProjectId={activeTimelineProjectId} /> : null}
