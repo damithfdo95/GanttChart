@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useReportsStateCtx } from '../../../app/state-contexts';
 import { createTestRailClient } from '../../../lib/testrail/client';
 import type { TestRailClientError, TestRailRunProgress } from '../../../../shared/testrail';
@@ -6,19 +6,23 @@ import type { TestScope } from '../../../domain/testManagement';
 
 /**
  * Live TestRail progress of a project's linked scopes, for the Dashboard's
- * Execution section refresh control (the links created in Test Management →
- * Scopes).
+ * Execution section (the links created in Test Management → Scopes).
  *
  * Data flow rules (the same ones TestRailScopeProgress follows):
  *  - The link lives on the SHARED scope record (`scope.testrail`); the run
  *    counts do NOT. They are fetched on demand, kept in component state
  *    only and NEVER persisted to storage or written into sync records.
- *  - Nothing is fetched until the user clicks refresh: the Dashboard is the
- *    app's home screen, so it must not start network requests by default.
- *  - The connection is the DEVICE-LOCAL TestRail connection; without one the
- *    refresh reports the typed `notConfigured` error so the UI can point at
- *    Settings → TestRail Integration instead of showing nothing.
+ *  - The numbers stay current by themselves: the first fetch runs as soon
+ *    as the section mounts (when a connection exists and the project has
+ *    linked scopes), and a fixed interval re-fetches afterwards — the
+ *    refresh button remains for an on-demand update.
+ *  - The connection is the DEVICE-LOCAL TestRail connection; without one
+ *    the refresh reports the typed `notConfigured` error so the UI can
+ *    point at Settings → TestRail Integration instead of showing nothing.
  */
+
+/** How often the live status re-fetches itself (ms). */
+const AUTO_REFRESH_MS = 60_000;
 
 /** One linked scope with its run's current status counts. */
 export interface TestRailScopeProgressLine {
@@ -76,6 +80,19 @@ export function useTestRailScopeProgress(scopes: readonly TestScope[]): TestRail
       setLoading(false);
     }
   }, [conn, scopes]);
+
+  // Keep the live status current by itself: fetch once when the section
+  // mounts (a connection exists and the project has linked active scopes),
+  // then re-fetch on a fixed interval. `refresh` is stable per (conn,
+  // scopes), so this never loops; the interval is cleared on unmount and
+  // re-armed when the linked-scope set changes.
+  useEffect(() => {
+    if (conn === undefined) return;
+    if (!scopes.some((s) => s.status === 'active' && s.testrail !== undefined)) return;
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), AUTO_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [conn, scopes, refresh]);
 
   return { scopes, lines, error, loading, fetchedAt, onRefresh: () => void refresh() };
 }

@@ -154,8 +154,8 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
   const showStatusCalculation = activeProjectStatus === undefined || activeProjectStatus === 'ongoing';
 
   // Live TestRail progress of the ACTIVE project's linked scopes (Test
-  // Management → Scopes): fetched only when the Execution section's refresh
-  // control is clicked; counts never persist.
+  // Management → Scopes): auto-fetched on mount and re-fetched on a fixed
+  // interval (plus the refresh button); counts never persist.
   const linkedScopes = useMemo(
     () => (reportsApi.state.scopes ?? []).filter((s) => s.projectId === activeProjectRecord?.projectId),
     [reportsApi.state.scopes, activeProjectRecord?.projectId],
