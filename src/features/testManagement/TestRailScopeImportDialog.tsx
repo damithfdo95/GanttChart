@@ -5,6 +5,7 @@ import { planTestRailAssignments, type UnmatchedTestRailTester } from '../../dom
 import { buildExternalIdentityLink } from '../../domain/attribution';
 import { personOptionText, personOptions, selectableMembers } from '../../domain/teamMembers';
 import { createTestRailClient } from '../../lib/testrail/client';
+import { backfillTestRailUsers } from '../../lib/testrail/client';
 import { TestRailStatusLine } from '../../components/TestRailStatusLine';
 import { parseTestRailUrl } from '../../domain/testrail';
 import { type TestRailTestRow, type TestRailUser } from '../../../shared/testrail';
@@ -75,8 +76,8 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
 
   const fetchRuns = async (): Promise<void> => {
     const link = parseTestRailUrl(url);
-    // Plan URLs only: runs have no entries of their own to import.
-    if (link === null || link.kind !== 'plan') {
+    // Plan URLs list their runs; a standalone run URL imports that ONE run.
+    if (link === null) {
       setUrlError(true);
       setError(null);
       setPlan(null);
@@ -94,7 +95,9 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
     setLoading(true);
     try {
       const client = createTestRailClient(conn);
-      const runs = await client.getPlanRuns(link.id);
+      // A plan URL fetches the plan's runs; a run URL fetches that single run
+      // (get_run carries the counts, so no backfill is needed for it).
+      const runs = link.kind === 'plan' ? await client.getPlanRuns(link.id) : [await client.getRun(link.id)];
       // Some TestRail versions omit the flat *_count fields on plan-entry
       // runs — a run showing total 0 would import a scope with Total 0 and
       // the project's derived Total would silently stay behind. Backfill
@@ -110,7 +113,7 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
           }
         }),
       );
-      setPlanId(link.id);
+      setPlanId(link.kind === 'plan' ? link.id : null);
       setPlan(planImportRows(backfilled, scopesOfProject, project.projectId));
       setNames({});
       setSelected({});
@@ -124,7 +127,7 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
   };
 
   const confirmImport = (): void => {
-    if (plan === null || planId === null || committing) return;
+    if (plan === null || committing) return;
     // Only importable rows can be ticked; skipped/duplicate runs never commit.
     const rows = plan.rows.filter((r) => r.importable && selected[r.run.id] === true);
     if (rows.length === 0) return;
@@ -143,7 +146,9 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
           projectId: project.projectId,
           name: nameOf(row.run.id, row.name),
           totalTestCases: row.totalTestCases,
-          testrail: { planId: row.run.planId ?? planId, runId: row.run.id },
+          // A standalone run has no parent plan: the link carries the run id
+          // and the plan id only when one is known (plan imports).
+          testrail: row.run.planId !== undefined || planId !== null ? { planId: row.run.planId ?? (planId as number), runId: row.run.id } : { planId: row.run.id, runId: row.run.id },
         }, now);
         if (!made.ok) {
           failed = made.error;
@@ -196,6 +201,14 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
       } catch {
         /* self-hosted instances may restrict get_users to admins */
       }
+      // A deactivated tester drops out of get_users while their tests stay
+      // assigned: fetch each missing id with get_user so the SV sees the
+      // person's NAME (and their email can link a Team Member by itself).
+      const assignedIds = [...testsByRunId.values()]
+        .flat()
+        .map((test) => test.assignedToId)
+        .filter((id): id is number => id !== null);
+      users = await backfillTestRailUsers(client, users, assignedIds);
       const assignPlan = planTestRailAssignments(
         testsByRunId,
         users,
@@ -308,6 +321,11 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
         />
       </label>
       <p className="link-help">{t(lang, 'tm.testrailImport.planUrlHelp')}</p>
+      {urlError ? (
+        <p className="qa-warning" role="alert">
+          <strong>{t(lang, 'tm.testrailImport.invalidPlanUrl')}</strong>
+        </p>
+      ) : null}
       <div className="dr-button-row">
         <button type="button" className="btn" disabled={url.trim() === '' || loading || committing} onClick={() => void fetchRuns()}>
           {loading ? t(lang, 'tm.testrailImport.fetching') : t(lang, 'tm.testrailImport.fetch')}
@@ -324,11 +342,6 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
           {t(lang, 'tenancy.cancel')}
         </button>
       </div>
-      {urlError ? (
-        <p className="qa-warning" role="alert">
-          <strong>{t(lang, 'tm.testrailImport.invalidPlanUrl')}</strong>
-        </p>
-      ) : null}
       {error !== null ? <TestRailErrorHint lang={lang} error={error} notConfiguredMessage="tm.testrailImport.notConfigured" /> : null}
       {failKey !== null ? (
         <p className="data-controls-message error" role="alert">

@@ -8,6 +8,7 @@ import {
   type TestRailUser,
 } from '../../../shared/testrail';
 import { createTestRailClient } from '../../lib/testrail/client';
+import { backfillTestRailUsers } from '../../lib/testrail/client';
 import { TestRailErrorHint } from '../../components/TestRailErrorHint';
 import { TestRailStatusLine } from '../../components/TestRailStatusLine';
 import { t } from '../../i18n';
@@ -65,6 +66,10 @@ export function TestRailScopeProgress({ lang, scope }: { lang: Language; scope: 
       } catch {
         /* self-hosted instances may restrict get_users to admins */
       }
+      // A deactivated tester drops out of get_users while their tests stay
+      // assigned: fetch each missing id with get_user so the row shows the
+      // person's name (and their email can link a Team Member).
+      userRows = await backfillTestRailUsers(client, userRows, testerProgressFromTests(testRows).map((r) => r.testerId).filter((id): id is number => id !== null));
       setCache({ progress, fetchedAt: new Date().toISOString() });
       setTests(testRows);
       setUsers(userRows);

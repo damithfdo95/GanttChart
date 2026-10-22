@@ -66,7 +66,7 @@ import { MultiDayTimeline } from '../../components/MultiDayTimeline';
 import { CapacityProjectionSections, ExecutionSection, InputSection } from './DashboardSections';
 import { useTestRailScopeProgress } from './hooks/useTestRailScopeProgress';
 import { formatDate, formatDateDisplay, parseDate, todayEpochDays } from '../../lib/dates/dates';
-import { buildDayTimeline, getActiveProjects, portfolioSummary, type OverallFocus } from '../../domain/projects';
+import { buildDayTimeline, getActiveProjects, type OverallFocus } from '../../domain/projects';
 
 /** Upper bound of what-if rows (one projection per tester count). */
 const MAX_WHAT_IF_TESTERS = 200;
@@ -120,10 +120,6 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
   const blockedReason = access.canRecordFor(activeProjectRecord?.projectId, businessDate()) ? undefined : t(lang, 'exec.notAssigned');
 
   const projectName = resolveBilingualName(lang, { nameEn: state.projectNameEn, nameJa: state.projectNameJa });
-  const portfolio = useMemo(
-    () => portfolioSummary(reportsApi.state.projects, today),
-    [reportsApi.state.projects, today],
-  );
   // Project selector (header): every project, ordered by its stable Project
   // ID; switching loads the project into the Dashboard editing surface via
   // the established activateProject path (the write-back keeps records in
@@ -181,7 +177,6 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
   const capacityPerHour = calculateTeamCapacity(state.currentTesters, state.perHourPerTester);
   const overtimeMinutes = clampOvertimeMinutes(state.dailyOvertimeMinutes);
   const dayEnd = WORK_DAY_END + overtimeMinutes;
-  const lunchMinutes = WORK_LUNCH.end - WORK_LUNCH.start;
   const productiveHours = workdayProductiveHours(state.startTime, overtimeMinutes);
   const capacityPerDay = capacityPerHour * productiveHours;
   const nowAnchor = { epochDay: todayEpoch, timeOfDay: now };
@@ -500,28 +495,6 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
       )}
       <ExecutiveSummaryView summary={executive} lang={lang} />
 
-      {onOpenOverall !== undefined && !tester ? (
-        <div className="overall-summary dashboard-portfolio-summary">
-          {(
-            [
-              { key: 'dashboard.activeProjects' as TranslationKey, value: portfolio.total - portfolio.done, focus: { lifecycle: 'active' } as OverallFocus },
-              { key: 'overall.ongoing' as TranslationKey, value: portfolio.ongoing, focus: { lifecycle: 'ongoing' } as OverallFocus },
-              { key: 'overall.todo' as TranslationKey, value: portfolio.todo, focus: { lifecycle: 'todo' } as OverallFocus },
-              { key: 'overall.extended' as TranslationKey, value: portfolio.extended, focus: { lifecycle: 'extended' } as OverallFocus },
-              { key: 'overall.onHold' as TranslationKey, value: portfolio.onHold, focus: { lifecycle: 'onHold' } as OverallFocus },
-              { key: 'overall.done' as TranslationKey, value: portfolio.done, focus: { lifecycle: 'done' } as OverallFocus },
-              { key: 'status.atRisk' as TranslationKey, value: portfolio.atRisk, focus: { planning: 'atRisk' } as OverallFocus },
-            ] as const
-          ).map((card) => (
-            <button key={card.key} type="button" className="summary-card" onClick={() => onOpenOverall(card.focus)}>
-              <span className="summary-card-label">{t(lang, card.key)}</span>
-              <span className="summary-card-value">{formatInteger(card.value, lang)}</span>
-              <span className="summary-card-arrow" aria-hidden="true">→</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-
       {onOpenMeeting !== undefined && !tester ? (
         <div className="dr-button-row dashboard-meeting-actions">
           <button type="button" className="btn" onClick={() => onOpenMeeting('morning')}>
@@ -554,7 +527,6 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
           <CapacityProjectionSections
             lang={lang}
             sub={sub}
-            lunchMinutes={lunchMinutes}
             productiveHours={productiveHours}
             capacityPerHour={capacityPerHour}
             capacityPerDay={capacityPerDay}

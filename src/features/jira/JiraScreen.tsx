@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { JiraIssue } from '../../../shared/jira';
 import type { BugTicket, ExternalIdentity, RcsMember } from '../../types';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';

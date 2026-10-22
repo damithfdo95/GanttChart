@@ -132,6 +132,23 @@ export interface TestRailTestRow {
 }
 
 /**
+ * One test CASE of a suite (get_cases). Unlike a test row, a case is the
+ * reusable definition: title, priority and type as TestRail stores them.
+ * Used by the Test Management case import (Cases tab) so "Registered"
+ * counts reflect what TestRail actually holds.
+ */
+export interface TestRailCaseRow {
+  /** TestRail's case id (the stable identity used to link back). */
+  caseId: number;
+  /** The case title, as TestRail shows it. */
+  title: string;
+  /** TestRail's priority name ("Critical", "High", …) — mapped by the importer. */
+  priorityName?: string;
+  /** TestRail's type name ("Functional", "Regression", …). */
+  typeName?: string;
+}
+
+/**
  * The per-tester progress of one linked run. One entry per assigned tester
  * plus one for unassigned tests (`testerId: null`); the sums of every row
  * equal the run's aggregate `TestRailRunProgress`.

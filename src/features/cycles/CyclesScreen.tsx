@@ -77,7 +77,7 @@ export function CyclesScreen() {
   return (
     <div className="app cycles-screen">
       <header className="dr-section">
-        <div className="dr-button-row">
+        <div className="app-header">
           <h1>{t(lang, 'cycles.title')}</h1>
           {isAdmin ? (
             <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}>

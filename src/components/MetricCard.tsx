@@ -1,4 +1,4 @@
-type Tone = 'default' | 'good' | 'bad';
+type Tone = 'default' | 'good' | 'bad' | 'info' | 'warn' | 'attention' | 'neutral';
 
 interface MetricCardProps {
   label: string;

@@ -6,6 +6,8 @@ interface SectionCardProps {
   title: string;
   subtitle?: string;
   span?: Span;
+  /** Stretch to the row height (dashboard operator row: Input / Capacity / Projection cards align). */
+  fill?: boolean;
   /** Optional controls rendered at the right end of the header (e.g. a collapse toggle). */
   actions?: ReactNode;
   children: ReactNode;
@@ -19,9 +21,9 @@ const SPAN_CLASS: Record<Span, string> = {
 };
 
 /** Dashboard section container with bilingual title (e.g. 入力条件 / INPUT). */
-export function SectionCard({ title, subtitle, span = 12, actions, children }: SectionCardProps) {
+export function SectionCard({ title, subtitle, span = 12, fill = false, actions, children }: SectionCardProps) {
   return (
-    <section className={`section-card ${SPAN_CLASS[span]}`}>
+    <section className={`section-card ${SPAN_CLASS[span]}${fill ? ' section-card--fill' : ''}`}>
       <header className="section-card-header">
         <h2>{title}</h2>
         {subtitle ? <span className="section-card-subtitle">{subtitle}</span> : null}

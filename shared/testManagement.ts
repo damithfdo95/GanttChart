@@ -106,6 +106,11 @@ export interface TestCase {
   priority: CasePriority;
   type?: string;
   tags?: string[];
+  /**
+   * Stage (TestRail case import): when present, this case was imported from (or linked to) the TestRail case with this id —
+   * the join key the Execution tab's TestRail sync uses to match run results to registered cases. Shared (synced) data.
+   */
+  testrailCaseId?: number;
   status: ScopeStatus;
   order: number;
   createdAt: string;
@@ -212,6 +217,8 @@ export function checkTestCase(raw: unknown): Check<TestCase> {
   const longs: Array<[string, number]> = [['description', TM_LIMITS.description], ['preconditions', TM_LIMITS.preconditions], ['steps', TM_LIMITS.steps], ['expected', TM_LIMITS.expected], ['type', TM_LIMITS.type]];
   for (const [f, max] of longs) if (raw[f] !== undefined && !text(raw[f], max)) return { ok: false, error: `testcase_invalid_${f}` };
   if (typeof raw.priority !== 'string' || !(CASE_PRIORITIES as readonly string[]).includes(raw.priority)) return { ok: false, error: 'testcase_invalid_priority' };
+  // The TestRail case link is lenient exactly like scope.testrail: absent = fine, present but malformed = rejected.
+  if (raw.testrailCaseId !== undefined && !(typeof raw.testrailCaseId === 'number' && Number.isInteger(raw.testrailCaseId) && raw.testrailCaseId > 0)) return { ok: false, error: 'testcase_invalid_testrail_case' };
   if (raw.tags !== undefined && (!Array.isArray(raw.tags) || raw.tags.length > TM_LIMITS.tags || !raw.tags.every((t) => text(t, TM_LIMITS.tag) && t.trim() !== ''))) return { ok: false, error: 'testcase_invalid_tags' };
   if (typeof raw.status !== 'string' || !(SCOPE_STATUSES as readonly string[]).includes(raw.status)) return { ok: false, error: 'testcase_invalid_status' };
   if (!orderOk(raw.order)) return { ok: false, error: 'testcase_invalid_order' };

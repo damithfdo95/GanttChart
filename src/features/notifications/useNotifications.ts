@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useReportsStateCtx } from '../../app/state-contexts';
 import { useTenant } from '../../app/tenant-context';
 import { businessClock, businessMomentMs } from '../../../shared/businessTime';
-import { dueFor, soonestNext, type DueNotification, type NotificationDef, type Recipient } from '../../../shared/notifications';
+import { OVERDUE_MS, dueFor, isOverdue, soonestNext, type DueNotification, type NotificationDef, type Recipient } from '../../../shared/notifications';
 import { ApiError } from '../../lib/tenancy/api';
 
 declare global {
@@ -15,10 +15,10 @@ declare global {
 const nowMs = (): number => Date.now() + (typeof window !== 'undefined' && typeof window.__GC_NOW_OFFSET__ === 'number' ? window.__GC_NOW_OFFSET__ : 0);
 
 /**
- * A clock that moves only when it matters: when the nearest scheduled moment arrives, and when the window regains focus or becomes visible.
- * Nothing is written when it ticks; it only re-evaluates what is due.
+ * A clock that moves only when it matters: when the nearest scheduled moment arrives, when a due item becomes OVERDUE (15 min), and when the
+ * window regains focus or becomes visible. Nothing is written when it ticks; it only re-evaluates what is due.
  */
-function useScheduleClock(defs: readonly NotificationDef[]): number {
+function useScheduleClock(defs: readonly NotificationDef[], items: readonly DueNotification[]): number {
   const [now, setNow] = useState(nowMs);
   useEffect(() => {
     const refresh = (): void => setNow(nowMs());
@@ -30,12 +30,21 @@ function useScheduleClock(defs: readonly NotificationDef[]): number {
       const wait = Math.min(Math.max(businessMomentMs(next.date, next.time) - nowMs() + 500, 1000), 6 * 3_600_000);
       timer = window.setTimeout(refresh, wait);
     }
+    // A due item also changes state when it becomes OVERDUE: wake up then, too.
+    let overdueTimer: number | undefined;
+    for (const item of items) {
+      const wait = businessMomentMs(item.occurrence.date, item.occurrence.time) + OVERDUE_MS - nowMs() + 500;
+      if (wait > 0 && (overdueTimer === undefined || wait < overdueTimer)) {
+        overdueTimer = window.setTimeout(refresh, Math.min(Math.max(wait, 1000), 6 * 3_600_000));
+      }
+    }
     return () => {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', refresh);
       if (timer !== undefined) window.clearTimeout(timer);
+      if (overdueTimer !== undefined) window.clearTimeout(overdueTimer);
     };
-  }, [defs, now]);
+  }, [defs, items, now]);
   return now;
 }
 
@@ -48,17 +57,28 @@ export function useDueNotifications() {
   const defs = useMemo(() => reports.state.notifications ?? [], [reports.state.notifications]);
   const acks = reports.state.notificationAcks ?? [];
   const members = reports.state.rcsMembers ?? [];
-  const now = useScheduleClock(defs);
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const [state, setState] = useState<Record<string, AckState>>({});
 
   const enabled = principal !== null && principal.userId !== null && principal.sharedWorkspace && (principal.role === 'admin' || principal.role === 'user');
-  const items = useMemo((): DueNotification[] => {
+
+  // First pass with the current clock to know what is due; the clock then also wakes when one of them turns overdue.
+  const dueNow = useMemo((): DueNotification[] => {
     if (!enabled || principal === null || principal.userId === null) return [];
     const mine = members.find((m) => m.userId === principal.userId);
     const who: Recipient = { role: principal.role === 'admin' ? 'admin' : 'user', memberId: mine?.id ?? null, memberActive: mine === undefined ? true : mine.active };
-    return dueFor(defs, acks, principal.userId, who, businessClock(now)).filter((d) => !closed.has(`${d.def.id}\u0000${d.occurrence.key}`));
-  }, [enabled, principal, members, defs, acks, now, closed]);
+    return dueFor(defs, acks, principal.userId, who, businessClock(nowMs()));
+  }, [enabled, principal, members, defs, acks]);
+
+  const now = useScheduleClock(defs, dueNow);
+  const items = useMemo(
+    () => dueNow.filter((d) => !closed.has(`${d.def.id}\u0000${d.occurrence.key}`)),
+    [dueNow, closed],
+  );
+  const overdueKeys = useMemo(
+    () => new Set(items.filter((d) => isOverdue(d, now)).map((d) => `${d.def.id}\u0000${d.occurrence.key}`)),
+    [items, now],
+  );
 
   const acknowledge = useCallback(
     async (item: DueNotification): Promise<void> => {
@@ -83,5 +103,5 @@ export function useDueNotifications() {
     [api],
   );
 
-  return { items, acknowledge, state };
+  return { items, overdueKeys, acknowledge, state };
 }

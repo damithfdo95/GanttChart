@@ -82,13 +82,12 @@ export function ExecutiveSummaryView({ summary, lang }: ExecutiveSummaryProps) {
     <div className="exec-breakdown">
       <div className="exec-breakdown-title">{t(lang, 'exec.breakdownTitle')}</div>
       <div className="metrics-grid exec-breakdown-grid">
-        <MetricCard label={t(lang, 'columns.pass')} value={formatInteger(summary.pass, lang)} />
-        <MetricCard label={t(lang, 'fields.casesFailed')} value={formatInteger(summary.fail, lang)} />
-        <MetricCard label={t(lang, 'fields.casesNotApplicable')} value={formatInteger(summary.notApplicable, lang)} />
-        <MetricCard label={t(lang, 'metrics.spoAssigned')} value={formatInteger(summary.spoAssigned, lang)} />
-        <MetricCard label={t(lang, 'fields.casesBlocked')} value={formatInteger(summary.blocked, lang)} />
-        <MetricCard label={t(lang, 'fields.casesRetest')} value={formatInteger(summary.retest, lang)} />
-        <MetricCard label={t(lang, 'fields.casesQuestioned')} value={formatInteger(summary.questioned, lang)} />
+        <MetricCard label={t(lang, 'fields.totalCases')} value={formatInteger(summary.totalCases, lang)} tone="info" />
+        <MetricCard label={t(lang, 'columns.pass')} value={formatInteger(summary.pass, lang)} tone="good" />
+        <MetricCard label={t(lang, 'fields.casesFailed')} value={formatInteger(summary.fail, lang)} tone="bad" />
+        <MetricCard label={t(lang, 'fields.casesNotApplicable')} value={formatInteger(summary.notApplicable, lang)} tone="warn" />
+        <MetricCard label={t(lang, 'fields.casesRetest')} value={formatInteger(summary.retest, lang)} tone="attention" />
+        <MetricCard label={t(lang, 'exec.untested')} value={formatInteger(summary.casesRemaining, lang)} tone="neutral" />
       </div>
     </div>
     </>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createTestRailClient } from '../lib/testrail/client';
+import { backfillTestRailUsers, createTestRailClient } from '../lib/testrail/client';
 import type { TestRailClientError, TestRailConnection } from '../../shared/testrail';
 import type { FetchLike } from '../lib/tenancy/api';
 
@@ -297,5 +297,84 @@ describe('TestRail client', () => {
       { id: 6, name: 'Bo' },
     ]);
     expect(calls[0]?.url).toBe('https://rkong.testrail.com/index.php?/api/v2/get_users&limit=250&offset=0');
+  });
+
+  it('getUser fetches one user by id (the deactivated-tester backfill)', async () => {
+    const { fetch, calls } = recordingFetch(() => response(200, { id: 7, name: 'Cara', email: 'cara@example.com' }));
+    const user = await createTestRailClient(CONN, fetch).getUser(7);
+    expect(user).toEqual({ id: 7, name: 'Cara', email: 'cara@example.com' });
+    expect(calls[0]?.url).toBe('https://rkong.testrail.com/index.php?/api/v2/get_user/7');
+  });
+
+  it('backfillTestRailUsers fetches only the ids missing from the list, best-effort', async () => {
+    const list: Record<number, unknown> = {
+      5: { id: 5, name: 'Ann', email: 'ann@example.com' },
+    };
+    const byId: Record<number, unknown> = {
+      7: { id: 7, name: 'Cara', email: 'cara@example.com' }, // deactivated → not in get_users
+      9: { id: 9, name: 'Dan', email: 'dan@example.com' },
+    };
+    const { fetch, calls } = recordingFetch((call) => {
+      const single = /get_user\/(\d+)$/.exec(call.url.split('&')[0] ?? '');
+      if (single !== null) {
+        const id = Number(single[1]);
+        return id in byId ? response(200, byId[id]) : response(404, { error: 'not found' });
+      }
+      return response(200, { offset: 0, limit: 250, size: 1, links: { next: null }, users: [list[5]] });
+    });
+    const client = createTestRailClient(CONN, fetch);
+    const users = await backfillTestRailUsers(client, await client.getUsers(), [5, 7, 9, 9, 0, -3, 12]);
+    expect(users).toEqual([
+      { id: 5, name: 'Ann', email: 'ann@example.com' },
+      { id: 7, name: 'Cara', email: 'cara@example.com' },
+      { id: 9, name: 'Dan', email: 'dan@example.com' },
+    ]);
+    // Only the missing, positive ids were fetched — 5 was known, 0/-3 are not ids, 12 failed (kept out, never thrown).
+    expect(calls.filter((c) => c.url.includes('get_user/')).map((c) => c.url.split('get_user/')[1]?.split('&')[0])).toEqual(['7', '9', '12']);
+  });
+
+  it('backfillTestRailUsers returns the list unchanged when nothing is missing', async () => {
+    const { fetch, calls } = recordingFetch(() => response(200, { offset: 0, limit: 250, size: 1, links: { next: null }, users: [{ id: 5, name: 'Ann' }] }));
+    const client = createTestRailClient(CONN, fetch);
+    const users = await backfillTestRailUsers(client, await client.getUsers(), [5]);
+    expect(users).toEqual([{ id: 5, name: 'Ann' }]);
+    expect(calls).toHaveLength(1); // the get_users call only — no get_user round-trips
+  });
+
+  it('getCases fetches the cases of a suite (nested priority/type objects)', async () => {
+    const raw = [
+      { id: 101, title: 'Login', priority: { id: 4, name: 'Critical' }, type: { id: 1, name: 'Functional' } },
+      { id: 102, title: 'Logout', priority: 'Low', type: 'Regression' },
+      { id: 103, title: 'Bare' },
+    ];
+    const { fetch, calls } = recordingFetch(() => response(200, raw));
+    const rows = await createTestRailClient(CONN, fetch).getCases(7);
+    expect(rows).toEqual([
+      { caseId: 101, title: 'Login', priorityName: 'Critical', typeName: 'Functional' },
+      { caseId: 102, title: 'Logout', priorityName: 'Low', typeName: 'Regression' },
+      { caseId: 103, title: 'Bare' },
+    ]);
+    expect(calls[0]?.url).toBe('https://rkong.testrail.com/index.php?/api/v2/get_cases/7&limit=250&offset=0');
+  });
+
+  it('getCases pages following the cases envelope', async () => {
+    const page1 = {
+      offset: 0,
+      limit: 250,
+      size: 1,
+      links: { next: '/api/v2/get_cases/7&limit=250&offset=1' },
+      cases: [{ id: 101, title: 'Login' }],
+    };
+    const page2 = {
+      offset: 1,
+      limit: 250,
+      size: 1,
+      links: { next: null },
+      cases: [{ id: 102, title: 'Logout' }],
+    };
+    const { fetch, calls } = recordingFetch((call) => (call.url.includes('offset=1') ? response(200, page2) : response(200, page1)));
+    const rows = await createTestRailClient(CONN, fetch).getCases(7);
+    expect(rows.map((r) => r.caseId)).toEqual([101, 102]);
+    expect(calls[1]?.url).toBe('https://rkong.testrail.com/index.php?/api/v2/get_cases/7&limit=250&offset=1');
   });
 });

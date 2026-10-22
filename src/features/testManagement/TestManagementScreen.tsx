@@ -32,6 +32,7 @@ import {
 import { RegisteredWarning, ScopeTotalInput } from './SummaryParts';
 import { useBusinessToday, useTestManagement } from './useTestManagement';
 import { JiraImportDialog } from './JiraImportDialog';
+import { TestRailCaseImportDialog } from './TestRailCaseImportDialog';
 import { TestRailScopeImportDialog } from './TestRailScopeImportDialog';
 import { TestRailScopeProgress } from './TestRailScopeProgress';
 import { OverviewTab, useDirectory } from './OverviewTab';
@@ -410,6 +411,7 @@ function CasesTab({ lang, project }: { lang: Language; project: ProjectRecord })
   const [note, setNote] = useState<Note>(null);
   const [bulk, setBulk] = useState(false);
   const [jiraImporting, setJiraImporting] = useState(false);
+  const [testrailImporting, setTestrailImporting] = useState(false);
   const [paste, setPaste] = useState('');
   const [parsed, setParsed] = useState<BulkParse | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -513,6 +515,15 @@ function CasesTab({ lang, project }: { lang: Language; project: ProjectRecord })
     setNote({ kind: 'ok', text });
   };
 
+  const testrailDone = (imported: number, duplicates: number, invalid: number): void => {
+    setTestrailImporting(false);
+    const text =
+      duplicates + invalid > 0
+        ? `${t(lang, 'tm.testrailCases.done', { count: imported })} ${t(lang, 'tm.testrailCases.doneSkipped', { duplicates, invalid })}`
+        : t(lang, 'tm.testrailCases.done', { count: imported });
+    setNote({ kind: 'ok', text });
+  };
+
   return (
     <section className="dr-section">
       <div className="dr-button-row">
@@ -536,6 +547,16 @@ function CasesTab({ lang, project }: { lang: Language; project: ProjectRecord })
         </button>
         <button type="button" className="btn" disabled={archivedScope} onClick={() => { setJiraImporting(true); setEditing(null); setBulk(false); setNote(null); }}>
           {t(lang, 'jira.import.open')}
+        </button>
+        {/* Only a scope linked to a TestRail run can import that run's suite cases. */}
+        <button
+          type="button"
+          className="btn"
+          disabled={archivedScope || scope.testrail === undefined}
+          title={scope.testrail === undefined ? t(lang, 'tm.testrailCases.noLink') : undefined}
+          onClick={() => { setTestrailImporting(true); setEditing(null); setBulk(false); setNote(null); }}
+        >
+          {t(lang, 'tm.testrailCases.open')}
         </button>
         <label className="tm-check">
           <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> {t(lang, 'tm.showArchived')}
@@ -667,6 +688,15 @@ function CasesTab({ lang, project }: { lang: Language; project: ProjectRecord })
           tm={tm}
           onClose={() => setJiraImporting(false)}
           onDone={jiraDone}
+        />
+      ) : null}
+      {testrailImporting ? (
+        <TestRailCaseImportDialog
+          lang={lang}
+          scope={scope}
+          tm={tm}
+          onClose={() => setTestrailImporting(false)}
+          onDone={testrailDone}
         />
       ) : null}
       {cases.length === 0 ? (

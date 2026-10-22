@@ -210,9 +210,20 @@ export function audienceIncludes(audience: NotificationAudience, who: Recipient)
 
 export const ackId = (notificationId: string, occurrence: string, userId: string): string => `na_${notificationId}_${occurrence}_${userId}`;
 
+/** A due notification nobody closed for this long turns "overdue" (the banner highlights it). */
+export const OVERDUE_MS = 15 * 60 * 1000;
+
 export interface DueNotification {
   def: NotificationDef;
   occurrence: Occurrence;
+}
+
+/** The instant (ms) of an occurrence's "YYYY-MM-DDTHH:mm" key in the business time zone (UTC+9, no DST — same math as shared/businessTime.ts). */
+const occurrenceMs = (occ: Occurrence): number => Date.parse(`${occ.date}T${occ.time}:00+09:00`);
+
+/** Has this due occurrence been sitting unacknowledged for longer than OVERDUE_MS? `nowMs` is the caller's clock (ms). */
+export function isOverdue(item: DueNotification, nowMs: number): boolean {
+  return nowMs - occurrenceMs(item.occurrence) >= OVERDUE_MS;
 }
 
 /**

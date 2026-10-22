@@ -8,12 +8,14 @@ import {
   clampDay,
   dueFor,
   isAckableOccurrence,
+  isOverdue,
   latestDue,
   nextOccurrence,
   notificationCommitError,
   occursOn,
   parseNotificationInput,
   soonestNext,
+  OVERDUE_MS,
   type NotificationAck,
   type NotificationAudience,
   type NotificationDef,
@@ -209,6 +211,32 @@ describe('the in-app timer', () => {
     const off = def({ id: 'ntf_c', time: '10:05', enabled: false });
     expect(soonestNext([a, b, off], at('2026-10-08', '10:00'))?.key).toBe('2026-10-08T10:30');
     expect(soonestNext([off], at('2026-10-08', '10:00'))).toBeNull();
+  });
+});
+
+describe('overdue highlighting (unclosed for 15 minutes)', () => {
+  it('is not overdue before 15 minutes have passed', () => {
+    const d = def({ time: '09:00' });
+    const item = dueFor([d], [], 'usr_t', tester, at('2026-10-08', '09:14'))[0];
+    expect(isOverdue(item, businessMomentMs('2026-10-08', '09:14'))).toBe(false);
+  });
+
+  it('is overdue at exactly 15 minutes and after', () => {
+    const d = def({ time: '09:00' });
+    const item = dueFor([d], [], 'usr_t', tester, at('2026-10-08', '09:15'))[0];
+    expect(isOverdue(item, businessMomentMs('2026-10-08', '09:15'))).toBe(true);
+    expect(isOverdue(item, businessMomentMs('2026-10-08', '11:00'))).toBe(true);
+  });
+
+  it('a notification from a previous day (still unacknowledged) is overdue', () => {
+    const d = def({ time: '09:00' });
+    const item = dueFor([d], [], 'usr_t', tester, at('2026-10-09', '08:00'))[0]; // latest due = 2026-10-08T09:00
+    expect(item.occurrence.key).toBe('2026-10-08T09:00');
+    expect(isOverdue(item, businessMomentMs('2026-10-09', '08:00'))).toBe(true);
+  });
+
+  it('OVERDUE_MS is 15 minutes', () => {
+    expect(OVERDUE_MS).toBe(15 * 60 * 1000);
   });
 });
 

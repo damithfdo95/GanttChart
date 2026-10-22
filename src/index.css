@@ -143,6 +143,9 @@ body {
   font-size: 13px;
   cursor: pointer;
   font-family: inherit;
+  /* Button labels are single-line: wrapping doubles the height in cramped
+     flex rows (e.g. .dr-manual-add next to a fixed-width input). */
+  white-space: nowrap;
 }
 
 .btn:disabled {
@@ -316,6 +319,21 @@ textarea:focus-visible,
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px 16px 16px;
+  /* Cards stacked directly under .app (Gantt screen) need separation —
+     inside .dashboard-grid the gap property handles it instead. */
+  margin-bottom: 16px;
+}
+
+/* Equal-height cards within a dashboard-grid row (Input / Capacity /
+   Projection): the grid aligns items at start, so stretch explicitly. */
+.section-card--fill {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+}
+
+.section-card--fill > div:last-child {
+  flex: 1;
 }
 
 .section-card-header {
@@ -353,6 +371,34 @@ textarea:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* Inline checkbox field (e.g. Interval Taken): the box sits NEXT to its
+   text on the input row, bottom-aligned with the neighbouring inputs. */
+.field-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  align-self: end; /* grid aligns items at start; stick to the input row */
+  margin-bottom: 9px; /* optical alignment with the inputs' text baseline */
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.field-check input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0; /* the row gap handles spacing */
+  cursor: pointer;
+}
+
+/* App-wide checkbox standard: 16px box (was the browser-default 13px).
+   Labels around checkboxes provide the larger click target. */
+input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
 
 .field-label {
@@ -413,12 +459,50 @@ textarea:focus-visible,
   background: var(--bad-bg);
 }
 
+/* Execution Breakdown status colors (V6.5 §10): Total = light blue,
+   N/A = orange, Retest = yellow, Untested = gray. Same shape as good/bad. */
+.metric-card.tone-info {
+  border-color: var(--info-border);
+  background: var(--info-bg);
+}
+
+.metric-card.tone-warn {
+  border-color: #ef6c00;
+  background: #fff3e0;
+}
+
+.metric-card.tone-attention {
+  border-color: #b58900;
+  background: #fff8e1;
+}
+
+.metric-card.tone-neutral {
+  border-color: var(--neutral-border);
+  background: var(--neutral-bg);
+}
+
 .metric-card.tone-good .metric-card-value {
   color: var(--good-fg);
 }
 
 .metric-card.tone-bad .metric-card-value {
   color: var(--bad-fg);
+}
+
+.metric-card.tone-info .metric-card-value {
+  color: var(--info-fg);
+}
+
+.metric-card.tone-warn .metric-card-value {
+  color: #e65100;
+}
+
+.metric-card.tone-attention .metric-card-value {
+  color: #7a5c00;
+}
+
+.metric-card.tone-neutral .metric-card-value {
+  color: var(--neutral-fg);
 }
 
 .metric-card-label {
@@ -668,8 +752,23 @@ textarea:focus-visible,
   font: inherit;
   color: inherit;
   cursor: pointer;
-  padding: 0;
+  padding: 4px 8px;
+  margin: -4px -8px; /* visual size unchanged; hit area grows to 24px+ */
   text-align: right;
+  border-radius: 4px;
+}
+
+.whatif-select:hover {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+/* ---- Multi-day planning (V2) ---- */
+
+.plan-config-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 220px);
+  gap: 10px 14px;
+  margin-bottom: 12px;
 }
 
 /* ---- Responsive (desktop-first, §26) ---- */
@@ -739,13 +838,6 @@ textarea:focus-visible,
 }
 
 /* ---- Multi-day planning (V2) ---- */
-
-.plan-config-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 220px);
-  gap: 10px 14px;
-  margin-bottom: 12px;
-}
 
 .plan-actions {
   display: flex;
@@ -988,6 +1080,7 @@ textarea:focus-visible,
 /* One horizontal strip for EVERY screen. It never wraps; when the window is too narrow it scrolls
    sideways (keyboard focus scrolls the focused tab into view). */
 .app-nav-tabs {
+  position: relative; /* containing block for absolutely positioned descendants */
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
@@ -1092,8 +1185,12 @@ textarea:focus-visible,
 }
 
 /* Scroll containment for wide data tables: the table scrolls inside its
-   card instead of squeezing into unreadable columns or overflowing the page. */
+   card instead of squeezing into unreadable columns or overflowing the page.
+   position:relative makes this the containing block for absolutely positioned
+   descendants (e.g. .sr-only spans) so they cannot escape the scroll clip and
+   inflate the page's scrollable width. */
 .table-wrap {
+  position: relative;
   width: 100%;
   overflow-x: auto;
 }
@@ -1299,6 +1396,7 @@ textarea:focus-visible,
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center; /* keep buttons at their natural height next to taller siblings */
   margin: 10px 0;
 }
 
@@ -1641,6 +1739,7 @@ textarea:focus-visible,
   display: flex;
   gap: 16px;
   flex-wrap: wrap;
+  margin-top: 12px; /* breathing room below the search/actions row */
 }
 
 .dr-filter-bar label {
@@ -1755,6 +1854,21 @@ textarea:focus-visible,
   color: var(--text);
 }
 
+/* Value + arrow share one row (keeps the card compact — the arrow no
+   longer occupies its own line). */
+.summary-card-value-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.summary-card-arrow {
+  font-size: 14px;
+  color: var(--border);
+  transition: color 0.1s, transform 0.1s;
+}
+
 .summary-card.tone-bad .summary-card-value {
   color: var(--bad-fg);
 }
@@ -1859,7 +1973,9 @@ textarea:focus-visible,
   font-weight: 600;
   color: inherit;
   cursor: pointer;
-  padding: 0;
+  padding: 4px 6px;
+  margin: -4px -6px; /* hit area ≥24px without inflating the header cell */
+  border-radius: 4px;
 }
 
 .th-sort:hover {
@@ -1910,7 +2026,7 @@ textarea:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px 12px;
+  padding: 8px 12px 10px;
 }
 
 .gantt-project-title-row {
@@ -1976,6 +2092,12 @@ textarea:focus-visible,
 .gantt-day-table {
   border-top: 1px solid var(--border);
   margin: 0;
+}
+
+/* Expanded day table sits inside the project card — align it with the
+   head's side padding instead of touching the card borders. */
+[id^='gantt-days-'] {
+  padding: 0 12px 10px;
 }
 
 .table-wrap > .gantt-day-table {
@@ -3370,7 +3492,13 @@ textarea:focus-visible,
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 8px 0 0;
+  margin: 12px 0;
+}
+
+/* The input-mode toggle as the header of the status-counts grid: attached
+   to the fields it governs (small bottom margin, no top float). */
+.exec-counts-header {
+  margin: 0 0 8px;
 }
 
 /* ---- TestRail import row (Today's Execution) ---- */
@@ -3379,6 +3507,14 @@ textarea:focus-visible,
   flex-wrap: wrap;
 }
 
+/* Save button row — separated from the inputs grid above it. */
+.exec-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
 .exec-testrail-input {
   max-width: 420px;
   min-width: 240px;
@@ -3585,6 +3721,7 @@ textarea:focus-visible,
   width: min(1040px, 100%);
 }
 .tenancy-table-wrap {
+  position: relative; /* containing block for .sr-only spans — keeps them inside the scroll clip */
   overflow-x: auto;
 }
 .tenancy-table {
@@ -3883,6 +4020,7 @@ textarea:focus-visible,
 .qa-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin: 8px 0; }
 .qa-warning { border: 1px solid #f9a825; background: #fff8e1; color: #6d4c00; border-radius: var(--radius); padding: 8px 12px; }
 .manager-panel, .control-center, .cycle-detail, .cycles-screen { display: grid; gap: 12px; }
+.manager-panel > *, .control-center > *, .cycle-detail > *, .cycles-screen > * { min-width: 0; }
 .manager-scope { color: var(--text-muted); font-size: 0.9em; }
 .attention-list { margin: 0; padding-left: 1.2em; }
 .cc-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 4px 16px; margin: 0; }
@@ -3893,7 +4031,7 @@ textarea:focus-visible,
 .status-cycle-archived { background: var(--neutral-bg); color: var(--text-muted); border-color: var(--border); }
 
 /* ---- Stage 8B: SV / Tester, Team Members ---- */
-.plain-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.plain-fieldset { border: 0; padding: 0; margin: 0 0 16px; min-width: 0; }
 .plain-fieldset:disabled { opacity: 0.85; }
 .status-owner { background: var(--info-bg); color: var(--info-fg); border-color: var(--info-border); }
 .tenancy-profile-actions { display: grid; gap: 4px; justify-items: start; }
@@ -3901,6 +4039,7 @@ textarea:focus-visible,
 
 /* ---- Stage 8C: Test Management ---- */
 .tm-screen { display: grid; gap: 12px; }
+.tm-screen > * { min-width: 0; }
 .tm-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px 12px; margin: 8px 0; }
 .tm-summary > div { border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; background: var(--surface); }
 .tm-summary dt { color: var(--text-muted); font-size: 0.8em; }
@@ -3992,9 +4131,12 @@ body.mt-presenting .app-shell, body.mt-presenting .gantt-mode, body.mt-presentin
 .brand-logo { height: 28px; width: auto; max-width: 140px; object-fit: contain; margin-right: 10px; align-self: center; }
 .brand-logo-large { height: 72px; max-width: 240px; margin: 0; }
 .branding-preview { margin: 8px 0; min-height: 40px; display: flex; align-items: center; }
-.nt-banner { margin: 8px 16px; border: 2px solid var(--info-border); background: var(--info-bg); color: var(--info-fg); border-radius: var(--radius); padding: 8px 12px; }
+.nt-banner { margin: 8px 16px; max-width: 720px; border: 2px solid var(--info-border); background: var(--info-bg); color: var(--info-fg); border-radius: var(--radius); padding: 8px 12px; }
 .nt-banner ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .nt-item { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
+/* Unclosed for 15+ minutes: the whole item turns red (the 🔴 symbol and the "overdue" label keep it readable without colour). */
+.nt-item--overdue { border-left: 4px solid var(--bad-border); background: var(--bad-bg); color: var(--bad-fg); border-radius: var(--radius); padding: 6px 10px; margin: -2px -4px; }
+.nt-item--overdue .nt-message, .nt-item--overdue .link-help { color: var(--bad-fg); }
 .nt-message { margin: 2px 0; white-space: pre-wrap; }
 .nt-form { max-width: 640px; }
 

@@ -9,7 +9,7 @@ import { useDueNotifications } from './useNotifications';
  */
 export function NotificationBanner() {
   const lang = useAppStateCtx().state.language;
-  const { items, acknowledge, state } = useDueNotifications();
+  const { items, overdueKeys, acknowledge, state } = useDueNotifications();
   if (items.length === 0) return null;
   return (
     <section className="nt-banner" role="region" aria-label={t(lang, 'nt.region')}>
@@ -17,16 +17,20 @@ export function NotificationBanner() {
         {items.map((item) => {
           const key = `${item.def.id}\u0000${item.occurrence.key}`;
           const st = state[key] ?? { kind: 'idle' as const };
+          const overdue = overdueKeys.has(key);
           return (
-            <li key={key} className="nt-item">
+            <li key={key} className={`nt-item${overdue ? ' nt-item--overdue' : ''}`}>
               <div className="nt-body">
                 <strong>
-                  <span aria-hidden="true">🔔 </span>
+                  <span aria-hidden="true">{overdue ? '🔴' : '🔔'} </span>
                   <span className="sr-only">{t(lang, 'nt.notification')}: </span>
                   {item.def.title}
                 </strong>
                 {item.def.message === '' ? null : <p className="nt-message">{item.def.message}</p>}
-                <small className="link-help">{t(lang, 'nt.scheduledFor', { when: `${item.occurrence.date} ${item.occurrence.time}` })}</small>
+                <small className="link-help">
+                  {t(lang, 'nt.scheduledFor', { when: `${item.occurrence.date} ${item.occurrence.time}` })}
+                  {overdue ? ` — ${t(lang, 'nt.overdue')}` : ''}
+                </small>
                 {st.kind === 'error' ? (
                   <p role="alert" className="data-controls-message error">
                     {t(lang, 'nt.ackFailed')}

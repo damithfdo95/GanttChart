@@ -20,6 +20,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useReportsStateCtx } from '../../app/state-contexts';
 import { t, type TranslationKey } from '../../i18n';
 import { createTestRailClient } from '../../lib/testrail/client';
+import { backfillTestRailUsers } from '../../lib/testrail/client';
 import { CsvFileButton } from '../../components/CsvFileButton';
 import {
   analyzeResults,
@@ -67,12 +68,13 @@ function FindingsTable({
   lang,
   view,
   findings,
-  baseUrl,
+  testUrl,
 }: {
   lang: Language;
   view: View;
   findings: readonly AnalysisFinding[];
-  baseUrl: string;
+  /** Builds a TestRail link; null when no connection is configured (no link rendered). */
+  testUrl: (path: string) => string | null;
 }) {
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<{ col: FindingsSort; asc: boolean } | null>(null);
@@ -132,12 +134,12 @@ function FindingsTable({
     const head = `<tr>${headers.map((h) => `<th style="padding:5px 8px;border:1px solid #ccc;background:#e8eaf6;">${h}</th>`).join('')}</tr>`;
     const body = rows
       .map((f) => {
-        const url = `${baseUrl}/index.php?/tests/view/${f.row.testId}`;
+        const url = testUrl(`tests/view/${f.row.testId}`);
         const cells = [
           f.testRun,
           f.row.testedBy,
           f.row.testedOn,
-          `<a href="${url}">${f.row.testId}</a>`,
+          url === null ? String(f.row.testId) : `<a href="${url}">${f.row.testId}</a>`,
           f.row.caseId === 0 ? '' : String(f.row.caseId),
           statusLabel(lang, f.row.status),
           f.issues.map((k) => issueLabel(lang, k)).join(', '),
@@ -185,18 +187,30 @@ function FindingsTable({
                 <td>{f.row.testedBy}</td>
                 <td>{f.row.testedOn}</td>
                 <td>
-                  <a href={`${baseUrl}/index.php?/tests/view/${f.row.testId}`} target="_blank" rel="noreferrer">
-                    {f.row.testId}
-                  </a>
+                  {(() => {
+                    const url = testUrl(`tests/view/${f.row.testId}`);
+                    return url === null ? (
+                      f.row.testId
+                    ) : (
+                      <a href={url} target="_blank" rel="noreferrer">
+                        {f.row.testId}
+                      </a>
+                    );
+                  })()}
                 </td>
                 <td>
                   {f.row.caseId === 0 ? (
                     '—'
-                  ) : (
-                    <a href={`${baseUrl}/index.php?/cases/results/${f.row.caseId}`} target="_blank" rel="noreferrer">
-                      {f.row.caseId}
-                    </a>
-                  )}
+                  ) : (() => {
+                    const url = testUrl(`cases/results/${f.row.caseId}`);
+                    return url === null ? (
+                      f.row.caseId
+                    ) : (
+                      <a href={url} target="_blank" rel="noreferrer">
+                        {f.row.caseId}
+                      </a>
+                    );
+                  })()}
                 </td>
                 <td>{statusLabel(lang, f.row.status)}</td>
                 <td>{f.issues.map((k) => issueLabel(lang, k)).join(', ')}</td>
@@ -281,6 +295,13 @@ export function AnalysisTab({ lang, project }: { lang: Language; project: Projec
         } catch {
           /* names degrade to "User #id" — counts never do */
         }
+        // Deactivated testers drop out of get_users while their results stay:
+        // fetch each missing id so the rows carry the person's name.
+        users = await backfillTestRailUsers(
+          client,
+          users,
+          results.map((r) => r.createdBy).concat(results.map((r) => r.assignedToId).filter((id): id is number => id !== null)),
+        );
         rows.push(...rowsFromApi(results, tests, [run], users));
       }
       if (rows.length === 0) {
@@ -289,7 +310,12 @@ export function AnalysisTab({ lang, project }: { lang: Language; project: Projec
       }
       adoptRows({ rows, source: 'api', fileName: 'TestRail API', unknownStatuses: [] });
     } catch (e) {
-      setNote({ kind: 'error', text: (e as TestRailClientError).message });
+      // The same localized hint pattern as every other TestRail touch point
+      // (Settings, DailyExecutionForm): kind → testrail.error.<kind>, plus the
+      // stable technical message from the client.
+      const err = e as TestRailClientError;
+      const hint = t(lang, `testrail.error.${err.kind}` as TranslationKey);
+      setNote({ kind: 'error', text: err.message !== undefined && err.message !== '' ? `${hint} — ${err.message}` : hint });
     } finally {
       setBusy(false);
     }
@@ -317,7 +343,11 @@ export function AnalysisTab({ lang, project }: { lang: Language; project: Projec
     [loaded, options],
   );
 
-  const baseUrl = (conn?.baseUrl ?? 'https://rkong.testrail.com').replace(/\/+$/, '');
+  // Links into TestRail need the configured instance root — never a guessed
+  // host. Without a connection the rows render without links (the fetch lane
+  // is unavailable anyway in that case, so rows can only come from CSV).
+  const baseUrl = (conn?.baseUrl ?? '').replace(/\/+$/, '');
+  const testUrl = (path: string): string | null => (baseUrl === '' ? null : `${baseUrl}/index.php?/${path}`);
 
   if (loaded === null) {
     return (
@@ -538,9 +568,16 @@ export function AnalysisTab({ lang, project }: { lang: Language; project: Projec
               {result.consistency.map((c) => (
                 <tr key={c.caseId} className="tm-analysis-warn">
                   <td>
-                    <a href={`${baseUrl}/index.php?/cases/results/${c.caseId}`} target="_blank" rel="noreferrer">
-                      {c.caseId}
-                    </a>
+                    {(() => {
+                      const url = testUrl(`cases/results/${c.caseId}`);
+                      return url === null ? (
+                        c.caseId
+                      ) : (
+                        <a href={url} target="_blank" rel="noreferrer">
+                          {c.caseId}
+                        </a>
+                      );
+                    })()}
                   </td>
                   <td>{c.date}</td>
                   <td>{t(lang, 'tm.analysis.consistency.diff', { passed: c.passed, failed: c.failed })}</td>
@@ -555,7 +592,7 @@ export function AnalysisTab({ lang, project }: { lang: Language; project: Projec
           lang={lang}
           view={view}
           findings={view === 'needsReview' ? result.needsReview : view === 'other' ? result.retestNa : result.buildCheck}
-          baseUrl={baseUrl}
+          testUrl={testUrl}
         />
       )}
     </section>

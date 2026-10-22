@@ -54,7 +54,7 @@ export function InputSection({
   onEndDateChange,
 }: InputSectionProps) {
   return (
-    <SectionCard title={t(lang, 'sections.input')} subtitle={t(sub, 'sections.input')} span={5}>
+    <SectionCard title={t(lang, 'sections.input')} subtitle={t(sub, 'sections.input')} span={5} fill>
       {tester ? <p className="dr-summary" role="note">{t(lang, 'dashboard.testerReadOnlyInputs')}</p> : null}
       <fieldset className="plain-fieldset" disabled={tester}>
         <div className="input-grid">
@@ -305,7 +305,6 @@ export function ExecutionSection({
 export interface CapacityProjectionSectionsProps {
   lang: Language;
   sub: Language;
-  lunchMinutes: number;
   productiveHours: number;
   capacityPerHour: number;
   capacityPerDay: number;
@@ -320,7 +319,6 @@ export interface CapacityProjectionSectionsProps {
 export function CapacityProjectionSections({
   lang,
   sub,
-  lunchMinutes,
   productiveHours,
   capacityPerHour,
   capacityPerDay,
@@ -333,9 +331,8 @@ export function CapacityProjectionSections({
 }: CapacityProjectionSectionsProps) {
   return (
     <>
-      <SectionCard title={t(lang, 'sections.capacity')} subtitle={t(sub, 'sections.capacity')} span={3}>
+      <SectionCard title={t(lang, 'sections.capacity')} subtitle={t(sub, 'sections.capacity')} span={3} fill>
         <div className="metrics-grid">
-          <MetricCard label={t(lang, 'metrics.lunchHours')} value={formatDuration(lunchMinutes)} />
           <MetricCard label={t(lang, 'metrics.productiveHoursDay')} value={formatDuration(productiveHours * 60)} />
           <MetricCard
             label={t(lang, 'metrics.teamCapacityHour')}
@@ -348,7 +345,7 @@ export function CapacityProjectionSections({
         </div>
       </SectionCard>
 
-      <SectionCard title={t(lang, 'sections.projection')} subtitle={t(sub, 'sections.projection')} span={4}>
+      <SectionCard title={t(lang, 'sections.projection')} subtitle={t(sub, 'sections.projection')} span={4} fill>
         <div className="metrics-grid">
           <MetricCard label={t(lang, 'dashboard.requiredTesters')} value={requiredTesters === null ? '—' : formatInteger(requiredTesters, lang)} hint={t(lang, 'hint.requiredTesters')} />
           <MetricCard label={t(lang, 'metrics.requiredHours')} value={formatDuration(requiredMinutes)} hint={t(lang, 'hint.requiredHours')} />

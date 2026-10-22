@@ -13,6 +13,7 @@
  */
 
 import type {
+  TestRailCaseRow,
   TestRailClientError,
   TestRailClientErrorKind,
   TestRailConnection,
@@ -39,6 +40,8 @@ export interface TestRailClient {
   testConnection(): Promise<number>;
   /** Users with id/name/email (get_users). Cloud instances allow this for any API user; self-hosted may restrict to admins. */
   getUsers(): Promise<TestRailUser[]>;
+  /** One user by id (get_user) — the name/email backfill when the list is restricted or the account is deactivated. */
+  getUser(userId: number): Promise<TestRailUser>;
   /** All runs of a plan (entries[] flattened; plans contain one run per config/suite entry). */
   getPlanRuns(planId: number): Promise<TestRailRunRef[]>;
   /** One standalone run (the target of a /runs/view URL). */
@@ -50,8 +53,9 @@ export interface TestRailClient {
    * state — status_id and assignedto_id at fetch time. Used for the
    * per-tester progress breakdown of a linked scope.
    */
-  getTestsForRun(runId: number): Promise<TestRailTestRow[]>;
-  /** All results of a run (paged), optionally bounded by creation time. */
+  getTestsForRun(runId: number): Promise<TestRailTestRow[]>;  /** All cases of a suite (get_cases, paged): the reusable case definitions
+   * (title, priority, type). Used by the Test Management case import. */
+  getCases(suiteId: number): Promise<TestRailCaseRow[]>;  /** All results of a run (paged), optionally bounded by creation time. */
   getResultsForRun(runId: number, request?: TestRailResultsRequest): Promise<TestRailResultRow[]>;
 }
 
@@ -127,6 +131,13 @@ interface RawTest {
   case_id?: unknown;
 }
 
+interface RawCase {
+  id?: unknown;
+  title?: unknown;
+  priority?: unknown;
+  type?: unknown;
+}
+
 function num(v: unknown): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
   return Number.isFinite(n) ? n : null;
@@ -181,6 +192,26 @@ function mapTest(raw: RawTest): TestRailTestRow {
     assignedToId: assignedToId === null ? null : Math.trunc(assignedToId),
     statusId: statusId === null ? null : Math.trunc(statusId),
     ...(caseId !== null ? { caseId: Math.trunc(caseId) } : {}),
+  };
+}
+
+/** get_cases rows carry priority/type as nested {id, name} objects on some
+ * servers and as bare names on others — accept both shapes. */
+function nameOf(v: unknown): string | undefined {
+  if (typeof v === 'string') return v.trim() === '' ? undefined : v.trim();
+  if (typeof v === 'object' && v !== null) {
+    const name = (v as { name?: unknown }).name;
+    if (typeof name === 'string' && name.trim() !== '') return name.trim();
+  }
+  return undefined;
+}
+
+function mapCase(raw: RawCase): TestRailCaseRow {
+  return {
+    caseId: num(raw.id) ?? -1,
+    title: typeof raw.title === 'string' ? raw.title : '',
+    ...(nameOf(raw.priority) !== undefined ? { priorityName: nameOf(raw.priority) } : {}),
+    ...(nameOf(raw.type) !== undefined ? { typeName: nameOf(raw.type) } : {}),
   };
 }
 
@@ -301,7 +332,7 @@ export function createTestRailClient(conn: TestRailConnection, fetchLike: FetchL
     query: Record<string, string | number | undefined>,
     timeoutMs: number,
     maxTotal: number,
-    listKey: 'results' | 'projects' | 'tests' | 'users' = 'results',
+    listKey: 'results' | 'projects' | 'tests' | 'users' | 'cases' = 'results',
   ): Promise<T[]> {
     const out: T[] = [];
     let offset = 0;
@@ -335,6 +366,8 @@ export function createTestRailClient(conn: TestRailConnection, fetchLike: FetchL
 
     getUsers: () => getPaged<RawUser>('get_users', {}, DEFAULT_TIMEOUT_MS, PAGE_SIZE * 4, 'users').then((users) => users.map(mapUser)),
 
+    getUser: async (userId: number) => mapUser(await doRequest<RawUser>(api(`get_user/${userId}`, {}), DEFAULT_TIMEOUT_MS)),
+
     getPlanRuns: async (planId: number) => {
       const plan = await doRequest<RawPlan>(api(`get_plan/${planId}`, {}), DEFAULT_TIMEOUT_MS);
       const runs: TestRailRunRef[] = [];
@@ -365,6 +398,12 @@ export function createTestRailClient(conn: TestRailConnection, fetchLike: FetchL
       return getPaged<RawTest>(`get_tests/${runId}`, {}, DEFAULT_TIMEOUT_MS, maxTotal, 'tests').then((rows) => rows.map((raw) => mapTest(raw)));
     },
 
+    getCases: (suiteId: number) => {
+      // Same defensive hard cap as getTestsForRun: never page unbounded.
+      const maxTotal = Math.max(1, Math.min(DEFAULT_MAX_TOTAL, HARD_CAP_TOTAL));
+      return getPaged<RawCase>(`get_cases/${suiteId}`, {}, DEFAULT_TIMEOUT_MS, maxTotal, 'cases').then((rows) => rows.map((raw) => mapCase(raw)));
+    },
+
     getResultsForRun: (runId: number, request: TestRailResultsRequest = {}) => {
       const maxTotal = Math.max(1, Math.min(request.maxTotal ?? DEFAULT_MAX_TOTAL, HARD_CAP_TOTAL));
       const timeoutMs = request.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -379,4 +418,35 @@ export function createTestRailClient(conn: TestRailConnection, fetchLike: FetchL
       ).then((rows) => rows.map((raw) => mapResult(raw, runId)));
     },
   };
+}
+/** Safety bound: never more than this many get_user calls per backfill. */
+const MAX_USER_BACKFILL = 50;
+
+/**
+ * Best-effort name backfill for testers missing from the user list: a
+ * deactivated account drops out of get_users while its tests stay assigned,
+ * and some self-hosted instances restrict the list itself. Each missing id
+ * is fetched with one get_user — which also returns the email that links
+ * Team Members. Never throws: an id that cannot be fetched keeps the
+ * caller's "User #id" fallback label.
+ */
+export async function backfillTestRailUsers(
+  client: TestRailClient,
+  users: readonly TestRailUser[],
+  ids: readonly number[],
+): Promise<TestRailUser[]> {
+  const known = new Set(users.map((u) => u.id));
+  const missing = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0 && !known.has(id)))].slice(0, MAX_USER_BACKFILL);
+  if (missing.length === 0) return [...users];
+  const fetched = await Promise.all(
+    missing.map(async (id): Promise<TestRailUser | null> => {
+      try {
+        return await client.getUser(id);
+      } catch {
+        return null; // best-effort: the fallback label stays
+      }
+    }),
+  );
+  const added = fetched.filter((u): u is TestRailUser => u !== null && u.id > 0 && u.name !== '');
+  return [...users, ...added];
 }

@@ -214,6 +214,8 @@ export interface CaseInput {
   priority?: CasePriority;
   type?: string;
   tags?: string[];
+  /** The TestRail case id when the case is imported from TestRail (the sync join key). */
+  testrailCaseId?: number;
 }
 
 /** Keys already used in a project, ARCHIVED ones included, so a retired key is never handed out again. */
@@ -256,6 +258,7 @@ export function newTestCase(
     priority,
     ...(clean(input.type) === undefined ? {} : { type: clean(input.type) }),
     ...(tags.length === 0 ? {} : { tags }),
+    ...(input.testrailCaseId !== undefined ? { testrailCaseId: input.testrailCaseId } : {}),
     status: 'active',
     order,
     createdAt: now,

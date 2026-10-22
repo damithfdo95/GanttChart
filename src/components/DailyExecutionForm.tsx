@@ -17,6 +17,7 @@ import {
 } from '../lib/calculations/dailyExecuted';
 import { formatInteger, minutesToTimeInput, parseTimeToMinutes } from '../lib/formatting/format';
 import { createTestRailClient } from '../lib/testrail/client';
+import { backfillTestRailUsers } from '../lib/testrail/client';
 import type { TestRailClientError, TestRailResultRow, TestRailUser } from '../../shared/testrail';
 import {
   aggregateTestRailDay,
@@ -172,6 +173,14 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
       } catch {
         /* self-hosted instances may restrict get_users to admins */
       }
+      // A deactivated tester drops out of get_users while their results stay:
+      // fetch each missing id so the row carries the person's name and email
+      // (the email is what links the row to a Team Member).
+      users = await backfillTestRailUsers(
+        client,
+        users,
+        results.map((r) => r.assignedToId).filter((id): id is number => id !== null),
+      );
       const day = linkTestRailMembers(aggregateTestRailDay(results, users, DEFAULT_TESTRAIL_STATUS_MAP, date), users, reports.state.rcsMembers ?? [], reports.state.externalIdentities ?? []);
       if (day.totals.executed === 0) {
         setTestrailMessage({ kind: 'note', text: t(lang, 'exec.testrailNoResults', { date }) });
@@ -301,13 +310,6 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
             onChange={(e) => set({ overtimeMinutes: clampOvertimeMinutes(Number(e.target.value) || 0) })}
           />
         </Field>
-        <Field label={t(lang, 'exec.intervalTaken')}>
-          <input
-            type="checkbox"
-            checked={form.intervalEnabled}
-            onChange={(e) => set({ intervalEnabled: e.target.checked })}
-          />
-        </Field>
         <Field label={t(lang, 'exec.actualTesters')}>
           <input
             className="input"
@@ -318,10 +320,22 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
             onChange={(e) => set({ testers: Math.max(0, Number(e.target.value) || 0) })}
           />
         </Field>
+        {/* Interval Taken: an inline checkbox on the INPUT row (bottom-aligned
+            with the neighbouring inputs — not a label-above-tiny-box field). */}
+        <label className="field field-check">
+          <input
+            type="checkbox"
+            checked={form.intervalEnabled}
+            onChange={(e) => set({ intervalEnabled: e.target.checked })}
+          />
+          <span>{t(lang, 'exec.intervalTaken')}</span>
+        </label>
       </div>
 
-      {/* Status-count input mode: running totals (default) or per-day. */}
-      <div className="exec-mode-row">
+      {/* Status-count input mode: running totals (default) or per day. A
+          header OF the counts grid below — the toggle governs those fields,
+          so it sits attached to them, not floating between sections. */}
+      <div className="exec-mode-row exec-counts-header">
         <span className="field-label">{t(lang, 'exec.inputMode')}</span>
         <div className="exec-mode-toggle" role="group" aria-label={t(lang, 'exec.inputMode')}>
           <button
