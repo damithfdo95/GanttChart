@@ -2026,6 +2026,7 @@
   "tm.testrailImport.assignUnmatchedTestsHeader": "Tests",
   "tm.testrailImport.assignColTester": "TestRail tester",
   "tm.testrailImport.assignLinkToMember": "Link to member",
+  "tm.testrailImport.assignExisting": "Link testers of already-imported runs",
   "tm.testrailImport.assignConfirm": "Assign {count} tester(s)",
   "tm.testrailImport.assignSkip": "Skip assignments",
   "tm.testrailImport.assignDone": "{count} tester assignment(s) were created.",

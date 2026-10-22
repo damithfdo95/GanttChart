@@ -2026,6 +2026,7 @@
   "tm.testrailImport.assignUnmatchedTestsHeader": "テスト数",
   "tm.testrailImport.assignColTester": "TestRailテスター",
   "tm.testrailImport.assignLinkToMember": "メンバーにリンク",
+  "tm.testrailImport.assignExisting": "取込済みランのテスターをリンク",
   "tm.testrailImport.assignConfirm": "{count}名のテスターをアサイン",
   "tm.testrailImport.assignSkip": "アサインをスキップ",
   "tm.testrailImport.assignDone": "テスターアサインを{count}件作成しました。",

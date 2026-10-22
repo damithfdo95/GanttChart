@@ -172,6 +172,28 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
     void prepareAssignStep(rows.map((r) => r.run.id), scopeIdsByRunId, imported);
   };
 
+  /**
+   * Open the tester-assignment/linking step for runs that were imported
+   * EARLIER (all duplicates now): the SV can still link TestRail testers to
+   * Team Members and create the assignments they missed back then. Uses
+   * the EXISTING scopes' ids (found by their testrail run link) instead of
+   * newly created ones.
+   */
+  const openAssignForDuplicates = (): void => {
+    if (plan === null) return;
+    // The duplicate rows are the runs this project already links.
+    const duplicateRunIds = plan.rows.filter((r) => !r.importable).map((r) => r.run.id);
+    if (duplicateRunIds.length === 0) return;
+    // Map each run to the EXISTING scope that links it.
+    const scopeIdsByRunId = new Map<number, string>();
+    for (const runId of duplicateRunIds) {
+      const scope = scopesOfProject.find((s) => s.testrail?.runId === runId);
+      if (scope !== undefined) scopeIdsByRunId.set(runId, scope.id);
+    }
+    if (scopeIdsByRunId.size === 0) return;
+    void prepareAssignStep([...scopeIdsByRunId.keys()], scopeIdsByRunId, 0);
+  };
+
   /** Fetch the imported runs' tests + the TestRail user list and plan the assignments. */
   const prepareAssignStep = async (runIds: readonly number[], scopeIdsByRunId: Map<number, string>, imported: number): Promise<void> => {
     if (conn === undefined) {
@@ -428,6 +450,16 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
             <p className="qa-warning" role="status">
               {t(lang, 'tm.testrailImport.noneSelectable')}
             </p>
+          ) : null}
+          {/* Runs imported earlier (duplicates): their testers can still be
+              linked and assigned — the step the original import never showed
+              (or that was skipped). */}
+          {plan.duplicateCount > 0 ? (
+            <div className="dr-button-row">
+              <button type="button" className="btn" disabled={assignBusy} onClick={openAssignForDuplicates}>
+                {t(lang, 'tm.testrailImport.assignExisting')}
+              </button>
+            </div>
           ) : null}
         </div>
       )}
