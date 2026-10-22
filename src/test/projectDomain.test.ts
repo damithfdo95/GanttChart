@@ -464,11 +464,15 @@ describe('Extended / On Hold lifecycle statuses (whole-system calculation)', () 
     expect(filterProjects(projects, { ...DEFAULT_PORTFOLIO_FILTERS, lifecycle: 'extended' }, TODAY, NOW).map((p) => p.status)).toEqual(['extended']);
     expect(filterProjects(projects, { ...DEFAULT_PORTFOLIO_FILTERS, lifecycle: 'onHold' }, TODAY, NOW).map((p) => p.status)).toEqual(['onHold']);
     // Active keeps extended/onHold visible alongside todo/ongoing.
-    expect(filterProjects(projects, { ...DEFAULT_PORTFOLIO_FILTERS }, TODAY, NOW).map((p) => p.status).sort()).toEqual(['extended', 'onHold', 'ongoing']);
-    // Planning-status filter "onHold" matches the masked planning state.
-    expect(filterProjects(projects, { ...DEFAULT_PORTFOLIO_FILTERS, planning: 'onHold' }, TODAY, NOW).map((p) => p.status)).toEqual(['onHold']);
+    expect(filterProjects(projects, { ...DEFAULT_PORTFOLIO_FILTERS, lifecycle: 'active' }, TODAY, NOW).map((p) => p.status).sort()).toEqual(['extended', 'onHold', 'ongoing']);
+    // The default view is In Progress (ongoing only).
+    expect(filterProjects(projects, { ...DEFAULT_PORTFOLIO_FILTERS }, TODAY, NOW).map((p) => p.status)).toEqual(['ongoing']);
+    // Planning-status filter "onHold" matches the masked planning state
+    // (lifecycle widened to Active so the onHold project reaches the
+    // planning check).
+    expect(filterProjects(projects, { ...DEFAULT_PORTFOLIO_FILTERS, lifecycle: 'active', planning: 'onHold' }, TODAY, NOW).map((p) => p.status)).toEqual(['onHold']);
     // On-hold projects never match onTrack.
-    expect(filterProjects(projects, { ...DEFAULT_PORTFOLIO_FILTERS, planning: 'onTrack' }, TODAY, NOW).map((p) => p.status)).not.toContain('onHold');
+    expect(filterProjects(projects, { ...DEFAULT_PORTFOLIO_FILTERS, lifecycle: 'active', planning: 'onTrack' }, TODAY, NOW).map((p) => p.status)).not.toContain('onHold');
   });
 
   it('the default portfolio sort orders todo → ongoing → extended → onHold → done', () => {
@@ -527,9 +531,10 @@ describe('acceptance scenario (data level)', () => {
     return [p1, p2, p3, p4];
   }
 
-  it('Test 1/2/3: Active hides done; All shows everything; Done shows only done', () => {
+  it('Test 1/2/3: In Progress is the default; Active hides done; All shows everything; Done shows only done', () => {
     const projects = scenario();
-    expect(filterProjects(projects, { ...DEFAULT_PORTFOLIO_FILTERS }, TODAY, NOW).map((p) => p.projectId)).toEqual(['PRJ-001', 'PRJ-002', 'PRJ-003']);
+    expect(filterProjects(projects, { ...DEFAULT_PORTFOLIO_FILTERS }, TODAY, NOW).map((p) => p.projectId)).toEqual(['PRJ-002', 'PRJ-003']);
+    expect(filterProjects(projects, { ...DEFAULT_PORTFOLIO_FILTERS, lifecycle: 'active' }, TODAY, NOW).map((p) => p.projectId)).toEqual(['PRJ-001', 'PRJ-002', 'PRJ-003']);
     expect(filterProjects(projects, { ...DEFAULT_PORTFOLIO_FILTERS, lifecycle: 'all' }, TODAY, NOW)).toHaveLength(4);
     expect(filterProjects(projects, { ...DEFAULT_PORTFOLIO_FILTERS, lifecycle: 'done' }, TODAY, NOW).map((p) => p.projectId)).toEqual(['PRJ-004']);
   });
@@ -537,7 +542,7 @@ describe('acceptance scenario (data level)', () => {
   it('Test 4: reopening PRJ-004 returns it to the Active view', () => {
     const projects = scenario();
     const reopened = projects.map((p) => (p.projectId === 'PRJ-004' ? reopenProject(p, 'ongoing', '2026-09-18T09:00:00.000Z') : p));
-    expect(filterProjects(reopened, { ...DEFAULT_PORTFOLIO_FILTERS }, TODAY, NOW).map((p) => p.projectId)).toEqual(['PRJ-001', 'PRJ-002', 'PRJ-003', 'PRJ-004']);
+    expect(filterProjects(reopened, { ...DEFAULT_PORTFOLIO_FILTERS, lifecycle: 'active' }, TODAY, NOW).map((p) => p.projectId)).toEqual(['PRJ-001', 'PRJ-002', 'PRJ-003', 'PRJ-004']);
   });
 
   it('Test 5: a lifecycle change is immediately visible in derived data', () => {
@@ -557,7 +562,7 @@ describe('acceptance scenario (data level)', () => {
       inputs({ casesCompleted: 70 }),
       '2026-09-17T12:00:00.000Z',
     );
-    const overall = sortProjects(filterProjects(edited, { ...DEFAULT_PORTFOLIO_FILTERS }, TODAY, NOW), 'default');
+    const overall = sortProjects(filterProjects(edited, { ...DEFAULT_PORTFOLIO_FILTERS, lifecycle: 'active' }, TODAY, NOW), 'default');
     expect(overall[0].inputs.casesCompleted).toBe(70); // updated planning appears in Overall
     expect(overall[0].updatedAt).toBe('2026-09-17T12:00:00.000Z');
     // PRJ-002 still has its own untouched data — no stale PRJ-001 state leaks in.

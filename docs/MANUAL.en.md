@@ -181,7 +181,7 @@ A live **Calculation Preview** shows the resulting capacity, required testers, r
 Answers "What is the state of all my projects?"
 
 - **Nine summary cards** (Total, Scheduled, In Progress, Extended, On Hold, Done, At Risk, Overdue, Capacity Shortage) — clicking a card filters the table.
-- **Search** by project name (EN/JA) or Project ID; **filter** by lifecycle status or planning status (including the derived **Needs Attention** view: At Risk, Capacity Shortage, Overdue, deadline within 7 days, or no update for 14+ days); **sort** any column.
+- **Search** by project name (EN/JA) or Project ID; **filter** by lifecycle status (In Progress by default) or planning status (including the derived **Needs Attention** view: At Risk, Capacity Shortage, Overdue, deadline within 7 days, or no update for 14+ days); **sort** any column.
 - **Bulk actions**: select rows and use **Change Status** (bulk Done asks for confirmation with a completion summary).
 - **Per-row actions**: change the lifecycle status (marking Done asks for confirmation), **Open Gantt** to edit the project, export, or delete (confirmation required — no data resurrection afterwards).
 - **Done projects** can be reopened as any status; their completion history is preserved.

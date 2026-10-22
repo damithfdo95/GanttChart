@@ -171,9 +171,10 @@ describe('visibility / filtering / search', () => {
   const ongoing = project({ nameEn: 'Android 4.1.0', nameJa: 'アンドロイド', status: 'ongoing', team: 'RCS' });
   const done = project({ nameEn: 'Old Release', status: 'done' });
 
-  it('Active hides Done by default; All shows everything; Done shows only done', () => {
+  it('In Progress is the default; Active hides Done; All shows everything; Done shows only done', () => {
     const all = [todo, ongoing, done];
-    expect(filterProjects(all, { ...DEFAULT_PORTFOLIO_FILTERS }, TODAY, NOW).map((p) => p.nameEn)).toEqual(['RLO Desktop', 'Android 4.1.0']);
+    expect(filterProjects(all, { ...DEFAULT_PORTFOLIO_FILTERS }, TODAY, NOW).map((p) => p.nameEn)).toEqual(['Android 4.1.0']);
+    expect(filterProjects(all, { ...DEFAULT_PORTFOLIO_FILTERS, lifecycle: 'active' }, TODAY, NOW).map((p) => p.nameEn)).toEqual(['RLO Desktop', 'Android 4.1.0']);
     expect(filterProjects(all, { ...DEFAULT_PORTFOLIO_FILTERS, lifecycle: 'all' }, TODAY, NOW)).toHaveLength(3);
     expect(filterProjects(all, { ...DEFAULT_PORTFOLIO_FILTERS, lifecycle: 'done' }, TODAY, NOW).map((p) => p.nameEn)).toEqual(['Old Release']);
     expect(filterProjects(all, { ...DEFAULT_PORTFOLIO_FILTERS, lifecycle: 'todo' }, TODAY, NOW).map((p) => p.nameEn)).toEqual(['RLO Desktop']);
@@ -182,7 +183,7 @@ describe('visibility / filtering / search', () => {
 
   it('filters by team and by planning status', () => {
     const all = [todo, ongoing, done];
-    expect(filterProjects(all, { ...DEFAULT_PORTFOLIO_FILTERS, team: 'RCS' }, TODAY, NOW).map((p) => p.nameEn)).toEqual(['Android 4.1.0']);
+    expect(filterProjects(all, { ...DEFAULT_PORTFOLIO_FILTERS, lifecycle: 'active', team: 'RCS' }, TODAY, NOW).map((p) => p.nameEn)).toEqual(['Android 4.1.0']);
     const overdueOne = project({ inputs: inputs({ targetCompletionDate: '2026-09-10' }) });
     expect(filterProjects([ongoing, overdueOne], { ...DEFAULT_PORTFOLIO_FILTERS, planning: 'overdue' }, TODAY, NOW).map((p) => p.nameEn)).toEqual([overdueOne.nameEn]);
   });
@@ -193,7 +194,7 @@ describe('visibility / filtering / search', () => {
     expect(searchMatchesProject(ongoing, ongoing.id)).toBe(true);
     expect(searchMatchesProject(ongoing, 'ios')).toBe(false);
     expect(searchMatchesProject(ongoing, '')).toBe(true);
-    expect(filterProjects([todo, ongoing], { ...DEFAULT_PORTFOLIO_FILTERS, search: 'desktop' }, TODAY, NOW).map((p) => p.nameEn)).toEqual(['RLO Desktop']);
+    expect(filterProjects([todo, ongoing], { ...DEFAULT_PORTFOLIO_FILTERS, lifecycle: 'active', search: 'desktop' }, TODAY, NOW).map((p) => p.nameEn)).toEqual(['RLO Desktop']);
   });
 });
 

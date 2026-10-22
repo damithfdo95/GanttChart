@@ -591,8 +591,9 @@ project scheduled and executed?"**
 
 ### Gantt (ガント)
 
-- Project selector + status filter (Active default / All / To Do / Ongoing /
-  Done). Done projects never occupy Gantt space but are never deleted.
+- Project selector + status filter (In Progress default / Active / All / To
+  Do / Ongoing / Done). Done projects never occupy Gantt space but are never
+  deleted.
 - **Schedule overview bars** (usability pass): one horizontal bar per project
   (start date → deadline) with a progress fill, status coloring, a today
   marker line and click-to-select — a real Gantt view over the portfolio.

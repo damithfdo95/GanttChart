@@ -50,7 +50,7 @@ export interface PortfolioFilters {
 }
 
 export const DEFAULT_PORTFOLIO_FILTERS: PortfolioFilters = {
-  lifecycle: 'active',
+  lifecycle: 'ongoing',
   planning: 'all',
   team: null,
   search: '',
