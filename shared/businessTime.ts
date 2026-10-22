@@ -31,3 +31,19 @@ export function businessClock(at: number | Date = Date.now()): { date: string; m
 export function businessMomentMs(date: string, time: string): number {
   return Date.parse(`${date}T${time}:00+09:00`);
 }
+
+const jstStampFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: BUSINESS_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
+/**
+ * An instant rendered as "YYYY-MM-DD HH:mm" in the business time zone
+ * (JST) — the format the Settings → Release line shows for the build
+ * timestamp. The stored value stays ISO/UTC; only the display converts.
+ * Invalid input degrades to '' (never "Invalid Date").
+ */
+export function businessStamp(at: number | Date | string): string {
+  const ms = typeof at === 'string' ? Date.parse(at) : at instanceof Date ? at.getTime() : at;
+  if (!Number.isFinite(ms)) return '';
+  const parts = jstStampFormatter.formatToParts(ms);
+  const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
+}

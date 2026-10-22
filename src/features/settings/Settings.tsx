@@ -8,6 +8,7 @@ import { DEFAULT_AUTO_BACKUP_SETTINGS, defaultReportsState } from '../../lib/sto
 import { isFolderAccessSupported, pickBackupDirectory, readAutoBackupRecord } from '../../lib/backup/autoBackup';
 import { clearAllLocalDataAsync, getStorageDiagnostics, type StorageDiagnostics } from '../../lib/storage/db/persistenceBackend';
 import { BUILD_INFO, isTaggedRelease } from '../../lib/buildInfo';
+import { businessStamp } from '../../../shared/businessTime';
 import { MIGRATION_FAILURE_LABEL_KEY, readMigrationFailureRecord } from '../../lib/storage/db/recovery';
 import { WorkspacePanel } from '../tenancy/WorkspacePanel';
 import { DataBackup } from './DataBackup';
@@ -408,7 +409,7 @@ export function Settings() {
             ? t(lang, 'settings.releaseTag', { release: BUILD_INFO.release })
             : t(lang, 'settings.releaseUntagged')}
           {` · ${t(lang, 'settings.releaseCommit', { commit: BUILD_INFO.commit || '?' })}`}
-          {` · ${t(lang, 'settings.releaseBuiltAt', { time: BUILD_INFO.builtAt.slice(0, 16).replace('T', ' ') })}`}
+          {` · ${t(lang, 'settings.releaseBuiltAt', { time: businessStamp(BUILD_INFO.builtAt) })}`}
         </p>
       </section>
     </div>
