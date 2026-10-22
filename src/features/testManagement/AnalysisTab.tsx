@@ -58,6 +58,10 @@ const statusLabel = (lang: Language, s: AnalysisStatus): string => t(lang, `tm.a
 /** One issue kind, localized (確認項目). */
 const issueLabel = (lang: Language, k: AnalysisIssueKind): string => t(lang, `tm.analysis.issue.${k}` as TranslationKey);
 
+/** The sortable columns of the findings table, in display order. */
+type FindingsSort = 'testRun' | 'testedBy' | 'date' | 'test' | 'case' | 'status' | 'issues' | 'comment';
+const FINDINGS_SORTS: readonly FindingsSort[] = ['testRun', 'testedBy', 'date', 'test', 'case', 'status', 'issues', 'comment'];
+
 /** One sortable table of findings, with a keyword filter and a copy button. */
 function FindingsTable({
   lang,
@@ -71,14 +75,48 @@ function FindingsTable({
   baseUrl: string;
 }) {
   const [q, setQ] = useState('');
+  const [sort, setSort] = useState<{ col: FindingsSort; asc: boolean } | null>(null);
   const rows = useMemo(() => {
     const keywords = q.trim().toLowerCase().split(/\s+/).filter((k) => k !== '');
-    if (keywords.length === 0) return findings;
-    return findings.filter((f) => {
+    const filtered = keywords.length === 0 ? findings : findings.filter((f) => {
       const hay = `${f.testRun} ${f.row.testedBy} ${f.row.testedOn} ${f.row.testId} ${f.row.caseId} ${statusLabel(lang, f.row.status)} ${f.issues.map((k) => issueLabel(lang, k)).join(' ')} ${f.row.comment}`.toLowerCase();
       return keywords.every((k) => hay.includes(k));
     });
-  }, [findings, q, lang]);
+    if (sort === null) return filtered;
+    const value = (f: AnalysisFinding): string => {
+      switch (sort.col) {
+        case 'testRun':
+          return f.testRun;
+        case 'testedBy':
+          return f.row.testedBy;
+        case 'date':
+          return f.row.testedOn;
+        case 'test':
+          return String(f.row.testId);
+        case 'case':
+          return String(f.row.caseId);
+        case 'status':
+          return statusLabel(lang, f.row.status);
+        case 'issues':
+          return f.issues.map((k) => issueLabel(lang, k)).join(', ');
+        default:
+          return f.row.comment;
+      }
+    };
+    // Numeric-aware compare (the Python tool's sort): numbers first, then text.
+    const compare = (a: string, b: string): number => {
+      const na = Number(a);
+      const nb = Number(b);
+      if (Number.isFinite(na) && Number.isFinite(nb) && a.trim() !== '' && b.trim() !== '') return na - nb;
+      return a.toLowerCase().localeCompare(b.toLowerCase());
+    };
+    return [...filtered].sort((x, y) => (sort.asc ? 1 : -1) * compare(value(x), value(y)));
+  }, [findings, q, lang, sort]);
+
+  const toggleSort = (col: FindingsSort): void => {
+    setSort((prev) => (prev === null || prev.col !== col ? { col, asc: true } : prev.asc ? { col, asc: false } : null));
+  };
+  const arrow = (col: FindingsSort): string => (sort?.col === col ? (sort.asc ? ' ▲' : ' ▼') : '');
 
   const copyTable = (): void => {
     const headers = [
@@ -130,14 +168,14 @@ function FindingsTable({
           <caption className="sr-only">{t(lang, `tm.analysis.view.${view}` as TranslationKey)}</caption>
           <thead>
             <tr>
-              <th scope="col">{t(lang, 'tm.analysis.col.testRun')}</th>
-              <th scope="col">{t(lang, 'tm.analysis.col.testedBy')}</th>
-              <th scope="col">{t(lang, 'tm.analysis.col.date')}</th>
-              <th scope="col">{t(lang, 'tm.analysis.col.test')}</th>
-              <th scope="col">{t(lang, 'tm.analysis.col.case')}</th>
-              <th scope="col">{t(lang, 'tm.analysis.col.status')}</th>
-              <th scope="col">{t(lang, 'tm.analysis.col.issues')}</th>
-              <th scope="col">{t(lang, 'tm.analysis.col.comment')}</th>
+              {FINDINGS_SORTS.map((col) => (
+                <th key={col} scope="col" aria-sort={sort?.col === col ? (sort.asc ? 'ascending' : 'descending') : undefined}>
+                  <button type="button" className="tm-sort-btn" onClick={() => toggleSort(col)} title={t(lang, 'tm.analysis.sortHint')}>
+                    {t(lang, `tm.analysis.col.${col === 'date' ? 'date' : col}` as TranslationKey)}
+                    {arrow(col)}
+                  </button>
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>

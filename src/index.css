@@ -3879,6 +3879,19 @@ textarea:focus-visible,
 .tm-row.tm-status-pass th.tm-key { color: var(--good-fg); }
 .tm-row.tm-status-blocked th.tm-key { color: var(--bad-fg); }
 
+/* ---- TestRail Result Analysis (Analysis tab) ---- */
+.tm-analysis-options { align-items: end; }
+.tm-analysis-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 8px 0; }
+.tm-analysis-filter { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; display: grid; gap: 4px; align-content: start; max-height: 180px; overflow: auto; }
+.tm-analysis-filter legend { font-weight: 600; font-size: 0.85em; padding: 0 4px; }
+.tm-analysis-cards { margin: 8px 0; }
+.tm-analysis-table .tenancy-controls { margin-bottom: 8px; }
+.tm-analysis-ng td { background: var(--bad-bg); }
+.tm-analysis-warn td { background: #fff8e1; }
+.tm-analysis-comment { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-sort-btn { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+.tm-sort-btn:hover { text-decoration: underline; }
+
 /* ---- Stage 8D: Total Test Cases, Team Members directory ---- */
 .tm-warning { border: 1px solid var(--bad-border); background: var(--bad-bg); color: var(--bad-fg); border-radius: var(--radius); padding: 6px 8px; margin: 6px 0; }
 .tm-total-input { display: inline-grid; gap: 2px; }

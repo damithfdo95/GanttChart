@@ -2285,6 +2285,7 @@
   "tm.analysis.search": "Search",
   "tm.analysis.copy": "Copy for Teams",
   "tm.analysis.rows": "{count} rows",
+  "tm.analysis.sortHint": "Click to sort (ascending / descending / off)",
   "tm.analysis.status.passed": "Passed",
   "tm.analysis.status.failed": "Failed",
   "tm.analysis.status.retest": "Retest",

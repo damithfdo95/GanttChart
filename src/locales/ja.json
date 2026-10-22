@@ -2285,6 +2285,7 @@
   "tm.analysis.search": "検索",
   "tm.analysis.copy": "Teams 用にコピー",
   "tm.analysis.rows": "{count} 行",
+  "tm.analysis.sortHint": "クリックでソート（昇順 / 降順 / 解除）",
   "tm.analysis.status.passed": "Passed",
   "tm.analysis.status.failed": "Failed",
   "tm.analysis.status.retest": "Retest",
