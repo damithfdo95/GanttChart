@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useReportsStateCtx } from '../../app/state-contexts';
-import { newScope, planImportRows, type TestManagementState, type TestRailScopeImportPlan } from '../../domain/testManagement';
+import { newScope, newTestCase, planImportRows, type TestManagementState, type TestRailScopeImportPlan } from '../../domain/testManagement';
+import { planTestRailCaseImport } from '../../domain/testManagement/testrailCases';
 import { planTestRailAssignments, type UnmatchedTestRailTester } from '../../domain/testManagement/testrailAssignments';
 import { buildExternalIdentityLink } from '../../domain/attribution';
 import { personOptionText, personOptions, selectableMembers } from '../../domain/teamMembers';
@@ -195,6 +196,54 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
     void prepareAssignStep([...scopeIdsByRunId.keys()], scopeIdsByRunId, 0);
   };
 
+  /**
+   * Auto-import the suite's cases for the just-created scopes: the run's
+   * suite cases become Test Cases (with their testrailCaseId link) through
+   * the SAME pure plan the Cases tab's manual import uses — so after ONE
+   * fetch the whole Test Management page works (Overview counts, Cases
+   * list, Execution sync, Analysis) without registering anything by hand.
+   * Best-effort: a run without a suite id or an empty suite is skipped
+   * silently (the SV can still import cases by hand from the Cases tab).
+   */
+  const autoImportCases = async (client: ReturnType<typeof createTestRailClient>, runIds: readonly number[], scopeIdsByRunId: Map<number, string>): Promise<number> => {
+    let imported = 0;
+    for (const runId of runIds) {
+      const scopeId = scopeIdsByRunId.get(runId);
+      if (scopeId === undefined) continue;
+      try {
+        const run = await client.getRun(runId);
+        if (run.suiteId === undefined) continue;
+        const cases = await client.getCases(run.suiteId);
+        if (cases.length === 0) continue;
+        const scope = tm.scopes.find((s) => s.id === scopeId);
+        const casePlan = planTestRailCaseImport(cases, tm.testCases, project.projectId, scope?.code ?? '');
+        if (casePlan.commitRows.length === 0) continue;
+        const now = new Date().toISOString();
+        let failed: string | null = null;
+        tm.update((state: TestManagementState) => {
+          let acc = state;
+          const baseOrder = acc.testCases.filter((c) => c.scopeId === scopeId).reduce((m, c) => Math.max(m, c.order), 0);
+          for (const [i, row] of casePlan.commitRows.entries()) {
+            const made = newTestCase(acc, scopeId, { title: row.title, priority: row.priority, ...(row.type === undefined ? {} : { type: row.type }), testrailCaseId: row.testrailCaseId }, now, {
+              reservedKeys: acc.testCases.filter((c) => c.projectId === project.projectId).map((c) => c.key),
+              order: baseOrder + (i + 1) * 10,
+            });
+            if (!made.ok) {
+              failed = made.error;
+              return state;
+            }
+            acc = { ...acc, testCases: [...acc.testCases, made.value] };
+          }
+          return acc;
+        });
+        if (failed === null) imported += casePlan.commitRows.length;
+      } catch {
+        /* best-effort: this run's cases are skipped, the import continues */
+      }
+    }
+    return imported;
+  };
+
   /** Fetch the imported runs' tests + the TestRail user list and plan the assignments. */
   const prepareAssignStep = async (runIds: readonly number[], scopeIdsByRunId: Map<number, string>, imported: number): Promise<void> => {
     if (conn === undefined) {
@@ -206,6 +255,12 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
     setAssignNote(null);
     try {
       const client = createTestRailClient(conn);
+      // The suite's cases become Test Cases automatically (best-effort), so
+      // the whole Test Management page works after this one import.
+      const casesImported = await autoImportCases(client, runIds, scopeIdsByRunId);
+      if (casesImported > 0) {
+        setAssignNote(t(lang, 'tm.testrailImport.casesAutoImported', { count: casesImported }));
+      }
       const testsByRunId = new Map<number, TestRailTestRow[]>();
       await Promise.all(
         runIds.map(async (runId) => {

@@ -2027,6 +2027,7 @@
   "tm.testrailImport.assignColTester": "TestRail tester",
   "tm.testrailImport.assignLinkToMember": "Link to member",
   "tm.testrailImport.assignExisting": "Link testers of already-imported runs",
+  "tm.testrailImport.casesAutoImported": "{count} test case(s) were imported from the runs' suites.",
   "tm.testrailImport.assignConfirm": "Assign {count} tester(s)",
   "tm.testrailImport.assignSkip": "Skip assignments",
   "tm.testrailImport.assignDone": "{count} tester assignment(s) were created.",
