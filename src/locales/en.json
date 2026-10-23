@@ -2069,6 +2069,7 @@
   "tm.testrailProgress.count.retest": "{count} Retest",
   "tm.testrailProgress.count.failed": "{count} Failed",
   "tm.testrailProgress.count.untested": "{count} Untested",
+  "tm.testrailProgress.count.custom": "{count} N/A",
   "tm.testrailProgress.count.rate": "{pct}% passed",
   "tm.testrailProgress.refresh": "Refresh progress",
   "tm.testrailProgress.fetching": "Fetching…",

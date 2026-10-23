@@ -2978,6 +2978,10 @@ input[type='checkbox'] {
   color: var(--text);
 }
 
+.testrail-status-line .tsl-custom {
+  color: var(--text-muted);
+}
+
 .testrail-status-line .tsl-rate {
   color: #43a047;
 }
