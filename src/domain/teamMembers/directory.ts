@@ -28,8 +28,8 @@ export const intendedRoleOf = (member: Pick<RcsMember, 'role'>): MemberRole | nu
 export const isLinked = (member: Pick<RcsMember, 'userId'>): boolean => typeof member.userId === 'string' && member.userId !== '';
 
 export interface SelectOptions {
-  /** Only profiles whose intended role is this one. Profiles with an older free-text role are never offered for a role-specific pick. */
-  role?: MemberRole;
+  /** Only profiles whose intended role is one of these. Profiles with an older free-text role are never offered for a role-specific pick. */
+  role?: MemberRole | readonly MemberRole[];
   /** Today's business date (YYYY-MM-DD). */
   today: string;
   /** Keep these profiles even if removed (an existing record must stay displayable and selectable while it is being edited). */
@@ -39,8 +39,9 @@ export interface SelectOptions {
 /** The profiles a person may be picked from: active ones, optionally of one role, in name order. Removed profiles are not offered. */
 export function selectableMembers(members: readonly RcsMember[], options: SelectOptions): RcsMember[] {
   const keep = new Set(options.keep ?? []);
+  const roles = options.role === undefined ? null : new Set(typeof options.role === 'string' ? [options.role] : options.role);
   return members
-    .filter((m) => keep.has(m.id) || (isActiveMember(m, options.today) && (options.role === undefined || intendedRoleOf(m) === options.role)))
+    .filter((m) => keep.has(m.id) || (isActiveMember(m, options.today) && (roles === null || (intendedRoleOf(m) !== null && roles.has(intendedRoleOf(m) as MemberRole)))))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 

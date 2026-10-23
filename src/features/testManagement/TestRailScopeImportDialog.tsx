@@ -62,9 +62,10 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
   const [assignNote, setAssignNote] = useState<string | null>(null);
 
   // The member dropdown for linking unmatched TestRail users (the JIRA
-  // unmatched-reporter idiom: active testers, name order, never an id).
+  // unmatched-reporter idiom: active testers AND SVs — an SV may execute
+  // tests too — name order, never an id).
   const memberOptions = useMemo(
-    () => personOptions(lang, selectableMembers(reports.state.rcsMembers ?? [], { role: 'tester', today: businessDate() }), businessDate()),
+    () => personOptions(lang, selectableMembers(reports.state.rcsMembers ?? [], { role: ['tester', 'sv'], today: businessDate() }), businessDate()),
     [lang, reports.state.rcsMembers],
   );
 

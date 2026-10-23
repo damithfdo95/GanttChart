@@ -234,7 +234,7 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
   const scopeAssignments = (scope: TestScope) => assignments.filter((a) => (a.userId !== undefined || a.memberId !== undefined) && a.projectId === project.projectId && a.scopeId === scope.id && current(a));
   const wholeProject = assignments.filter((a) => (a.userId !== undefined || a.memberId !== undefined) && a.projectId === project.projectId && a.scopeId === undefined && current(a));
   const assignedKeys = (scope: TestScope): Set<string> => new Set([...scopeAssignments(scope), ...wholeProject].flatMap((a) => [a.userId, a.memberId].filter((x): x is string => x !== undefined)));
-  const testerOptions = personOptions(lang, selectableMembers(tm.reports.state.rcsMembers ?? [], { role: 'tester', today }), today);
+  const testerOptions = personOptions(lang, selectableMembers(tm.reports.state.rcsMembers ?? [], { role: ['tester', 'sv'], today }), today);
 
   return (
     <section className="dr-section">

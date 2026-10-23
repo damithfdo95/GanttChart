@@ -53,6 +53,14 @@ describe('who appears in a dropdown', () => {
     expect(memberRoleOf('Test Engineer')).toBeNull();
   });
 
+  it('a role LIST pick offers every listed role (testers AND SVs together)', () => {
+    const names = selectableMembers(roster, { role: ['tester', 'sv'], today: TODAY }).map((x) => x.name);
+    expect(names).toContain('An SV');
+    expect(names).toContain('Linked Tester');
+    expect(names).not.toContain('Old Role'); // a free-text role is never guessed into the list
+    expect(names).not.toContain('Removed Tester');
+  });
+
   it('a record being edited keeps its removed person selectable (so it stays displayable)', () => {
     const names = selectableMembers(roster, { role: 'tester', today: TODAY, keep: ['USER0003'] }).map((x) => x.name);
     expect(names).toContain('Removed Tester');
