@@ -260,9 +260,6 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
       // The suite's cases become Test Cases automatically (best-effort), so
       // the whole Test Management page works after this one import.
       const casesImported = await autoImportCases(client, runIds, scopeIdsByRunId);
-      if (casesImported > 0) {
-        setAssignNote(t(lang, 'tm.testrailImport.casesAutoImported', { count: casesImported }));
-      }
       const testsByRunId = new Map<number, TestRailTestRow[]>();
       await Promise.all(
         runIds.map(async (runId) => {
@@ -305,6 +302,19 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
         onClose();
         return;
       }
+      // The matched testers are assigned IMMEDIATELY (the SV saw the runs'
+      // testers in the preview; the Scopes tab's Testers column fills by
+      // itself). The step stays open only for the UNMATCHED testers —
+      // linking one creates that person's assignments right away. Manual
+      // editing stays possible in the Scopes tab (add / end assignment).
+      for (const assignment of assignPlan.assignments) {
+        reports.upsertTesterAssignment(assignment);
+      }
+      const autoParts = [t(lang, 'tm.testrailImport.assignDone', { count: assignPlan.assignments.length })];
+      if (casesImported > 0) {
+        autoParts.push(t(lang, 'tm.testrailImport.casesAutoImported', { count: casesImported }));
+      }
+      setAssignNote(autoParts.join(' '));
       setAssignStep({ plan: assignPlan, scopeIdsByRunId, users, testsByRunId });
     } catch {
       // The assignment step is best-effort: the scopes are already committed.
@@ -313,22 +323,6 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
     } finally {
       setAssignBusy(false);
     }
-  };
-
-  /** Commit the planned assignments (one upsert each; the SV saw the preview). */
-  const confirmAssignments = (): void => {
-    if (assignStep === null || assignBusy) return;
-    setAssignBusy(true);
-    for (const assignment of assignStep.plan.assignments) {
-      reports.upsertTesterAssignment(assignment);
-    }
-    const importedCount = assignStep.plan.assignments.length;
-    const unmatchedCount = assignStep.plan.unmatched.length;
-    setAssignBusy(false);
-    setAssignStep(null);
-    const parts = [t(lang, 'tm.testrailImport.assignDone', { count: importedCount })];
-    if (unmatchedCount > 0) parts.push(t(lang, 'tm.testrailImport.assignUnmatchedHint', { count: unmatchedCount }));
-    onDoneWithAssign(importedCount, unmatchedCount, parts.join(' '));
   };
 
   /**
@@ -387,15 +381,6 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
       [...(reports.state.externalIdentities ?? []), link],
     );
     setAssignStep({ ...assignStep, plan: nextPlan });
-  };
-
-  /** Finish the whole import (scopes + assignments) with one summary. */
-  const onDoneWithAssign = (assigned: number, unmatched: number, text: string): void => {
-    void assigned;
-    void unmatched;
-    setAssignNote(text);
-    onDone(plan?.rows.filter((r) => r.importable && selected[r.run.id] === true).length ?? 0, plan?.duplicateCount ?? 0);
-    onClose();
   };
 
   const selectedCount = plan === null ? 0 : plan.rows.filter((r) => r.importable && selected[r.run.id] === true).length;
@@ -556,27 +541,9 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
       {assignStep === null ? null : (
         <div className="tenancy-table-wrap">
           <h4>{t(lang, 'tm.testrailImport.assignTitle')}</h4>
-          <p className="link-help">{t(lang, 'tm.testrailImport.assignHelp')}</p>
+          <p className="link-help">{t(lang, 'tm.testrailImport.assignHelpAuto')}</p>
           {assignStep.plan.assignments.length > 0 ? (
-            <>
-              <p role="status">{t(lang, 'tm.testrailImport.assignFound', { count: assignStep.plan.assignments.length })}</p>
-              <table className="tenancy-table">
-                <thead>
-                  <tr>
-                    <th scope="col">{t(lang, 'tm.col.testers')}</th>
-                    <th scope="col">{t(lang, 'tm.col.scope')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {assignStep.plan.assignments.map((a) => (
-                    <tr key={a.id}>
-                      <td>{a.testerName}</td>
-                      <td>{plan?.rows.find((r) => assignStep.scopeIdsByRunId.get(r.run.id) === a.scopeId)?.name ?? a.scopeId}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
+            <p role="status">{t(lang, 'tm.testrailImport.assignFound', { count: assignStep.plan.assignments.length })}</p>
           ) : (
             <p className="link-help" role="status">{t(lang, 'tm.testrailImport.assignNone')}</p>
           )}
@@ -620,16 +587,8 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
             </>
           ) : null}
           <div className="dr-button-row">
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={assignBusy || assignStep.plan.assignments.length === 0}
-              onClick={confirmAssignments}
-            >
-              {t(lang, 'tm.testrailImport.assignConfirm', { count: assignStep.plan.assignments.length })}
-            </button>
-            <button type="button" className="btn btn-ghost" disabled={assignBusy} onClick={() => { setAssignStep(null); onDone(plan?.rows.filter((r) => r.importable && selected[r.run.id] === true).length ?? 0, plan?.duplicateCount ?? 0); onClose(); }}>
-              {t(lang, 'tm.testrailImport.assignSkip')}
+            <button type="button" className="btn btn-primary" disabled={assignBusy} onClick={() => { setAssignStep(null); onDone(plan?.rows.filter((r) => r.importable && selected[r.run.id] === true).length ?? 0, plan?.duplicateCount ?? 0); onClose(); }}>
+              {t(lang, 'buttons.close')}
             </button>
           </div>
         </div>

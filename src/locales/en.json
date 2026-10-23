@@ -2358,7 +2358,7 @@
   "tm.testrailImport.doneSkipped": "{duplicates} run(s) already linked were skipped.",
   "tm.testrailImport.assignFetching": "Reading the runs' assigned testers…",
   "tm.testrailImport.assignTitle": "Assign the runs' testers",
-  "tm.testrailImport.assignHelp": "The imported runs' assigned TestRail testers were matched to Team Members by email. Confirm to assign them to their scopes — the Testers column and the Overview tab update immediately. TestRail users without a matching Team Member are listed for you to assign by hand.",
+  "tm.testrailImport.assignHelpAuto": "The runs' assigned TestRail testers were matched to Team Members and assigned to their scopes automatically — the Testers column and the Overview tab are already updated. Manual changes (add / end assignment) stay possible in the Scopes tab. TestRail users without a matching Team Member are listed below: link one and their assignments are created immediately.",
   "tm.testrailImport.assignFound": "{count} tester assignment(s) ready to create.",
   "tm.testrailImport.assignNone": "No run tester matched a Team Member — nothing to assign automatically.",
   "tm.testrailImport.assignUnmatched": "{count} TestRail tester(s) matched no Team Member — link them to a member so their assignments are created:",

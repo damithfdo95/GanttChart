@@ -342,6 +342,43 @@ export function linkTestRailMembers(
   return { ...day, testers, unlinked };
 }
 
+/**
+ * The display name of one TestRail user id, for the live progress readouts
+ * (the Scopes tab's by-tester breakdown). Resolution order — the SAME
+ * identity rule `linkTestRailMembers` applies:
+ *
+ *   1. an ACTIVE 'testrail' external identity for the id (the SV's explicit
+ *      link) → the linked Team Member's registered name;
+ *   2. a unique email match → the member's registered name;
+ *   3. the TestRail user's own display name;
+ *   4. a stable "Tester #<id>" fallback.
+ *
+ * Pure; the caller supplies the fetched user list (names are cosmetic —
+ * without user-list access the readout degrades to the fallback, never to
+ * a raw id).
+ */
+export function testrailTesterDisplayName(
+  testrailUserId: number,
+  users: readonly TestRailUser[],
+  members: readonly RcsMember[],
+  externalIdentities: readonly ExternalIdentity[] = [],
+): string {
+  const memberById = new Map(members.map((m) => [m.id, m] as const));
+  const linkedMemberId = externalIdentities.find(
+    (e) => e.active && e.provider === 'testrail' && e.externalId === String(testrailUserId),
+  )?.memberId;
+  const user = users.find((u) => u.id === testrailUserId);
+  const member =
+    linkedMemberId !== undefined
+      ? memberById.get(linkedMemberId)
+      : user?.email !== undefined && user.email !== ''
+        ? members.find((m) => m.active && m.email !== undefined && m.email.toLowerCase() === (user.email as string).toLowerCase())
+        : undefined;
+  if (member !== undefined && member.name.trim() !== '') return member.name;
+  if (user !== undefined && user.name.trim() !== '') return user.name;
+  return `Tester #${testrailUserId}`;
+}
+
 // ---- Tester-record merge ---------------------------------------------------------------
 
 export interface TestRailRecordMerge {

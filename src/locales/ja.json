@@ -2358,7 +2358,7 @@
   "tm.testrailImport.doneSkipped": "リンク済みの{duplicates}件のランはスキップされました。",
   "tm.testrailImport.assignFetching": "ランの担当テスターを確認しています…",
   "tm.testrailImport.assignTitle": "ランのテスターをアサイン",
-  "tm.testrailImport.assignHelp": "インポートしたランの担当TestRailテスターを、メールアドレスでチームメンバーと照合しました。確認してアサインすると、スコープのテスター列と概要タブがすぐに更新されます。チームメンバーと照合できなかったTestRailユーザーは、手動でアサインできるよう一覧表示します。",
+  "tm.testrailImport.assignHelpAuto": "ランの担当TestRailテスターをチームメンバーと照合し、スコープに自動でアサインしました。スコープタブのテスター列と概要タブは既に更新されています。手動での追加・終了はスコープタブで可能です。チームメンバーと照合できなかったTestRailユーザーは下の一覧に表示されます。リンクするとアサインがすぐに作成されます。",
   "tm.testrailImport.assignFound": "{count}件のテスターアサインを作成できます。",
   "tm.testrailImport.assignNone": "ランのテスターと照合できたチームメンバーがいません。自動アサインはありません。",
   "tm.testrailImport.assignUnmatched": "{count}名のTestRailテスターがチームメンバーと照合できませんでした。メンバーにリンクするとアサインが作成されます:",

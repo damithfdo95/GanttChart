@@ -9,6 +9,7 @@ import {
 } from '../../../shared/testrail';
 import { createTestRailClient } from '../../lib/testrail/client';
 import { backfillTestRailUsers } from '../../lib/testrail/client';
+import { testrailTesterDisplayName } from '../../domain/testrail';
 import { TestRailErrorHint } from '../../components/TestRailErrorHint';
 import { TestRailStatusLine } from '../../components/TestRailStatusLine';
 import { t } from '../../i18n';
@@ -87,25 +88,16 @@ export function TestRailScopeProgress({ lang, scope }: { lang: Language; scope: 
     void fetchProgress();
   }, [fetchProgress]);
 
-  // Display names: TestRail user joined to the Team Member directory by email
-  // (lower-case, the same identity rule `linkTestRailMembers` uses) — Team
-  // Member name when linked, else the TestRail user's own name, else a stable
-  // "Tester #<id>" fallback.
-  const nameOf = useMemo(() => {
-    const userById = new Map(users.map((u) => [u.id, u] as const));
-    const memberByEmail = new Map(
-      (reports.state.rcsMembers ?? [])
-        .filter((m) => m.email !== undefined && m.email !== '')
-        .map((m) => [(m.email as string).toLowerCase(), m] as const),
-    );
-    return (testerId: number): string => {
-      const user = userById.get(testerId);
-      if (user === undefined) return `Tester #${testerId}`;
-      const member = user.email !== undefined && user.email !== '' ? memberByEmail.get(user.email.toLowerCase()) : undefined;
-      if (member !== undefined && member.name.trim() !== '') return member.name;
-      return user.name.trim() !== '' ? user.name : `Tester #${testerId}`;
-    };
-  }, [users, reports.state.rcsMembers]);
+  // Display names: the SAME identity rule linkTestRailMembers applies —
+  // an ACTIVE testrail link (the SV's explicit link) wins, then a unique
+  // email match, then the TestRail user's own name, then a stable
+  // "Tester #<id>" fallback. A linked tester therefore always shows the
+  // Team Member's registered name, never the TestRail account's label.
+  const nameOf = useMemo(
+    () => (testerId: number): string =>
+      testrailTesterDisplayName(testerId, users, reports.state.rcsMembers ?? [], reports.state.externalIdentities ?? []),
+    [users, reports.state.rcsMembers, reports.state.externalIdentities],
+  );
 
   // A scope without a link does not render (the caller filters).
   if (link === undefined) return null;

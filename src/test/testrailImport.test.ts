@@ -11,6 +11,7 @@ import {
   normalizeTestrailPlanUrl,
   parseTestRailUrl,
   testrailHostMatches,
+  testrailTesterDisplayName,
   tokyoDayOf,
   tokyoDayStartUnix,
 } from '../domain/testrail';
@@ -269,6 +270,30 @@ describe('linkTestRailMembers', () => {
     const day = aggregateTestRailDay([result({ testId: 1, statusId: 1, assignedToId: 5 })], USERS, DEFAULT_TESTRAIL_STATUS_MAP, DAY);
     const linked = linkTestRailMembers(day, USERS, MEMBERS, identities);
     expect(linked.testers[0]).toMatchObject({ memberId: 'USER0002', team: 'RCS' });
+  });
+});
+
+describe('testrailTesterDisplayName', () => {
+  it('prefers the linked Team Member name over the TestRail account label', () => {
+    // The TestRail account shows an id-like label, but the SV linked it.
+    const identities: ExternalIdentity[] = [
+      { id: 'EI1', provider: 'testrail', externalId: '7', memberId: 'USER0002', displayName: 'Lead Yamada', active: true, linkedAt: '2026-10-01T00:00:00Z' },
+    ];
+    expect(testrailTesterDisplayName(7, USERS, MEMBERS, identities)).toBe('Ken');
+  });
+
+  it('falls back to the email match, then the TestRail name, then Tester #id', () => {
+    expect(testrailTesterDisplayName(5, USERS, MEMBERS)).toBe('Hana'); // email match
+    expect(testrailTesterDisplayName(7, USERS, MEMBERS)).toBe('Lead Yamada'); // no member, own name
+    expect(testrailTesterDisplayName(99, USERS, MEMBERS)).toBe('Tester #99'); // unknown id
+  });
+
+  it('ignores retired links and other providers', () => {
+    const identities: ExternalIdentity[] = [
+      { id: 'EI1', provider: 'testrail', externalId: '7', memberId: 'USER0002', active: false, linkedAt: '2026-10-01T00:00:00Z' },
+      { id: 'EI2', provider: 'jira', externalId: '7', memberId: 'USER0001', active: true, linkedAt: '2026-10-01T00:00:00Z' },
+    ];
+    expect(testrailTesterDisplayName(7, USERS, MEMBERS, identities)).toBe('Lead Yamada');
   });
 });
 
