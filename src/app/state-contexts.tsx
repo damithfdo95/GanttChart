@@ -12,6 +12,7 @@ import { useReportsState, type ReportsStateApi } from './useReportsState';
 import { applyActiveProjectSync, applyActiveProjectSyncRestricted, qaInputsFromAppState } from '../domain/projects';
 import { useTenant } from './tenant-context';
 import { derivedTotalFor, reconcileProjectTotals } from '../domain/testManagement/totals';
+import { backfillTestRailMemberAdoption } from '../domain/testrail/adoptionBackfill';
 import { normalizeQaInputsForLoad } from '../lib/storage/storage';
 import { consumeCorruptionEvents, type CorruptionEvent } from '../lib/storage/corruption';
 import { persistWorkspaceAsync } from '../lib/storage/db/persistenceBackend';
@@ -316,11 +317,33 @@ function usePortfolioSeed(app: AppStateApi, reports: ReportsStateApi, enabled: b
   }, [reports, enabled]);
 }
 
+/**
+ * Heal tester records recorded under a TestRail display name BEFORE the
+ * user was linked to a Team Member (or before the adoption existed):
+ * every ACTIVE testrail link adopts the records written under its display
+ * name / the member's registered name. Idempotent — the second run is a
+ * no-op — so it is safe on every boot. Runs once after the first render
+ * (the state actions are stable; the effect re-runs only when the inputs
+ * it heals change, and then it heals nothing new).
+ */
+function useTestRailAdoptionBackfill(reports: ReportsStateApi): void {
+  const { projects, rcsMembers, externalIdentities, activeProjectId } = reports.state;
+  useEffect(() => {
+    const healed = backfillTestRailMemberAdoption(projects, rcsMembers ?? [], externalIdentities ?? []);
+    if (healed !== projects) reports.setProjects(healed);
+    // Deliberately not re-run on every state change: the backfill is
+    // idempotent, and the link-time adoption (TestRailScopeImportDialog)
+    // covers new links. Re-run only when the inputs it reads change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects, rcsMembers, externalIdentities, activeProjectId]);
+}
+
 export function AppProviders({ boot, shared = null, children }: { boot: PersistenceBoot; shared?: SharedBoot | null; children: ReactNode }) {
   const app = useAppState(boot.workspace.app);
   const reports = useReportsState(boot.workspace.reports);
   const autoBackup = useAutoDailyBackup(app, reports);
   usePortfolioSeed(app, reports, shared === null);
+  useTestRailAdoptionBackfill(reports);
   // A Tester's changes reach the shared project only where a Tester may change it (see shared/testerRules.ts).
   const testerOnly = useTenant().principal?.role === 'user';
   useProjectWriteBack(app, reports, testerOnly);

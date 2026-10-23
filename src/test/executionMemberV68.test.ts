@@ -64,11 +64,10 @@ describe('adoptRecordsIntoMember (TestRail link adoption)', () => {
     expect(adopted[1].memberId).toBe('USER0009'); // another member's record is never re-linked
   });
 
-  it('returns a copy when nothing matches (never the same reference)', () => {
+  it('returns the same reference when nothing matches', () => {
     const records = [record({ testerName: 'Other Tester' })];
-    expect(adoptRecordsIntoMember(records, ['TestRail Display'], 'USER0003')).not.toBe(records);
-    expect(adoptRecordsIntoMember(records, ['TestRail Display'], 'USER0003')[0].memberId).toBeUndefined();
-    expect(adoptRecordsIntoMember(records, [], 'USER0003')).not.toBe(records);
+    expect(adoptRecordsIntoMember(records, ['TestRail Display'], 'USER0003')).toBe(records);
+    expect(adoptRecordsIntoMember(records, [], 'USER0003')).toBe(records);
   });
 });
 

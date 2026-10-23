@@ -118,12 +118,14 @@ export function adoptRecordsIntoMember(
   memberId: string,
 ): TesterDailyPerformance[] {
   const keys = new Set(names.map((name) => name.trim().toLowerCase()).filter((name) => name !== ''));
-  if (keys.size === 0) return [...records];
+  if (keys.size === 0) return records as TesterDailyPerformance[];
   let changed = false;
   const next = records.map((record) => {
     if (record.memberId !== undefined || !keys.has(record.testerName.trim().toLowerCase())) return record;
     changed = true;
     return { ...record, memberId };
   });
-  return changed ? next : [...records];
+  // Same reference when nothing changed so callers (the boot backfill) can
+  // detect "nothing to heal" without deep comparison.
+  return changed ? next : (records as TesterDailyPerformance[]);
 }
