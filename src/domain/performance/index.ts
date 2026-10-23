@@ -99,3 +99,31 @@ export function findTesterDailyPerformance(
     return record.testerName === name && record.memberId === undefined;
   });
 }
+
+/**
+ * Adopt records recorded under one of the member's known names (the exact
+ * recorded display name) into the member's stable identity: every record
+ * whose testerName matches (case-insensitive, whitespace-collapsed) and has
+ * no memberId yet gets the memberId stamped. Records already linked to
+ * another member are never touched. Pure — the caller applies the result
+ * through the state actions so persistence stays centralized.
+ *
+ * Used when a TestRail user is linked to a Team Member: the records the
+ * fetch wrote under the TestRail display name become the member's records
+ * immediately, so the person never appears twice (linked + unlinked name).
+ */
+export function adoptRecordsIntoMember(
+  records: readonly TesterDailyPerformance[],
+  names: readonly string[],
+  memberId: string,
+): TesterDailyPerformance[] {
+  const keys = new Set(names.map((name) => name.trim().toLowerCase()).filter((name) => name !== ''));
+  if (keys.size === 0) return [...records];
+  let changed = false;
+  const next = records.map((record) => {
+    if (record.memberId !== undefined || !keys.has(record.testerName.trim().toLowerCase())) return record;
+    changed = true;
+    return { ...record, memberId };
+  });
+  return changed ? next : [...records];
+}

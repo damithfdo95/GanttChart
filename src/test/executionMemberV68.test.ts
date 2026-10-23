@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { TesterDailyPerformance, TesterReview } from '../types';
 import { seedRcsMembers } from '../domain/members';
 import {
+  adoptRecordsIntoMember,
   findTesterDailyPerformance,
   upsertTesterDailyPerformance,
 } from '../domain/performance';
@@ -36,6 +37,40 @@ function record(overrides: Partial<TesterDailyPerformance> = {}): TesterDailyPer
     ...overrides,
   };
 }
+
+describe('adoptRecordsIntoMember (TestRail link adoption)', () => {
+  it('stamps the memberId on records recorded under the linked names', () => {
+    const records = [
+      record({ testerName: 'TestRail Display', casesTested: 5 }),
+      record({ testerName: 'Yamauchi Kentaro', casesTested: 10 }),
+      record({ testerName: 'Other Tester', casesTested: 3 }),
+    ];
+    const adopted = adoptRecordsIntoMember(records, ['TestRail Display', 'Yamauchi Kentaro'], 'USER0003');
+    expect(adopted[0].memberId).toBe('USER0003');
+    expect(adopted[1].memberId).toBe('USER0003');
+    expect(adopted[2].memberId).toBeUndefined(); // other testers untouched
+    // ids and values are preserved — only the identity is stamped
+    expect(adopted[0].id).toBe(records[0].id);
+    expect(adopted[0].casesTested).toBe(5);
+  });
+
+  it('matches names case-insensitively and never touches already-linked records', () => {
+    const records = [
+      record({ testerName: '  testrail display  ', casesTested: 5 }),
+      record({ testerName: 'TestRail Display', memberId: 'USER0009', casesTested: 7 }),
+    ];
+    const adopted = adoptRecordsIntoMember(records, ['TestRail Display'], 'USER0003');
+    expect(adopted[0].memberId).toBe('USER0003');
+    expect(adopted[1].memberId).toBe('USER0009'); // another member's record is never re-linked
+  });
+
+  it('returns a copy when nothing matches (never the same reference)', () => {
+    const records = [record({ testerName: 'Other Tester' })];
+    expect(adoptRecordsIntoMember(records, ['TestRail Display'], 'USER0003')).not.toBe(records);
+    expect(adoptRecordsIntoMember(records, ['TestRail Display'], 'USER0003')[0].memberId).toBeUndefined();
+    expect(adoptRecordsIntoMember(records, [], 'USER0003')).not.toBe(records);
+  });
+});
 
 describe('V6.8 daily execution with member identity', () => {
   it('upserts a member-based record and persists the stable member id', () => {

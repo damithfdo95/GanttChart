@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { useReportsStateCtx } from '../../app/state-contexts';
+import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
 import { newScope, newTestCase, planImportRows, type TestManagementState, type TestRailScopeImportPlan } from '../../domain/testManagement';
 import { planTestRailCaseImport } from '../../domain/testManagement/testrailCases';
 import { planTestRailAssignments, type UnmatchedTestRailTester } from '../../domain/testManagement/testrailAssignments';
 import { buildExternalIdentityLink } from '../../domain/attribution';
+import { adoptRecordsIntoMember } from '../../domain/performance';
 import { personOptionText, personOptions, selectableMembers } from '../../domain/teamMembers';
 import { createTestRailClient } from '../../lib/testrail/client';
 import { backfillTestRailUsers } from '../../lib/testrail/client';
@@ -39,6 +40,7 @@ interface TestRailScopeImportDialogProps {
  */
 export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }: TestRailScopeImportDialogProps) {
   const reports = useReportsStateCtx();
+  const app = useAppStateCtx();
   const conn = reports.state.settings.testrail;
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -334,19 +336,45 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
    * identity (provider 'testrail', the TestRail user id) is created — the
    * same record the JIRA reporter linking writes — and the assignment plan
    * is re-planned so the member's assignments appear immediately.
+   *
+   * Records already written under that TestRail display name (earlier
+   * fetches, before the link existed) are ADOPTED into the member's stable
+   * identity at the same moment, so the person never keeps a second
+   * unlinked row anywhere (Performance, reviews, exports).
    */
   const linkTester = (testrailUserId: number, memberId: string): void => {
     if (assignStep === null || memberId === '') return;
     const user = assignStep.users.find((u) => u.id === testrailUserId);
-    reports.upsertExternalIdentity(
-      buildExternalIdentityLink({
-        provider: 'testrail',
-        externalId: String(testrailUserId),
-        memberId,
-        displayName: user?.name,
-        linkedAt: new Date().toISOString(),
-      }),
-    );
+    const member = (reports.state.rcsMembers ?? []).find((m) => m.id === memberId);
+    const link = buildExternalIdentityLink({
+      provider: 'testrail',
+      externalId: String(testrailUserId),
+      memberId,
+      displayName: user?.name,
+      linkedAt: new Date().toISOString(),
+    });
+    reports.upsertExternalIdentity(link);
+    // Adopt the records the earlier fetches wrote under the TestRail display
+    // name (and the member's own name) into the member's identity. The
+    // records live in the owning project's inputs; the ACTIVE project's
+    // route through the app-state editing surface (the write-back then
+    // carries them into the record), the others through the registry.
+    if (member !== undefined) {
+      const names = [user?.name, member.name].filter((name): name is string => name !== undefined && name.trim() !== '');
+      const activeProjectId = reports.state.activeProjectId;
+      for (const projectRecord of reports.state.projects) {
+        const records = projectRecord.inputs.testerDailyPerformance ?? [];
+        const adopted = adoptRecordsIntoMember(records, names, memberId);
+        if (adopted === records) continue;
+        if (projectRecord.id === activeProjectId) {
+          // The ACTIVE project's records are owned by the app state; writing
+          // the record directly would be undone by the write-back.
+          app.updateField('testerDailyPerformance', adopted);
+        } else {
+          reports.updateProject(projectRecord.id, { inputs: { ...projectRecord.inputs, testerDailyPerformance: adopted } });
+        }
+      }
+    }
     // Re-plan with the new identity in place (the link wins over email).
     const nextPlan = planTestRailAssignments(
       assignStep.testsByRunId,
@@ -356,13 +384,7 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
       assignStep.scopeIdsByRunId,
       reports.state.testerAssignments ?? [],
       businessDate(),
-      [...(reports.state.externalIdentities ?? []), buildExternalIdentityLink({
-        provider: 'testrail',
-        externalId: String(testrailUserId),
-        memberId,
-        displayName: user?.name,
-        linkedAt: new Date().toISOString(),
-      })],
+      [...(reports.state.externalIdentities ?? []), link],
     );
     setAssignStep({ ...assignStep, plan: nextPlan });
   };

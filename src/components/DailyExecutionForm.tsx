@@ -143,11 +143,12 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
 
   /**
    * Fetch the linked plan/run's results for the SELECTED date (default today)
-   * and apply them as an editable proposal: the status counts and the tester
-   * count are replaced, the time window and note stay untouched. Per-tester
-   * records are committed immediately (idempotent; manual / manualOverride
-   * records are never overwritten) — the day's entry itself is committed by
-   * the normal Save button, so the SV stays in the loop.
+   * and apply them: the status counts and the tester count are replaced, the
+   * time window and note stay untouched. Per-tester records are committed
+   * immediately (idempotent; manual / manualOverride records are never
+   * overwritten) — and so is the day's ENTRY itself: a linked project's
+   * numbers are TestRail's facts, so the fetch saves them right away (the
+   * SV can still adjust the time window and Save afterwards).
    */
   const runTestrailFetch = async (): Promise<void> => {
     if (testrailConnection === undefined || testrailLink === null || activeProject === null) return;
@@ -188,7 +189,17 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
       }
       const merged = mergeTestRailTesterRecords(state.testerDailyPerformance ?? [], activeProject.projectId, day);
       updateField('testerDailyPerformance', merged.records);
-      setForm((prev) => applyTestRailDayToEntry(prev, day, previous, mode));
+      const entry = applyTestRailDayToEntry(form, day, previous, mode);
+      setForm(entry);
+      // The fetched numbers are TestRail's facts for this day — save the
+      // entry immediately (the same commit the Save button performs) so the
+      // data is in the database the moment it is fetched.
+      saveDailyExecutionEntry({
+        ...entry,
+        ...derive(entry),
+        overtimeMinutes: clampOvertimeMinutes(entry.overtimeMinutes),
+        testers: Math.max(0, Math.round(entry.testers)),
+      });
       const parts = [t(lang, 'exec.testrailFetched', { executed: day.totals.executed, testers: day.totals.testers })];
       if (day.unassignedCount > 0) parts.push(t(lang, 'exec.testrailUnassigned', { count: day.unassignedCount }));
       if (merged.keptManual > 0) parts.push(t(lang, 'exec.testrailKeptManual', { count: merged.keptManual }));
@@ -242,7 +253,16 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
     const day = linkTestRailMembers(imported.day, [], reports.state.rcsMembers ?? [], reports.state.externalIdentities ?? []);
     const merged = mergeTestRailTesterRecords(state.testerDailyPerformance ?? [], activeProject.projectId, day);
     updateField('testerDailyPerformance', merged.records);
-    setForm((prev) => applyTestRailDayToEntry(prev, day, previous, mode));
+    const entry = applyTestRailDayToEntry(form, day, previous, mode);
+    setForm(entry);
+    // Same rule as the live fetch: the imported numbers are saved
+    // immediately, not left pending in the form.
+    saveDailyExecutionEntry({
+      ...entry,
+      ...derive(entry),
+      overtimeMinutes: clampOvertimeMinutes(entry.overtimeMinutes),
+      testers: Math.max(0, Math.round(entry.testers)),
+    });
     const parts = [t(lang, 'exec.testrailCsvLoaded', { file: fileName, executed: day.totals.executed, testers: day.totals.testers })];
     if (day.skippedUntested > 0) parts.push(t(lang, 'exec.testrailUnassigned', { count: day.skippedUntested }));
     if (merged.keptManual > 0) parts.push(t(lang, 'exec.testrailKeptManual', { count: merged.keptManual }));
