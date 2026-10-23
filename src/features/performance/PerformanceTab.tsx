@@ -15,6 +15,7 @@ import {
   getTesterMonthlyTrend,
   getTesterProjectBreakdown,
   performanceSummary,
+  unlinkedTesterNames,
   type PeriodHalf,
   type PeriodSelector,
 } from '../../lib/calculations/testerPerformance';
@@ -125,7 +126,7 @@ export function PerformanceTab() {
   const scopeProjectIds = projectScope === '' ? null : [projectScope];
 
   const options = useMemo(
-    () => ({ range, projectIds: scopeProjectIds, members }),
+    () => ({ range, projectIds: scopeProjectIds, members, registeredOnly: true }),
     [range, scopeProjectIds, members],
   );
 
@@ -135,6 +136,11 @@ export function PerformanceTab() {
   );
   const summary = useMemo(
     () => performanceSummary(allRecords, allTickets, options),
+    [allRecords, allTickets, options],
+  );
+  /** Recorded tester names that match no Team Member — hidden from the table, shown as a hint. */
+  const unlinkedTesters = useMemo(
+    () => unlinkedTesterNames(allRecords, allTickets, options),
     [allRecords, allTickets, options],
   );
 
@@ -400,6 +406,11 @@ export function PerformanceTab() {
 
       <section className="dr-section">
         <h2>{t(lang, 'performance.title')}</h2>
+        {unlinkedTesters.length > 0 ? (
+          <p className="dr-summary">
+            {t(lang, 'performance.unlinkedHidden', { count: unlinkedTesters.length, names: unlinkedTesters.join(' / ') })}
+          </p>
+        ) : null}
         <TesterPerformanceTable
           lang={lang}
           rows={rows}

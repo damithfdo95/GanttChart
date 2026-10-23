@@ -979,6 +979,7 @@
   "performance.activeTesterDays": "Active Tester Days",
   "performance.projectsCount": "Projects",
   "performance.noData": "No performance data for the selected period.",
+  "performance.unlinkedHidden": "{count} recorded tester(s) match no Team Member and are hidden: {names}. Link them in Team Members to include their results.",
   "performance.tester": "Tester",
   "performance.activeDays": "Active Days",
   "performance.cases": "Cases",

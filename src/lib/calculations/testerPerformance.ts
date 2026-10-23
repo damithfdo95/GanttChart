@@ -88,6 +88,13 @@ export interface AggregateOptions {
   projectIds?: readonly string[] | null;
   /** RCS member master (V6.8) — resolves stable member identity for legacy name records. */
   members?: readonly RcsMember[];
+  /**
+   * True = only testers that resolve to a registered Team Member are listed
+   * (one merged row per member; recorded names that match no member are
+   * hidden — `unlinkedTesterNames` reports them for the UI hint). Default
+   * false = legacy behaviour (every recorded name is its own row).
+   */
+  registeredOnly?: boolean;
 }
 
 function projectInScope(projectId: string, options: AggregateOptions): boolean {
@@ -207,11 +214,12 @@ export function aggregateTesterPerformance(
   options: AggregateOptions = {},
 ): TesterPerformanceRow[] {
   const members = options.members ?? [];
+  const memberIds = options.registeredOnly === true ? new Set(members.map((member) => member.id)) : null;
   const byTester = new Map<string, Accumulator>();
   for (const record of records) {
     if (!recordInScope(record, options)) continue;
     const key = testerIdentityKey(record, members);
-    if (key === '') continue;
+    if (key === '' || (memberIds !== null && !memberIds.has(key))) continue;
     let acc = byTester.get(key);
     if (acc === undefined) {
       acc = newAccumulator();
@@ -224,7 +232,7 @@ export function aggregateTesterPerformance(
   for (const ticket of tickets) {
     if (!ticketInScope(ticket, options)) continue;
     const key = reporterIdentityKey(ticket, members);
-    if (key === '') continue;
+    if (key === '' || (memberIds !== null && !memberIds.has(key))) continue;
     bugsByTester.set(key, (bugsByTester.get(key) ?? 0) + 1);
   }
 
@@ -254,6 +262,7 @@ export function aggregateTesterPerformance(
   // Testers with bugs but no execution data still appear (bugsFound shown,
   // execution zeros never manufactured — §29); testers with neither do not.
   for (const [key, bugsFound] of bugsByTester) {
+    if (memberIds !== null && !memberIds.has(key)) continue;
     if (byTester.has(key)) continue;
     rows.push({
       testerName: identityDisplayName(key, members),
@@ -277,6 +286,36 @@ export function aggregateTesterPerformance(
   }
   rows.sort((a, b) => a.testerName.localeCompare(b.testerName));
   return rows;
+}
+
+/**
+ * Distinct in-scope tester identities that do NOT resolve to a registered
+ * Team Member. The Performance page hides these rows (registeredOnly);
+ * this list powers the visible hint so data never disappears silently.
+ * Each entry is the recorded display name (unresolved keys are raw names),
+ * sorted; the project/range scope is honoured like the aggregation's.
+ */
+export function unlinkedTesterNames(
+  records: readonly TesterDailyPerformance[],
+  tickets: readonly BugTicket[],
+  options: AggregateOptions = {},
+): string[] {
+  const members = options.members ?? [];
+  const memberIds = new Set(members.map((member) => member.id));
+  const names = new Set<string>();
+  for (const record of records) {
+    if (!recordInScope(record, options)) continue;
+    const key = testerIdentityKey(record, members);
+    if (key === '' || memberIds.has(key)) continue;
+    names.add(key);
+  }
+  for (const ticket of tickets) {
+    if (!ticketInScope(ticket, options)) continue;
+    const key = reporterIdentityKey(ticket, members);
+    if (key === '' || memberIds.has(key)) continue;
+    names.add(key);
+  }
+  return [...names].sort((a, b) => a.localeCompare(b));
 }
 
 /** Month aggregation (e.g. September 2026 → month 9). */
@@ -460,15 +499,19 @@ export function performanceSummary(
   tickets: readonly BugTicket[],
   options: AggregateOptions = {},
 ): PerformanceSummary {
+  const members = options.members ?? [];
+  const memberIds = options.registeredOnly === true ? new Set(members.map((member) => member.id)) : null;
   const rows = aggregateTesterPerformance(records, tickets, options);
   const projectIds = new Set<string>();
   let activeTesterDays = 0;
   for (const record of records) {
     if (!recordInScope(record, options)) continue;
+    if (memberIds !== null && !memberIds.has(testerIdentityKey(record, members))) continue;
     projectIds.add(record.projectId);
   }
   for (const ticket of tickets) {
     if (!ticketInScope(ticket, options)) continue;
+    if (memberIds !== null && !memberIds.has(reporterIdentityKey(ticket, members))) continue;
     projectIds.add(ticket.projectId);
   }
   for (const row of rows) activeTesterDays += row.activeDays;

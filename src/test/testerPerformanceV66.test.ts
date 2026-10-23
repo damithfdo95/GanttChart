@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { BugTicket, TesterDailyPerformance } from '../types';
+import type { BugTicket, RcsMember, TesterDailyPerformance } from '../types';
 import {
   aggregateTesterPerformance,
   calculateBugDiscoveryRate,
@@ -12,6 +12,7 @@ import {
   getTesterProjectBreakdown,
   getYearlyPerformance,
   performanceSummary,
+  unlinkedTesterNames,
 } from '../lib/calculations/testerPerformance';
 import { testerDailyDetailSheet, testerPerformanceSheet } from '../lib/export/exportData';
 import { newProjectRecord } from '../domain/projects/lifecycle';
@@ -185,6 +186,63 @@ describe('aggregateTesterPerformance', () => {
     expect(row.casesTested).toBe(100);
     expect(row.casesPassed).toBe(50);
     expect(row.casesBlocked).toBe(40);
+  });
+});
+
+// ---- Registered members only (Performance page duplicate fix) ------------------
+
+describe('registeredOnly aggregation', () => {
+  const members: RcsMember[] = [
+    { id: 'USER0001', name: 'Sato', team: 'RCS', role: 'Tester', startDate: '2026-01-01', active: true },
+    { id: 'USER0002', name: 'Kim', team: 'RCS', role: 'Tester', startDate: '2026-01-01', active: true },
+  ];
+
+  it('merges a member\u2019s linked and legacy-name records into ONE row and hides unregistered testers', () => {
+    const records = [
+      record({ testerName: 'Sato', memberId: 'USER0001', casesTested: 30 }),
+      record({ testerName: 'Sato', casesTested: 20 }), // legacy name → resolves to USER0001
+      record({ testerName: 'Kim', memberId: 'USER0002', casesTested: 10 }),
+      record({ testerName: 'TestRail Display Name', casesTested: 5 }), // no member match
+    ];
+    const rows = aggregateTesterPerformance(records, [], { members, registeredOnly: true });
+    expect(rows.map((r) => r.testerName)).toEqual(['Kim', 'Sato']);
+    const sato = rows.find((r) => r.testerName === 'Sato');
+    expect(sato?.casesTested).toBe(50); // both records merged into one row
+    expect(sato?.memberId).toBe('USER0001');
+  });
+
+  it('reports the hidden unlinked tester names for the UI hint', () => {
+    const records = [
+      record({ testerName: 'Sato', memberId: 'USER0001', casesTested: 30 }),
+      record({ testerName: 'TestRail Display Name', casesTested: 5 }),
+      record({ testerName: 'Ghost Tester', casesTested: 2 }),
+    ];
+    const tickets = [ticket({ reportedBy: 'Ghost Tester' })];
+    expect(unlinkedTesterNames(records, tickets, { members, registeredOnly: true })).toEqual([
+      'Ghost Tester',
+      'TestRail Display Name',
+    ]);
+    // Without the member master every identity is unlinked (a memberId key
+    // matches nothing, so it is reported as-is).
+    expect(unlinkedTesterNames(records, tickets)).toEqual(['Ghost Tester', 'TestRail Display Name', 'USER0001']);
+  });
+
+  it('keeps the summary consistent with the filtered rows', () => {
+    const records = [
+      record({ testerName: 'Sato', memberId: 'USER0001', casesTested: 30 }),
+      record({ testerName: 'Ghost Tester', casesTested: 5 }),
+    ];
+    const summary = performanceSummary(records, [], { members, registeredOnly: true });
+    expect(summary.totalTesters).toBe(1);
+    expect(summary.totalCasesTested).toBe(30);
+  });
+
+  it('defaults to the legacy behaviour (every recorded name is a row)', () => {
+    const records = [
+      record({ testerName: 'Sato', memberId: 'USER0001', casesTested: 30 }),
+      record({ testerName: 'TestRail Display Name', casesTested: 5 }),
+    ];
+    expect(aggregateTesterPerformance(records, [], { members })).toHaveLength(2);
   });
 });
 

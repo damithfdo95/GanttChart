@@ -979,6 +979,7 @@
   "performance.activeTesterDays": "稼働テスター日数",
   "performance.projectsCount": "プロジェクト数",
   "performance.noData": "選択した期間の実績データはありません。",
+  "performance.unlinkedHidden": "チームメンバーに紐づかないテスターが{count}件あるため非表示にしています: {names}。結果に含めるにはチームメンバーで紐づけてください。",
   "performance.tester": "テスター",
   "performance.activeDays": "稼働日数",
   "performance.cases": "ケース数",
