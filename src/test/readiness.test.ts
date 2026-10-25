@@ -108,6 +108,38 @@ describe('At Risk: schedule and completeness', () => {
     expect(codes(r)).not.toContain('execution_incomplete');
   });
 
+  describe('projected finish late', () => {
+    // 150 cases, one tester, plan ends 2026-10-30 10:00: capacity by the date suffices, but the finish (17:30 that day) is after the planned time.
+    const lateProject = (over: Partial<QaInputs> = {}): ProjectRecord =>
+      project({ totalCases: 150, casesCompleted: 0, casesPassed: 0, currentTesters: 1, targetCompletionTime: '10:00', planningRows: DAYS.map((d) => row(d, 1)), dailyExecuted: [entry('2026-10-26', { pass: 0 })], ...over });
+    const lateRun = (over: Partial<ReadinessInput> = {}): ReleaseReadiness => run(lateProject(), { assignments: assign(1), ...over });
+
+    it('before the end date, with a finish after the planned end, it is At Risk with exactly one projected_finish_late reason', () => {
+      const r = lateRun();
+      expect(r.state).toBe('atRisk');
+      expect(codes(r).filter((c) => c === 'projected_finish_late')).toHaveLength(1);
+      expect(r.reasons.find((x) => x.code === 'projected_finish_late')).toMatchObject({ severity: 'warning', category: 'schedule', metadata: { planned: '2026-10-30', projected: '2026-10-30', daysLate: null } });
+      expect(codes(r)).not.toContain('project_overdue');
+      expect(codes(r)).not.toContain('capacity_shortage');
+      expect(r.reasons.some((x) => x.severity === 'blocking')).toBe(false);
+      expect(r.reasons.filter((x) => x.category === 'schedule' && x.severity === 'warning').map((x) => x.code)).toEqual(['projected_finish_late']);
+    });
+
+    it('once the planned end has passed, the overdue reason stands alone (the late forecast adds nothing)', () => {
+      const r = lateRun({ today: '2026-11-02' });
+      expect(r.state).toBe('atRisk');
+      expect(r.reasons.filter((x) => x.category === 'schedule' && x.severity === 'warning').map((x) => x.code)).toEqual(['project_overdue']);
+      expect(codes(r)).not.toContain('projected_finish_late');
+    });
+
+    it('a forecast that meets the planned end has no projected_finish_late reason', () => {
+      const onTime = run(project({ totalCases: 60, casesCompleted: 0, casesPassed: 0, currentTesters: 1, targetCompletionTime: '10:00', planningRows: DAYS.map((d) => row(d, 1)), dailyExecuted: [entry('2026-10-26', { pass: 0 })] }), { assignments: assign(1) });
+      expect(codes(onTime)).not.toContain('projected_finish_late');
+      expect(codes(onTime)).not.toContain('project_overdue');
+      expect(onTime.state).toBe('ready');
+    });
+  });
+
   it('a forecast later than the plan, before the date, is At Risk', () => {
     const r = run(project({ totalCases: 3000, casesCompleted: 60, casesPassed: 60 }));
     expect(r.state).toBe('atRisk');
