@@ -650,6 +650,20 @@ export interface ReportActivity {
   /** 質問中 cases (V6.4): informational open-status tally. Optional; defaults to 0. */
   casesQuestioned?: number;
   dueDate: string | null;
+  /**
+   * QA work types this activity covers (Regression, Sanity, ... as stable keys). Written when the activity is PREPARED from workspace
+   * data and then frozen with the report: a finalized report never re-groups by a scope's current type. Absent on older activities.
+   */
+  workTypes?: string[];
+  /** Open JIRA tickets recorded for a Verification activity (a count of TICKETS - never merged into case counts). Absent otherwise. */
+  ticketCount?: number;
+}
+
+/** Staffing facts of the day: Planned / Assigned / Actual testers. Not formal attendance (that stays in the Attendance records). */
+export interface ReportStaffing {
+  planned: number | null;
+  assigned: number | null;
+  actual: number | null;
 }
 
 export interface DailyTopic {
@@ -686,6 +700,8 @@ export interface DailyReportSnapshot {
   morningSchedule?: NextDayItem[];
   /** Morning-report preview text (optional — pre-morning-report data stays valid). */
   morningPreviewText?: string;
+  /** Staffing facts frozen with the report (optional - older snapshots have none). */
+  staffing?: ReportStaffing;
 }
 
 export interface DailyReport {
@@ -712,6 +728,10 @@ export interface DailyReport {
   finalizedAt: string | null;
   finalizedBy: string | null;
   snapshot: DailyReportSnapshot | null;
+  /** Staffing facts prepared for this draft (optional). */
+  staffing?: ReportStaffing;
+  /** Lightweight provenance of a prepared draft: when and for which business date it was generated. */
+  preparedFrom?: { generatedAt: string; generatedForDate: string };
 }
 
 export type ProgressDenominator = 'totalCases' | 'workingEligibleCases';

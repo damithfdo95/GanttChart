@@ -32,6 +32,11 @@ import {
 } from './DailyReportSections';
 import { usePagedRows } from '../../lib/pagination/usePagedRows';
 import { XLSX_MIME } from '../../lib/statusKeys';
+import { PreparedDraftPanel } from './PreparedDraftPanel';
+import { preparedTopicsAsRecords } from './preparedDraft';
+import { prepareDailyReportDraft, reportStateForDate } from '../../domain/dailyReportDraft';
+import { businessDate } from '../../../shared/businessTime';
+import { resolveQaPolicy } from '../../../shared/qaPolicy';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -43,14 +48,21 @@ function nowIso(): string {
  * per date; finalizing freezes a snapshot so historical numbers are never
  * recalculated; revised versions preserve previous ones.
  */
-export function DailyReport() {
+export function DailyReport({ initialDate, prepare = false }: { initialDate?: string; prepare?: boolean } = {}) {
   const app = useAppStateCtx();
   const reportsApi = useReportsStateCtx();
   const uiLang = app.state.language;
   const ask = useAskConfirm(uiLang);
   const settings = reportsApi.state.settings;
 
-  const [selectedDate, setSelectedDate] = useState<string>(() => formatDate(todayEpochDays()));
+  const [selectedDate, setSelectedDate] = useState<string>(() => initialDate ?? formatDate(todayEpochDays()));
+  // Opened from the Command Center with "Prepare Daily Report": the date it carries is the date shown (never silently today), and no
+  // draft is created until the supervisor chooses to (an empty one, or one from the prepared proposal).
+  const [proposing, setProposing] = useState(prepare);
+  useEffect(() => {
+    if (initialDate !== undefined) setSelectedDate(initialDate);
+    setProposing(prepare);
+  }, [initialDate, prepare]);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [mode, setMode] = useState<'morning' | 'eod'>('eod');
   const [previewText, setPreviewText] = useState('');
@@ -77,7 +89,7 @@ export function DailyReport() {
   )?.projectId ?? null;
 
   useEffect(() => {
-    if (findDraft(reportsApi.state.reports, selectedDate) === undefined && !finalizedForDate) {
+    if (findDraft(reportsApi.state.reports, selectedDate) === undefined && !finalizedForDate && !proposing) {
       const created = newDraft(selectedDate, uiLang, settings.supervisorName, nowIso(), activeProjectId);
       // Seed today's schedule for the morning report from the live plan.
       const seeded = morningScheduleSuggestions(uiLang);
@@ -86,7 +98,7 @@ export function DailyReport() {
       }
       reportsApi.upsertReport(created);
     }
-  }, [selectedDate, reportsApi, uiLang, settings.supervisorName, activeProjectId, finalizedForDate]);
+  }, [selectedDate, reportsApi, uiLang, settings.supervisorName, activeProjectId, finalizedForDate, proposing]);
 
   useEffect(() => {
     setPreviewText(draft?.previewText ?? '');
@@ -176,21 +188,22 @@ export function DailyReport() {
     setMessage({ kind: 'ok', text: t(uiLang, 'dailyReport.refreshedMessage') });
   };
 
-  const handleGenerate = (): void => {
-    if (draft === undefined) return;
+  /** The report text for a draft and its topics (the staffing facts, when the draft carries them, sit under the Attendance heading). */
+  const renderPreviewText = (report: DailyReportEntity, topics: DailyTopic[]): string => {
     const sections = buildReportSections({
-      language: draft.language,
-      activities: draft.activities,
+      language: report.language,
+      activities: report.activities,
       attendance: attendanceForDate,
       members: reportsApi.state.rcsMembers ?? [],
-      topics: topicsForDate,
-      nextDay: draft.nextDay,
-      jiraUrl: draft.jiraUrl ?? settings.projectJiraUrl ?? '',
+      topics,
+      nextDay: report.nextDay,
+      jiraUrl: report.jiraUrl ?? settings.projectJiraUrl ?? '',
       rules: settings.progressRules,
+      ...(report.staffing === undefined ? {} : { staffing: report.staffing }),
       executionSummary: renderExecutionSummarySection(
-        draft.language,
+        report.language,
         buildExecutionReport({
-          date: draft.reportDate,
+          date: report.reportDate,
           projects: reportsApi.state.projects,
           cycles: reportsApi.state.cycles ?? [],
           assignments: reportsApi.state.testerAssignments ?? [],
@@ -199,7 +212,70 @@ export function DailyReport() {
         }),
       ),
     });
-    const text = renderReport(settings.templates[draft.language], sections);
+    return renderReport(settings.templates[report.language], sections);
+  };
+
+  // ---- prepared draft (Command Center -> Prepare Daily Report) --------------------------------
+  const dateState = reportStateForDate(reportsApi.state.reports, selectedDate);
+  const prepared = useMemo(
+    () =>
+      prepare
+        ? prepareDailyReportDraft({
+            language: reportLanguage,
+            projects: reportsApi.state.projects,
+            scopes: reportsApi.state.scopes ?? [],
+            cases: reportsApi.state.testCases ?? [],
+            caseResults: reportsApi.state.caseResults ?? [],
+            caseExecution: reportsApi.state.caseExecutions ?? [],
+            assignments: reportsApi.state.testerAssignments ?? [],
+            members: reportsApi.state.rcsMembers ?? [],
+            policy: resolveQaPolicy(settings.qaPolicy),
+            selectedDate,
+            today: businessDate(),
+            nowIso: new Date().toISOString(),
+          })
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [prepare, reportLanguage, reportsApi.state, selectedDate],
+  );
+
+  /** Explicit action: create the draft from the proposal. Nothing is written before this click. */
+  const handleApplyPrepared = (): void => {
+    if (prepared === null || draft !== undefined || finalizedForDate) return;
+    const now = nowIso();
+    const created: DailyReportEntity = {
+      ...newDraft(selectedDate, uiLang, settings.supervisorName, now, activeProjectId),
+      activities: prepared.activities,
+      staffing: prepared.staffing,
+      preparedFrom: { generatedAt: now, generatedForDate: selectedDate },
+    };
+    const records = preparedTopicsAsRecords(created.language, prepared.topics, selectedDate, settings.supervisorName, now, topicsForDate.length);
+    reportsApi.upsertReport({ ...created, previewText: renderPreviewText(created, [...topicsForDate, ...records]) });
+    for (const record of records) reportsApi.addTopic(record);
+    setProposing(false);
+    setMessage({ kind: 'ok', text: t(uiLang, 'dailyReport.prepare.applied') });
+  };
+
+  const handleStartEmpty = (): void => setProposing(false);
+
+  /** Explicit, confirmed: replace the GENERATED activities and staffing with current data. Manual activities and topics are kept. */
+  const handleRegeneratePrepared = async (): Promise<void> => {
+    if (prepared === null || draft === undefined) return;
+    if (!(await ask(t(uiLang, 'dailyReport.prepare.regenerateConfirm'), { severity: 'warning' }))) return;
+    const now = nowIso();
+    reportsApi.upsertReport({
+      ...draft,
+      activities: [...prepared.activities, ...draft.activities.filter((a) => a.source === 'MANUAL')],
+      staffing: prepared.staffing,
+      preparedFrom: { generatedAt: now, generatedForDate: selectedDate },
+      updatedAt: now,
+    });
+    setMessage({ kind: 'ok', text: t(uiLang, 'dailyReport.prepare.regenerated') });
+  };
+
+  const handleGenerate = (): void => {
+    if (draft === undefined) return;
+    const text = renderPreviewText(draft, topicsForDate);
     setPreviewText(text);
     // Generation always references the project whose live data seeded the report.
     reportsApi.upsertReport({ ...draft, projectId: activeProjectId, previewText: text, updatedAt: nowIso() });
@@ -462,6 +538,17 @@ export function DailyReport() {
         />
       ) : (
         <>
+          {prepared !== null ? (
+            <PreparedDraftPanel
+              lang={uiLang}
+              date={selectedDate}
+              prepared={prepared}
+              state={dateState}
+              onApply={handleApplyPrepared}
+              onStartEmpty={handleStartEmpty}
+              onRegenerate={() => void handleRegeneratePrepared()}
+            />
+          ) : null}
           {draft === undefined && finalizedForDate ? (
             <FinalizedExistsBanner
               uiLang={uiLang}

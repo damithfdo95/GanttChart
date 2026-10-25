@@ -1,4 +1,4 @@
-import type { AttendanceRecord, AttendanceStatus, DailyTopic, Language, NextDayItem, ProgressRules, ReportActivity, RcsMember } from '../../types';
+import type { AttendanceRecord, AttendanceStatus, DailyTopic, Language, NextDayItem, ProgressRules, ReportActivity, ReportStaffing, RcsMember } from '../../types';
 import { t } from '../../i18n';
 import { calculateActivityProgress, formatPercent } from './progress';
 
@@ -45,12 +45,49 @@ export function renderAttendanceSection(lang: Language, records: AttendanceRecor
   return t(lang, 'report.attendanceOverallLine', { attending, total });
 }
 
-/** "8: Android 4.1.0 R-can Sanity test" lines for included activities. */
+/** "Planned 8 · Assigned 7 · Actual 6" - the staffing facts, labelled as staffing (never as attendance). Empty when nothing is known. */
+export function renderStaffingLine(lang: Language, staffing: ReportStaffing | undefined): string {
+  if (staffing === undefined) return '';
+  const parts = [
+    staffing.planned === null ? null : t(lang, 'report.staffingPlanned', { n: staffing.planned }),
+    staffing.assigned === null ? null : t(lang, 'report.staffingAssigned', { n: staffing.assigned }),
+    staffing.actual === null ? null : t(lang, 'report.staffingActual', { n: staffing.actual }),
+  ].filter((x): x is string => x !== null);
+  return parts.length === 0 ? '' : `${t(lang, 'report.staffingLabel')}: ${parts.join(' · ')}`;
+}
+
+const WORK_TYPE_ORDER = ['regression', 'sanity', 'adhoc', 'verification'];
+
+function activityLine(lang: Language, a: ReportActivity): string {
+  const base = t(lang, 'report.activityLine', { count: a.memberCount, name: a.name });
+  if (a.ticketCount === undefined) return base;
+  // A Verification activity: test cases and JIRA tickets are different units and are shown as such.
+  const cases = (a.casesPassed ?? 0) + (a.casesFailed ?? 0) + a.notApplicableCases + (a.spoAssigned ?? 0);
+  return `${base} (${t(lang, 'report.activityUnits', { cases, tickets: a.ticketCount })})`;
+}
+
+/**
+ * "8: Android 4.1.0 R-can Sanity test" lines for included activities. Activities that were PREPARED with QA work types are grouped under
+ * a work-type heading (from the keys frozen in the activity, so a later change to a scope never re-groups a saved report); older
+ * activities render exactly as before.
+ */
 export function renderActivitiesSection(lang: Language, activities: ReportActivity[]): string {
-  return activities
-    .filter((a) => a.included)
-    .map((a) => t(lang, 'report.activityLine', { count: a.memberCount, name: a.name }))
-    .join('\n');
+  const included = activities.filter((a) => a.included);
+  if (!included.some((a) => a.workTypes !== undefined)) return included.map((a) => t(lang, 'report.activityLine', { count: a.memberCount, name: a.name })).join('\n');
+  const groups = new Map<string, { label: string; rank: number; lines: string[] }>();
+  for (const a of included) {
+    const types = a.workTypes !== undefined && a.workTypes.length > 0 ? a.workTypes : ['unspecified'];
+    const key = types.join('+');
+    const label = types.map((w) => t(lang, `qa.workType.${w}` as Parameters<typeof t>[1])).join(' / ');
+    const rank = Math.min(...types.map((w) => (WORK_TYPE_ORDER.includes(w) ? WORK_TYPE_ORDER.indexOf(w) : WORK_TYPE_ORDER.length)));
+    const g = groups.get(key) ?? { label, rank, lines: [] };
+    g.lines.push(`- ${activityLine(lang, a)}`);
+    groups.set(key, g);
+  }
+  return [...groups.values()]
+    .sort((x, y) => x.rank - y.rank || x.label.localeCompare(y.label))
+    .map((g) => `${g.label}\n${g.lines.join('\n')}`)
+    .join('\n\n');
 }
 
 /** Title + blank line + multiline description blocks. */
@@ -137,6 +174,8 @@ export interface ReportSectionsInput {
   rules: ProgressRules;
   /** The rendered Execution Summary block (see lib/reporting/execution.ts); empty when not supplied. */
   executionSummary?: string;
+  /** Staffing facts (Planned / Assigned / Actual): added under the Attendance heading as their own line. */
+  staffing?: ReportStaffing;
 }
 
 /** All {placeholders} consumed by the default report templates. */
@@ -147,7 +186,8 @@ export function buildReportSections(input: ReportSectionsInput): Record<string, 
       .filter((a) => a.included)
       .map((a) => a.name)
       .join('\n'),
-    attendance: renderAttendanceSection(language, input.attendance, input.members ?? []),
+    // The formal attendance line stays as it is; the staffing facts are a separate, clearly labelled line beneath it.
+    attendance: [renderAttendanceSection(language, input.attendance, input.members ?? []), renderStaffingLine(language, input.staffing)].filter((x) => x !== '').join('\n'),
     activities: renderActivitiesSection(language, input.activities),
     topics: renderTopicsSection(language, input.topics),
     progress: renderProgressSection(language, input.activities, input.rules),

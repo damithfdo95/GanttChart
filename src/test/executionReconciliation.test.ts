@@ -247,9 +247,13 @@ describe('no hidden writes, one saved authority', () => {
     return out;
   };
 
-  it('the Daily Report and the report builders never read the detailed history', () => {
-    for (const f of [...walk(join(root, 'lib/reporting')), ...walk(join(root, 'features/daily-report'))]) {
+  it('the report builders never read the detailed history; the composer only hands the workspace to the one draft generator', () => {
+    for (const f of walk(join(root, 'lib/reporting'))) {
       expect(readFileSync(f, 'utf8'), f).not.toMatch(/executionReconciliation|dailyDetailedSummary|caseExecutions|dailyCaseExecution/);
+    }
+    // Phase 10: the saved aggregate still supplies every report figure; the composer never derives counts from case history itself.
+    for (const f of walk(join(root, 'features/daily-report'))) {
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(/executionReconciliation|dailyDetailedSummary|dailyCaseExecution/);
     }
   });
 

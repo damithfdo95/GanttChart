@@ -10,6 +10,8 @@ import { ReadinessBadge } from '../readiness/ReadinessCard';
 import { readinessReasonText } from '../readiness/readinessText';
 import { MetricCard } from '../../components/MetricCard';
 import { executionSourceLabelKey } from '../../domain/executionSource';
+import { prepareDailyReportDraft, reportStateForDate } from '../../domain/dailyReportDraft';
+import { MISSING_KEY, preparedDraftPreview, preparedTopicLine } from '../daily-report/preparedDraft';
 import type { Language } from '../../types';
 
 /** Where each kind of attention item is handled (the Command Center links there; it never duplicates an edit control). */
@@ -38,7 +40,7 @@ function WorkTypeChips({ lang, types }: { lang: Language; types: readonly string
 }
 
 /** The supervisor's daily operating view. Management only; everything is derived from the workspace state, with no network call. */
-export function CommandCenter({ onNavigate, onOpenGantt }: { onNavigate: (screen: Screen) => void; onOpenGantt: (projectId: string) => void }) {
+export function CommandCenter({ onNavigate, onOpenGantt, onPrepareReport }: { onNavigate: (screen: Screen) => void; onOpenGantt: (projectId: string) => void; onPrepareReport: (date: string) => void }) {
   const lang = useAppStateCtx().state.language;
   const { state } = useReportsStateCtx();
   const today = businessDate();
@@ -61,6 +63,27 @@ export function CommandCenter({ onNavigate, onOpenGantt }: { onNavigate: (screen
       }),
     [state.projects, state.scopes, state.testCases, state.caseResults, state.caseExecutions, state.testerAssignments, state.rcsMembers, state.settings.qaPolicy, date, today],
   );
+  // The Daily Report proposal comes from the same generator the report composer starts from (one data source); previewing it saves nothing.
+  const prepared = useMemo(
+    () =>
+      prepareDailyReportDraft({
+        language: lang,
+        projects: state.projects,
+        scopes: state.scopes ?? [],
+        cases: state.testCases ?? [],
+        caseResults: state.caseResults ?? [],
+        caseExecution: state.caseExecutions ?? [],
+        assignments: state.testerAssignments ?? [],
+        members: state.rcsMembers ?? [],
+        policy: resolveQaPolicy(state.settings.qaPolicy),
+        selectedDate: date,
+        today,
+        nowIso: new Date().toISOString(),
+      }),
+    [lang, state.projects, state.scopes, state.testCases, state.caseResults, state.caseExecutions, state.testerAssignments, state.rcsMembers, state.settings.qaPolicy, date, today],
+  );
+  const preview = preparedDraftPreview(lang, prepared);
+  const reportState = reportStateForDate(state.reports, date);
   const s = ops.summary;
   const byId = new Map(ops.projects.map((p) => [p.projectId, p] as const));
   const ranked: ProjectDayOps[] = ops.projectRanking.flatMap((id) => (byId.has(id) ? [byId.get(id) as ProjectDayOps] : []));
@@ -382,36 +405,47 @@ export function CommandCenter({ onNavigate, onOpenGantt }: { onNavigate: (screen
       <section className="dr-section" aria-labelledby="ops-report">
         <h2 id="ops-report">{t(lang, 'ops.report.title')} — {date}</h2>
         <p className="exec-help">{t(lang, 'ops.report.note')}</p>
-        <p>{t(lang, 'ops.report.staffing', { planned: ops.reportPreparation.staffing.planned, assigned: ops.reportPreparation.staffing.assigned, actual: ops.reportPreparation.staffing.actual })}</p>
-        <h3>{t(lang, 'ops.report.activities')}</h3>
-        {ops.reportPreparation.activities.length === 0 ? (
-          <p className="exec-help">{t(lang, 'ops.report.noActivities')}</p>
+        <p>
+          {t(lang, 'ops.report.status')}: <span className="gap-pill">{t(lang, `ops.report.status.${reportState}` as TranslationKey)}</span>
+        </p>
+        {reportState === 'finalized' ? (
+          <p className="exec-help">{t(lang, 'dailyReport.prepare.finalizedNote')}</p>
         ) : (
-          ops.reportPreparation.activities.map((g) => (
-            <div key={g.workType}>
-              <WorkTypeChips lang={lang} types={[g.workType]} />
+          <>
+            <p>{preview.staffing === '' ? t(lang, 'dailyReport.prepare.missing.noStaffing') : preview.staffing}</p>
+            <h3>{t(lang, 'ops.report.activities')}</h3>
+            {preview.activities === '' ? <p className="exec-help">{t(lang, 'ops.report.noActivities')}</p> : <pre className="dr-progress-preview">{preview.activities}</pre>}
+            <h3>{t(lang, 'ops.report.topics')}</h3>
+            {prepared.topics.length === 0 ? (
+              <p className="exec-help">{t(lang, 'ops.attention.empty')}</p>
+            ) : (
               <ul>
-                {g.items.map((i) => (
-                  <li key={i.projectId}>{t(lang, 'ops.report.activity', { project: i.projectName, n: i.executedCases, basis: t(lang, i.basis === 'detailed' ? 'ops.report.basisDetailed' : 'ops.report.basisSaved') })}</li>
+                {prepared.topics.map((topic) => (
+                  <li key={`${topic.projectId}-${topic.code}`}>{preparedTopicLine(lang, topic)}</li>
                 ))}
               </ul>
-            </div>
-          ))
+            )}
+            {prepared.currentContext.length > 0 ? (
+              <>
+                <h3>{t(lang, 'ops.report.contextHistorical')}</h3>
+                <ul className="exec-help">
+                  {prepared.currentContext.map((a) => (
+                    <li key={`${a.projectId}-${a.reasonCode}`}>
+                      {a.projectName} — {readinessReasonText(lang, a.reason)}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+            {prepared.missing.length > 0 ? (
+              <p className="exec-help">
+                {t(lang, 'ops.report.missing')}: {prepared.missing.map((m) => t(lang, MISSING_KEY[m])).join(' ')}
+              </p>
+            ) : null}
+          </>
         )}
-        <h3>{t(lang, 'ops.report.topics')}</h3>
-        {ops.reportPreparation.topics.length === 0 ? (
-          <p className="exec-help">{t(lang, 'ops.attention.empty')}</p>
-        ) : (
-          <ul>
-            {ops.reportPreparation.topics.map((a) => (
-              <li key={`${a.projectId}-${a.reasonCode}`}>
-                {a.projectName} — {readinessReasonText(lang, a.reason)}
-              </li>
-            ))}
-          </ul>
-        )}
-        <button type="button" className="btn btn-primary" onClick={() => onNavigate('dailyReport')}>
-          {t(lang, 'ops.report.open')}
+        <button type="button" className="btn btn-primary" onClick={() => onPrepareReport(date)}>
+          {t(lang, reportState === 'draft' ? 'ops.report.continue' : reportState === 'finalized' ? 'ops.report.viewFinal' : 'ops.report.prepare')}
         </button>
       </section>
     </div>

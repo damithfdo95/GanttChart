@@ -73,6 +73,7 @@ export function finalizeReport(
       nextDay: report.nextDay.map((n) => ({ ...n })),
       morningSchedule: (report.morningSchedule ?? []).map((n) => ({ ...n })),
       morningPreviewText: report.morningPreviewText ?? '',
+      ...(report.staffing === undefined ? {} : { staffing: { ...report.staffing } }),
     },
   };
 }
@@ -100,6 +101,7 @@ export function createRevision(report: DailyReport, nowIso: string): DailyReport
     nextDay: source.nextDay.map((n) => ({ ...n, id: generateId() })),
     morningSchedule: (source.morningSchedule ?? []).map((n) => ({ ...n, id: generateId() })),
     morningPreviewText: report.morningPreviewText ?? '',
+    ...(source.staffing === undefined ? {} : { staffing: { ...source.staffing } }),
     previewText: report.previewText,
     createdBy: report.finalizedBy ?? report.createdBy,
     createdAt: nowIso,

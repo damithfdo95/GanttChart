@@ -194,34 +194,6 @@ describe('projects, people and inclusion', () => {
   });
 });
 
-describe('Daily Report preparation', () => {
-  it('proposes the selected day\'s activities by work type with staffing facts and attention topics, and writes nothing', () => {
-    const input = team();
-    const frozen = JSON.stringify(input);
-    const deepFreeze = <T,>(o: T): T => {
-      if (typeof o === 'object' && o !== null) {
-        Object.freeze(o);
-        for (const v of Object.values(o)) deepFreeze(v);
-      }
-      return o;
-    };
-    deepFreeze(input);
-    const prep = buildSupervisorDailyOperations(input).reportPreparation;
-    expect(JSON.stringify(input)).toBe(frozen);
-    expect(prep.date).toBe(TODAY);
-    expect(prep.staffing).toEqual({ planned: 12, assigned: 3, actual: 3 });
-    expect(prep.activities.map((g) => [g.workType, g.items.map((i) => [i.projectId, i.executedCases, i.basis])])).toEqual([['regression', [['PRJ-A', 1, 'detailed']]], ['sanity', [['PRJ-B', 1, 'detailed']]]]);
-    expect(prep.topics.every((t) => t.severity !== 'info')).toBe(true);
-    expect(prep.topics[0]!.reasonCode).toBe('critical_defect_open');
-  });
-
-  it('falls back to the saved aggregate (unspecified work type) when no case history exists for the day', () => {
-    const prep = ops({ caseExecution: [], selectedDate: YESTERDAY }).reportPreparation;
-    expect(prep.activities.map((g) => g.workType)).toEqual(['unspecified']);
-    expect(prep.activities[0]!.items.every((i) => i.basis === 'saved')).toBe(true);
-  });
-});
-
 describe('export', () => {
   for (const lang of ['en', 'ja'] as const) {
     it(`[${lang}] one row per project with explicit units and the attention codes`, () => {

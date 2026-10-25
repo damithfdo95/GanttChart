@@ -225,6 +225,8 @@ function Shell() {
   const [screen, setScreen] = useState<Screen>('dashboard');
   const [overallFocus, setOverallFocus] = useState<OverallFocus>({});
   const [ganttFocusProjectId, setGanttFocusProjectId] = useState<string | null>(null);
+  // "Prepare Daily Report" from the Command Center: the date it carries (the composer never silently falls back to today).
+  const [reportIntent, setReportIntent] = useState<{ date: string } | null>(null);
   const [meetingIntent, setMeetingIntent] = useState<'morning' | 'evening' | null>(null);
 
   // The JIRA tab exists only while Settings → JIRA Integration is configured:
@@ -284,7 +286,10 @@ function Shell() {
                   ref={activeScreen === item.id ? activeTabRef : undefined}
                   className={activeScreen === item.id ? 'active' : undefined}
                   aria-current={activeScreen === item.id ? 'page' : undefined}
-                  onClick={() => setScreen(item.id)}
+                  onClick={() => {
+                    setReportIntent(null);
+                    setScreen(item.id);
+                  }}
                 >
                   {t(state.language, item.key)}
                 </button>
@@ -308,7 +313,14 @@ function Shell() {
       {activeScreen === 'dashboard' ? (
         <Dashboard onOpenOverall={openOverall} onOpenMeeting={openMeeting} />
       ) : activeScreen === 'commandCenter' ? (
-        <CommandCenter onNavigate={setScreen} onOpenGantt={openGantt} />
+        <CommandCenter
+          onNavigate={setScreen}
+          onOpenGantt={openGantt}
+          onPrepareReport={(date) => {
+            setReportIntent({ date });
+            setScreen('dailyReport');
+          }}
+        />
       ) : activeScreen === 'cycles' ? (
         <CyclesScreen />
       ) : activeScreen === 'testManagement' ? (
@@ -320,7 +332,7 @@ function Shell() {
       ) : activeScreen === 'gantt' ? (
         <Gantt focusProjectId={ganttFocusProjectId} onFocusHandled={() => setGanttFocusProjectId(null)} meeting={meetingIntent} onMeetingHandled={() => setMeetingIntent(null)} />
       ) : activeScreen === 'dailyReport' ? (
-        <DailyReport />
+        <DailyReport {...(reportIntent === null ? {} : { initialDate: reportIntent.date, prepare: true })} />
       ) : activeScreen === 'tickets' ? (
         <TicketTab />
       ) : activeScreen === 'performance' ? (

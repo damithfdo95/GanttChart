@@ -176,14 +176,6 @@ export interface SupervisorDailySummary {
   attentionItems: SupervisorAttentionItem[];
 }
 
-export interface DailyReportPreparation {
-  date: string;
-  /** Planned / Assigned / Actual are staffing facts - not formal attendance. */
-  staffing: { planned: number; assigned: number; actual: number };
-  activities: Array<{ workType: WorkTypeKey; items: Array<{ projectId: string; projectName: string; executedCases: number; basis: 'detailed' | 'saved' }> }>;
-  topics: SupervisorAttentionItem[];
-}
-
 export interface SupervisorDailyOperations {
   selectedDate: string;
   today: string;
@@ -198,7 +190,6 @@ export interface SupervisorDailyOperations {
   /** Compared with the most recent earlier day that has any recorded activity (null when there is none). */
   comparison: { previous: DayMetrics; current: DayMetrics } | null;
   failures: { failedToday: number; blockedToday: number; items: Array<{ projectId: string; projectName: string; scopeName: string; key: string; title: string; status: 'fail' | 'blocked' }>; topScopes: Array<{ scopeId: string; scopeName: string; failed: number }> };
-  reportPreparation: DailyReportPreparation;
 }
 
 const ACTIVE: ReadonlySet<string> = new Set(['ongoing', 'extended']);
@@ -447,25 +438,6 @@ export function buildSupervisorDailyOperations(input: SupervisorOpsInput): Super
     attentionItems: attention,
   };
 
-  // ---- Daily Report preparation: a read-only proposal; the existing Daily Report stays the persisted snapshot ----
-  const activities = new Map<WorkTypeKey, DailyReportPreparation['activities'][number]>();
-  const put = (k: WorkTypeKey, item: DailyReportPreparation['activities'][number]['items'][number]): void => {
-    const g = activities.get(k) ?? { workType: k, items: [] };
-    g.items.push(item);
-    activities.set(k, g);
-  };
-  for (const p of projects) {
-    const typed = p.detailedByWorkType.filter((d) => d.uniqueCasesExecuted > 0);
-    if (typed.length > 0) for (const d of typed) put(d.workType, { projectId: p.projectId, projectName: p.projectName, executedCases: d.passed + d.failed, basis: 'detailed' });
-    else if (p.saved !== null && p.saved.executed > 0) put('unspecified', { projectId: p.projectId, projectName: p.projectName, executedCases: p.saved.executed, basis: 'saved' });
-  }
-  const reportPreparation: DailyReportPreparation = {
-    date: selectedDate,
-    staffing: { planned: summary.plannedTesters, assigned: summary.assignedTesters, actual: summary.actualTesters },
-    activities: typeOrder.flatMap((k) => (activities.has(k) ? [activities.get(k) as DailyReportPreparation['activities'][number]] : [])),
-    topics: attention.filter((a) => a.severity !== 'info').slice(0, 8),
-  };
-
   return {
     selectedDate,
     today,
@@ -477,7 +449,6 @@ export function buildSupervisorDailyOperations(input: SupervisorOpsInput): Super
     changes,
     comparison,
     failures: { failedToday: failureItems.filter((f) => f.status === 'fail').length, blockedToday: failureItems.filter((f) => f.status === 'blocked').length, items: failureItems.slice(0, 10), topScopes },
-    reportPreparation,
   };
 }
 
