@@ -10,7 +10,7 @@ import { ReadinessBadge } from '../readiness/ReadinessCard';
 import { readinessReasonText } from '../readiness/readinessText';
 import { MetricCard } from '../../components/MetricCard';
 import { executionSourceLabelKey } from '../../domain/executionSource';
-import { prepareDailyReportDraft, reportStateForDate } from '../../domain/dailyReportDraft';
+import { prepareDailyReportDraft, reportDeliveryStateForDate, type DailyReportDeliveryState } from '../../domain/dailyReportDraft';
 import { MISSING_KEY, preparedDraftPreview, preparedTopicLine } from '../daily-report/preparedDraft';
 import type { Language } from '../../types';
 
@@ -40,6 +40,14 @@ function WorkTypeChips({ lang, types }: { lang: Language; types: readonly string
 }
 
 /** The supervisor's daily operating view. Management only; everything is derived from the workspace state, with no network call. */
+/** The one action the Daily Report section offers for each state of the date's report. */
+const REPORT_ACTION_KEY: Record<DailyReportDeliveryState, TranslationKey> = {
+  none: 'ops.report.prepare',
+  draft: 'ops.report.continue',
+  finalizedNotPublished: 'ops.report.viewPublish',
+  finalizedPublished: 'ops.report.viewPublished',
+};
+
 export function CommandCenter({ onNavigate, onOpenGantt, onPrepareReport }: { onNavigate: (screen: Screen) => void; onOpenGantt: (projectId: string) => void; onPrepareReport: (date: string) => void }) {
   const lang = useAppStateCtx().state.language;
   const { state } = useReportsStateCtx();
@@ -83,7 +91,7 @@ export function CommandCenter({ onNavigate, onOpenGantt, onPrepareReport }: { on
     [lang, state.projects, state.scopes, state.testCases, state.caseResults, state.caseExecutions, state.testerAssignments, state.rcsMembers, state.settings.qaPolicy, date, today],
   );
   const preview = preparedDraftPreview(lang, prepared);
-  const reportState = reportStateForDate(state.reports, date);
+  const reportState = reportDeliveryStateForDate(state.reports, date);
   const s = ops.summary;
   const byId = new Map(ops.projects.map((p) => [p.projectId, p] as const));
   const ranked: ProjectDayOps[] = ops.projectRanking.flatMap((id) => (byId.has(id) ? [byId.get(id) as ProjectDayOps] : []));
@@ -408,7 +416,7 @@ export function CommandCenter({ onNavigate, onOpenGantt, onPrepareReport }: { on
         <p>
           {t(lang, 'ops.report.status')}: <span className="gap-pill">{t(lang, `ops.report.status.${reportState}` as TranslationKey)}</span>
         </p>
-        {reportState === 'finalized' ? (
+        {reportState === 'finalizedNotPublished' || reportState === 'finalizedPublished' ? (
           <p className="exec-help">{t(lang, 'dailyReport.prepare.finalizedNote')}</p>
         ) : (
           <>
@@ -445,7 +453,7 @@ export function CommandCenter({ onNavigate, onOpenGantt, onPrepareReport }: { on
           </>
         )}
         <button type="button" className="btn btn-primary" onClick={() => onPrepareReport(date)}>
-          {t(lang, reportState === 'draft' ? 'ops.report.continue' : reportState === 'finalized' ? 'ops.report.viewFinal' : 'ops.report.prepare')}
+          {t(lang, REPORT_ACTION_KEY[reportState])}
         </button>
       </section>
     </div>

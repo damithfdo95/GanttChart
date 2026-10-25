@@ -32,6 +32,7 @@ import { isBlockingEvent, isBugTicket, isDailyActualSnapshot, isDailyTargetOverr
 import { ensureProjectIds } from '../../domain/projects/migrations';
 import { migrateAssignmentsToMembers } from '../../domain/assignments';
 import { migrateAttendanceIdentity, migrateProjectBugTickets } from '../../domain/identityResolution';
+import { sanitizeReportPublication } from '../reporting/publication';
 
 /** Versioned localStorage key for the daily-report module (V3). */
 export const REPORTS_STORAGE_KEY = 'ganttchart.reports.v1';
@@ -633,6 +634,8 @@ export function normalizeReportsState(state: ReportsState): ReportsState {
     projects: projectsMigration.projects,
     activeProjectId: state.activeProjectId ?? null,
     attendance: attendanceMigration.attendance,
+    // Publication metadata that breaks the shared rules is dropped (the report reads as Not Published); older reports have none.
+    reports: state.reports.map(sanitizeReportPublication),
     testerAssignments: migration.assignments,
     reviews: (state.reviews ?? []).filter(isTesterReview),
     rcsMembers: rcsMembers.filter(isRcsMember),

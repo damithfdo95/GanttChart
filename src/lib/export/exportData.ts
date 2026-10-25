@@ -43,6 +43,7 @@ import type { ReleaseReadiness } from '../../domain/readiness';
 import type { SupervisorDailyOperations } from '../../domain/supervisorOperations';
 import { assessDetailedCoverage, isCaseDerivedAggregateStale, reconcileDailyExecution } from '../../domain/executionReconciliation';
 import { compareDailyExecution, dailyDetailedSummary, eventActorLabel, eventBusinessDate, sortEventsAscending, type CaseExecutionEvent, type DailyDetailedSummary, type TestCase, type TestScope } from '../../domain/testManagement';
+import { isPublished } from '../../../shared/reportPublication';
 import { buildManagementReportRow, riskStatusLabel, type ManagementReportRow } from './management';
 /** Export filters (date range, team, attendance status). */
 
@@ -217,9 +218,12 @@ export function reportsSheet(lang: Language, reports: DailyReport[]): XlsxSheet 
       t(lang, 'columns.date'),
       t(lang, 'columns.projectId'),
       t(lang, 'columns.language'),
-      t(lang, 'columns.status'),
+      t(lang, 'columns.finalizedStatus'),
       t(lang, 'columns.finalizedAt'),
       t(lang, 'columns.finalizedBy'),
+      t(lang, 'columns.publicationStatus'),
+      t(lang, 'columns.publishedAt'),
+      t(lang, 'columns.publishedBy'),
       t(lang, 'columns.item'),
     ],
     rows: reports.map((r) => [
@@ -229,6 +233,9 @@ export function reportsSheet(lang: Language, reports: DailyReport[]): XlsxSheet 
       r.status === 'FINALIZED' ? t(lang, 'dailyReport.statusFinalized') : t(lang, 'dailyReport.statusDraft'),
       r.finalizedAt ?? '',
       r.finalizedBy ?? '',
+      r.status === 'FINALIZED' ? t(lang, isPublished(r) ? 'dailyReport.publication.published' : 'dailyReport.publication.notPublished') : '',
+      isPublished(r) ? r.publishedAt ?? '' : '',
+      isPublished(r) ? r.publishedByMemberId ?? r.publishedByUserId ?? '' : '',
       r.revisionOf !== null ? t(lang, 'dailyReport.revision', { date: r.reportDate }) : '',
     ]),
   };

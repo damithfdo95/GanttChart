@@ -130,3 +130,21 @@ export function reportStateForDate(reports: ReadonlyArray<{ reportDate: string; 
   if (reports.some((r) => r.reportDate === date && r.status === 'FINALIZED')) return 'finalized';
   return 'none';
 }
+
+export type DailyReportDeliveryState = 'none' | 'draft' | 'finalizedNotPublished' | 'finalizedPublished';
+
+/**
+ * Where a date's report stands for the supervisor: nothing, a draft (including a revision), finalized but not yet delivered, or
+ * finalized and published. Finalized is NOT published. When a date has several finalized versions (revisions), the latest one decides.
+ */
+export function reportDeliveryStateForDate(
+  reports: ReadonlyArray<{ reportDate: string; status: string; finalizedAt?: string | null; createdAt?: string; publicationStatus?: unknown }>,
+  date: string,
+): DailyReportDeliveryState {
+  const state = reportStateForDate(reports, date);
+  if (state !== 'finalized') return state;
+  const latest = reports
+    .filter((r) => r.reportDate === date && r.status === 'FINALIZED')
+    .sort((a, b) => (b.finalizedAt ?? b.createdAt ?? '').localeCompare(a.finalizedAt ?? a.createdAt ?? ''))[0];
+  return latest !== undefined && latest.publicationStatus === 'published' ? 'finalizedPublished' : 'finalizedNotPublished';
+}

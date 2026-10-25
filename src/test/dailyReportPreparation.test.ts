@@ -189,7 +189,9 @@ describe('report state, existing drafts and finalized reports', () => {
 
   it('the Command Center action reads Prepare / Continue / View and hands the selected date to the report screen', () => {
     const cc = src('features/commandCenter/CommandCenter.tsx');
-    expect(cc).toContain("reportState === 'draft' ? 'ops.report.continue' : reportState === 'finalized' ? 'ops.report.viewFinal' : 'ops.report.prepare'");
+    expect(cc).toContain("none: 'ops.report.prepare'");
+    expect(cc).toContain("draft: 'ops.report.continue'");
+    expect(cc).toContain('REPORT_ACTION_KEY[reportState]');
     expect(cc).toContain('onClick={() => onPrepareReport(date)}');
     const app = src('app/App.tsx');
     expect(app).toContain('setReportIntent({ date })');

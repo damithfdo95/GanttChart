@@ -32,6 +32,9 @@ import {
 } from './DailyReportSections';
 import { usePagedRows } from '../../lib/pagination/usePagedRows';
 import { XLSX_MIME } from '../../lib/statusKeys';
+import { useAccess } from '../../app/access';
+import { canPublishReport, copyWithFallback, dailyReportFileName, formatDailyReportChatText, formatDailyReportPlainText, markReportPublished } from '../../lib/reporting/publication';
+import type { ReportPublicationMethod } from '../../../shared/reportPublication';
 import { PreparedDraftPanel } from './PreparedDraftPanel';
 import { preparedTopicsAsRecords } from './preparedDraft';
 import { prepareDailyReportDraft, reportStateForDate } from '../../domain/dailyReportDraft';
@@ -54,6 +57,7 @@ export function DailyReport({ initialDate, prepare = false }: { initialDate?: st
   const uiLang = app.state.language;
   const ask = useAskConfirm(uiLang);
   const settings = reportsApi.state.settings;
+  const access = useAccess();
 
   const [selectedDate, setSelectedDate] = useState<string>(() => initialDate ?? formatDate(todayEpochDays()));
   // Opened from the Command Center with "Prepare Daily Report": the date it carries is the date shown (never silently today), and no
@@ -68,6 +72,19 @@ export function DailyReport({ initialDate, prepare = false }: { initialDate?: st
   const [previewText, setPreviewText] = useState('');
   const [morningPreview, setMorningPreview] = useState('');
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  // Delivery of a finalized report: the clipboard fallback text, and how the supervisor last delivered it (recorded when they mark it published).
+  const [fallbackText, setFallbackText] = useState<string | null>(null);
+  const [deliveryMethod, setDeliveryMethod] = useState<ReportPublicationMethod>('other');
+  useEffect(() => setFallbackText(null), [viewingId]);
+  // "View / Publish" from the Command Center lands directly on the date's finalized report (a draft, if one exists, is still continued).
+  useEffect(() => {
+    if (!prepare || initialDate === undefined) return;
+    const finalized = reportsApi.state.reports
+      .filter((r) => r.reportDate === initialDate && r.status === 'FINALIZED')
+      .sort((a, b) => (b.finalizedAt ?? '').localeCompare(a.finalizedAt ?? ''))[0];
+    if (finalized !== undefined && findDraft(reportsApi.state.reports, initialDate) === undefined) setViewingId(finalized.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prepare, initialDate]);
 
   const draft = useMemo(
     () => findDraft(reportsApi.state.reports, selectedDate),
@@ -446,6 +463,45 @@ export function DailyReport({ initialDate, prepare = false }: { initialDate?: st
     reportsApi.setTopics([...others, ...updated.map((tp, i) => ({ ...tp, displayOrder: i }))]);
   };
 
+  // ---- delivery of a finalized report (copy / export / print / publish) ------------------------
+
+  const copyFinalized = async (text: string, doneKey: 'dailyReport.publication.copiedPlain' | 'dailyReport.publication.copiedChat'): Promise<void> => {
+    const result = await copyWithFallback(text, typeof navigator === 'undefined' ? undefined : navigator.clipboard);
+    if (result.ok) {
+      setFallbackText(null);
+      setDeliveryMethod('manualCopy');
+      setMessage({ kind: 'ok', text: t(uiLang, doneKey) });
+    } else {
+      setMessage(null);
+      setFallbackText(result.fallbackText);
+    }
+  };
+
+  const exportFinalized = (report: DailyReportEntity): void => {
+    downloadTextFile(dailyReportFileName(report), 'text/plain;charset=utf-8', formatDailyReportPlainText(report));
+    setDeliveryMethod('export');
+    setMessage({ kind: 'ok', text: t(uiLang, 'dailyReport.exportedMessage') });
+  };
+
+  const printFinalized = (report: DailyReportEntity): void => {
+    const opened = printHtml(`${t(uiLang, 'dailyReport.title')} — ${report.reportDate}`, textToHtml(formatDailyReportPlainText(report)));
+    if (opened) setDeliveryMethod('print');
+    else setMessage({ kind: 'error', text: t(uiLang, 'dailyReport.popupBlocked') });
+  };
+
+  /** Explicit and confirmed: records that the finalized report was delivered. It changes nothing in the report itself. */
+  const handleMarkPublished = async (report: DailyReportEntity): Promise<void> => {
+    if (!canPublishReport(report, access.canManage)) return;
+    if (!(await ask(t(uiLang, 'dailyReport.publication.confirm'), { severity: 'warning' }))) return;
+    reportsApi.upsertReport(markReportPublished(report, { userId: access.userId, memberId: access.ownMemberId }, deliveryMethod, nowIso()));
+    setMessage({ kind: 'ok', text: t(uiLang, 'dailyReport.publication.done') });
+  };
+
+  const publisherLabel = (report: DailyReportEntity): string => {
+    const member = (reportsApi.state.rcsMembers ?? []).find((m) => m.id === report.publishedByMemberId);
+    return member?.name ?? report.publishedByMemberId ?? report.publishedByUserId ?? '';
+  };
+
   const createRevisionFrom = (report: DailyReportEntity): void => {
     const revision = createRevision(report, nowIso());
     reportsApi.upsertReport(revision);
@@ -535,6 +591,16 @@ export function DailyReport({ initialDate, prepare = false }: { initialDate?: st
           viewingReport={viewingReport}
           onClose={() => setViewingId(null)}
           onRevise={handleCreateRevision}
+          delivery={{
+            canPublish: canPublishReport(viewingReport, access.canManage),
+            publishedByLabel: publisherLabel(viewingReport),
+            fallbackText,
+            onCopyPlain: () => void copyFinalized(formatDailyReportPlainText(viewingReport), 'dailyReport.publication.copiedPlain'),
+            onCopyChat: () => void copyFinalized(formatDailyReportChatText(viewingReport), 'dailyReport.publication.copiedChat'),
+            onExport: () => exportFinalized(viewingReport),
+            onPrint: () => printFinalized(viewingReport),
+            onMarkPublished: () => void handleMarkPublished(viewingReport),
+          }}
         />
       ) : (
         <>

@@ -17,6 +17,7 @@ import { RETENTION_CHOICES, meetingCommitError } from './meeting';
 import { notificationCommitError } from './notifications';
 import { brandingCommitError } from './branding';
 import { qaPolicyError } from './qaPolicy';
+import { reportPublicationCommitError } from './reportPublication';
 
 // ---- cycles ------------------------------------------------------------------
 
@@ -265,6 +266,10 @@ export function qaCommitError(input: QaCommitInput): string | null {
   // The team meeting's plans and notes (an SV's records): what they refer to.
   const meetingRefused = meetingCommitError({ puts, deletes, view, isSv: isAdmin });
   if (meetingRefused !== null) return meetingRefused;
+
+  // Publishing a finalized Daily Report: valid metadata, SV only, never a draft, never a change to what was finalized.
+  const publicationRefused = reportPublicationCommitError({ puts, view, isSv: isAdmin });
+  if (publicationRefused !== null) return publicationRefused;
 
   // Team Member profiles: unique normalised email, and a linked profile's email / role / active state belong to its account.
   const memberRefused = memberCommitError({ puts, deletes, view });

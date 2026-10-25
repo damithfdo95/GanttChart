@@ -8,6 +8,7 @@ export type Language = 'en' | 'ja';
  */
 import type { CycleRecord, CycleStatus } from '../../shared/qaRules';
 import type { QaPolicy } from '../../shared/qaPolicy';
+import type { ReportPublication } from '../../shared/reportPublication';
 import type { CaseExecutionEvent, CaseResult, TestCase, TestScope } from '../../shared/testManagement';
 import type { DailyTeamPlan, MeetingNote } from '../../shared/meeting';
 import type { NotificationAck, NotificationDef } from '../../shared/notifications';
@@ -704,7 +705,7 @@ export interface DailyReportSnapshot {
   staffing?: ReportStaffing;
 }
 
-export interface DailyReport {
+export interface DailyReport extends ReportPublication {
   id: string;
   reportDate: string;
   /** Report language — independent from the UI language. */

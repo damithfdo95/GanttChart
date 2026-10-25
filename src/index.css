@@ -1654,6 +1654,19 @@ input[type='checkbox'] {
   overflow-y: auto;
 }
 
+@media print {
+  .app-nav,
+  .no-print,
+  .app-header select,
+  .app-header .btn {
+    display: none !important;
+  }
+  .dr-preview-readonly {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
 .dr-progress-preview {
   background: var(--bg);
   border: 1px solid var(--border);

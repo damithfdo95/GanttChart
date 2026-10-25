@@ -4,21 +4,40 @@
  * the screen file holds state wiring and derivation only.
  */
 
-import { t, LANGUAGES } from '../../i18n';
+import { t, LANGUAGES, type TranslationKey } from '../../i18n';
 import type { DailyReport as DailyReportEntity, Language } from '../../types';
+import { publicationStatusOf } from '../../../shared/reportPublication';
 import { TablePager } from '../../components/TablePager';
 import type { usePagedRows } from '../../lib/pagination/usePagedRows';
 
 type Pager = ReturnType<typeof usePagedRows<DailyReportEntity>>;
+
+/** The delivery side of a finalized report: what the supervisor may do with it, and who published it (resolved by the screen). */
+export interface ReportDeliveryControls {
+  /** May this person publish (a supervisor, never a Tester) AND is the report still unpublished? */
+  canPublish: boolean;
+  /** Display name of the publisher (member name, else a stable id), or '' when unknown. */
+  publishedByLabel: string;
+  /** Text to show in a selectable box when the clipboard refused; null when there is none. */
+  fallbackText: string | null;
+  onCopyPlain: () => void;
+  onCopyChat: () => void;
+  onExport: () => void;
+  onPrint: () => void;
+  onMarkPublished: () => void;
+}
 
 export interface ViewingReportBannerProps {
   uiLang: Language;
   viewingReport: DailyReportEntity;
   onClose: () => void;
   onRevise: () => void;
+  /** Absent in contexts that only display the report. */
+  delivery?: ReportDeliveryControls;
 }
 
-export function ViewingReportBanner({ uiLang, viewingReport, onClose, onRevise }: ViewingReportBannerProps) {
+export function ViewingReportBanner({ uiLang, viewingReport, onClose, onRevise, delivery }: ViewingReportBannerProps) {
+  const published = publicationStatusOf(viewingReport) === 'published';
   return (
     <section className="dr-section dr-finalized">
       <h2>
@@ -30,9 +49,50 @@ export function ViewingReportBanner({ uiLang, viewingReport, onClose, onRevise }
         {t(uiLang, 'columns.finalizedAt')}: {viewingReport.finalizedAt ?? '—'} · {t(uiLang, 'columns.finalizedBy')}:{' '}
         {viewingReport.finalizedBy ?? '—'}
       </p>
+      <p className="dr-summary" data-testid="report-publication">
+        {t(uiLang, 'dailyReport.statusFinalized')} · {t(uiLang, 'columns.publication')}:{' '}
+        <span className={published ? 'gap-pill ok' : 'gap-pill'}>{t(uiLang, published ? 'dailyReport.publication.published' : 'dailyReport.publication.notPublished')}</span>
+        {published ? (
+          <>
+            {' '}
+            · {t(uiLang, 'columns.publishedAt')}: {viewingReport.publishedAt ?? '—'} · {t(uiLang, 'columns.publishedBy')}: {delivery?.publishedByLabel === undefined || delivery.publishedByLabel === '' ? '—' : delivery.publishedByLabel}
+            {viewingReport.publicationMethod === undefined ? '' : ` · ${t(uiLang, 'dailyReport.publication.method')}: ${t(uiLang, `dailyReport.publication.method.${viewingReport.publicationMethod}` as TranslationKey)}`}
+          </>
+        ) : null}
+      </p>
       <pre className="dr-preview-readonly">{viewingReport.previewText}</pre>
-      <p className="exec-help">{t(uiLang, 'dailyReport.editRevisionHint')}</p>
-      <div className="dr-button-row">
+      {delivery !== undefined ? (
+        <div className="no-print">
+          <div className="dr-button-row">
+            <button type="button" className="btn" onClick={delivery.onCopyPlain}>
+              {t(uiLang, 'dailyReport.publication.copyPlain')}
+            </button>
+            <button type="button" className="btn" onClick={delivery.onCopyChat}>
+              {t(uiLang, 'dailyReport.publication.copyChat')}
+            </button>
+            <button type="button" className="btn" onClick={delivery.onExport}>
+              {t(uiLang, 'buttons.exportTxt')}
+            </button>
+            <button type="button" className="btn" onClick={delivery.onPrint}>
+              {t(uiLang, 'dailyReport.publication.print')}
+            </button>
+            {delivery.canPublish ? (
+              <button type="button" className="btn btn-primary" onClick={delivery.onMarkPublished}>
+                {t(uiLang, 'dailyReport.publication.markPublished')}
+              </button>
+            ) : null}
+          </div>
+          {delivery.canPublish ? <p className="exec-help">{t(uiLang, 'dailyReport.publication.hint')}</p> : null}
+          {delivery.fallbackText !== null ? (
+            <div>
+              <p className="qa-warning" role="note">{t(uiLang, 'dailyReport.publication.copyManual')}</p>
+              <textarea className="dr-preview" readOnly rows={10} value={delivery.fallbackText} aria-label={t(uiLang, 'dailyReport.publication.copyManual')} onFocus={(e) => e.currentTarget.select()} />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      <p className="exec-help no-print">{t(uiLang, 'dailyReport.editRevisionHint')}</p>
+      <div className="dr-button-row no-print">
         <button type="button" className="btn" onClick={onClose}>
           {t(uiLang, 'buttons.close')}
         </button>
@@ -248,6 +308,7 @@ export function ReportHistoryTable({ uiLang, pager, currentDraftId, onView }: Re
               <th scope="col">{t(uiLang, 'columns.status')}</th>
               <th scope="col">{t(uiLang, 'columns.finalizedAt')}</th>
               <th scope="col">{t(uiLang, 'columns.finalizedBy')}</th>
+              <th scope="col">{t(uiLang, 'columns.publication')}</th>
               <th scope="col" />
             </tr>
           </thead>
@@ -271,6 +332,11 @@ export function ReportHistoryTable({ uiLang, pager, currentDraftId, onView }: Re
                 </td>
                 <td>{report.finalizedAt ?? '—'}</td>
                 <td>{report.finalizedBy ?? '—'}</td>
+                <td>
+                  {report.status === 'FINALIZED'
+                    ? t(uiLang, publicationStatusOf(report) === 'published' ? 'dailyReport.publication.published' : 'dailyReport.publication.notPublished')
+                    : '—'}
+                </td>
                 <td>
                   <button type="button" className="btn" onClick={() => onView(report.id)}>
                     {t(uiLang, 'buttons.view')}
