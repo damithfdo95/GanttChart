@@ -18,6 +18,7 @@ import type {
 } from '../../types';
 import { ATTENDANCE_STATUSES, REVIEW_PERIOD_TYPES, REVIEW_STATUSES } from '../../types';
 import { checkCycle } from '../../../shared/qaRules';
+import { qaPolicyError } from '../../../shared/qaPolicy';
 import { checkCaseExecution, checkCaseResult, checkScope, checkTestCase } from '../../../shared/testManagement';
 import { checkDailyPlan, checkMeetingNote } from '../../../shared/meeting';
 import { checkNotification, checkNotificationAck } from '../../../shared/notifications';
@@ -303,6 +304,7 @@ function isReportSettings(v: unknown): v is ReportSettings {
     typeof s.supervisorName === 'string' &&
     typeof s.projectJiraUrl === 'string' &&
     (s.toolName === undefined || typeof s.toolName === 'string') &&
+    (s.qaPolicy === undefined || (typeof s.qaPolicy === 'object' && s.qaPolicy !== null)) &&
     // The JIRA connection is optional and self-healing (like autoBackup): any
     // object-shaped value passes the guard and is sanitized by
     // normalizeReportsState; only clearly-corrupt non-objects reject the
@@ -625,6 +627,8 @@ export function normalizeReportsState(state: ReportsState): ReportsState {
       // Optional; stays absent/undefined when missing or unsalvageable.
       jira: normalizeJiraConnection(state.settings.jira),
       testrail: normalizeTestrailConnection(state.settings.testrail),
+      // Self-healing like the connections above: a damaged policy reads as the default instead of locking anything out.
+      ...(state.settings.qaPolicy !== undefined && qaPolicyError(state.settings.qaPolicy) === null ? { qaPolicy: state.settings.qaPolicy } : { qaPolicy: undefined }),
     },
     projects: projectsMigration.projects,
     activeProjectId: state.activeProjectId ?? null,

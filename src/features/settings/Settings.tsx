@@ -13,6 +13,7 @@ import { MIGRATION_FAILURE_LABEL_KEY, readMigrationFailureRecord } from '../../l
 import { WorkspacePanel } from '../tenancy/WorkspacePanel';
 import { DataBackup } from './DataBackup';
 import { WorkspaceAppearance } from './WorkspaceAppearance';
+import { QaPolicySettings } from './QaPolicySettings';
 import { JiraIntegration } from './JiraIntegration';
 import { TestRailIntegration } from './TestRailIntegration';
 import { DataRetention, WorkspaceLogo } from './WorkspaceBranding';
@@ -316,6 +317,7 @@ export function Settings() {
       </section>
 
       <WorkspaceAppearance />
+      <QaPolicySettings />
       <WorkspaceLogo />
       <NotificationsSettings />
       <DataRetention />

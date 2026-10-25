@@ -1,8 +1,8 @@
 import { MetricCard } from '../../components/MetricCard';
 import { t, type TranslationKey } from '../../i18n';
 import { formatInteger } from '../../lib/formatting/format';
-import { readinessBadgeKey, type ReadinessCategory, type ReadinessReason, type ReleaseReadiness } from '../../domain/readiness';
-import { readinessReasonText } from './readinessText';
+import { attentionItems, readinessBadgeKey, type ReadinessCategory, type ReadinessReason, type ReleaseReadiness } from '../../domain/readiness';
+import { readinessPolicyNote, readinessReasonText } from './readinessText';
 import type { Language } from '../../types';
 
 const ICON: Record<ReturnType<typeof readinessBadgeKey>, string> = { ready: '✔', atRisk: '⚠', blocked: '⛔', notStarted: '○', onHold: '⏸', completed: '✔' };
@@ -36,7 +36,8 @@ function groups(reasons: readonly ReadinessReason[]): Array<{ category: Readines
 export function ReadinessCard({ lang, readiness }: { lang: Language; readiness: ReleaseReadiness }) {
   const key = readinessBadgeKey(readiness);
   const important = readiness.reasons.filter((r) => r.severity !== 'info');
-  const info = readiness.reasons.filter((r) => r.severity === 'info');
+  const attention = attentionItems(readiness);
+  const info = readiness.reasons.filter((r) => r.severity === 'info' && !attention.includes(r));
   const blocking = important.filter((r) => r.severity === 'blocking').length;
   const warnings = important.length - blocking;
   const m = readiness.metrics;
@@ -59,6 +60,7 @@ export function ReadinessCard({ lang, readiness }: { lang: Language; readiness: 
                 {g.items.map((r) => (
                   <li key={r.code} className={`readiness-reason readiness-reason-${r.severity}`}>
                     {readinessReasonText(lang, r)}
+                    {readinessPolicyNote(lang, r) === null ? null : <span className="exec-help readiness-policy-note"> {readinessPolicyNote(lang, r)}</span>}
                   </li>
                 ))}
               </ul>
@@ -74,6 +76,16 @@ export function ReadinessCard({ lang, readiness }: { lang: Language; readiness: 
           <MetricCard label={t(lang, 'readiness.metric.staffingGap')} value={formatInteger(Math.max(0, m.staffingGap), lang)} />
         </div>
       ) : null}
+      {attention.length > 0 ? (
+        <div className="readiness-attention">
+          <div className="readiness-group-title">{t(lang, 'readiness.attention.title')}</div>
+          <ul>
+            {attention.map((r) => (
+              <li key={r.code}>{readinessReasonText(lang, r)}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {info.length > 0 ? (
         <details className="readiness-info">
           <summary>{t(lang, 'readiness.infoToggle', { n: info.length })}</summary>
@@ -84,7 +96,9 @@ export function ReadinessCard({ lang, readiness }: { lang: Language; readiness: 
           </ul>
         </details>
       ) : null}
-      <p className="exec-help">{t(lang, 'readiness.currentNote')}</p>
+      <p className="exec-help">
+        {t(lang, 'readiness.currentNote')} {t(lang, 'readiness.policy.label')}: {t(lang, readiness.policyCustom ? 'readiness.policy.custom' : 'readiness.policy.default')}
+      </p>
     </section>
   );
 }

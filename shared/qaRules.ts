@@ -16,6 +16,7 @@ import { memberCommitError } from './members';
 import { RETENTION_CHOICES, meetingCommitError } from './meeting';
 import { notificationCommitError } from './notifications';
 import { brandingCommitError } from './branding';
+import { qaPolicyError } from './qaPolicy';
 
 // ---- cycles ------------------------------------------------------------------
 
@@ -244,6 +245,10 @@ export function qaCommitError(input: QaCommitInput): string | null {
     if (p.kind !== 'settings') continue;
     const next = asObject(p.json);
     if (next !== null && next.toolName !== undefined && cleanToolName(next.toolName) !== next.toolName) return 'settings_invalid_tool_name';
+    if (next !== null && next.qaPolicy !== undefined) {
+      const bad = qaPolicyError(next.qaPolicy);
+      if (bad !== null) return bad;
+    }
     if (next !== null && next.planRetentionDays !== undefined && !(RETENTION_CHOICES as readonly number[]).includes(next.planRetentionDays as number)) return 'settings_invalid_retention';
   }
 

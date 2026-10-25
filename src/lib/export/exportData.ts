@@ -450,7 +450,7 @@ export function detailedDailyExecutionSheet(
 ): XlsxSheet {
   const rows: XlsxCell[][] = [];
   const yesNo = (v: boolean): string => t(lang, v ? 'exec.rec.yes' : 'exec.rec.no');
-  const row = (date: string, p: ProjectRecord, scopeName: string, sm: DailyDetailedSummary, saved: [string | number, string, string | number], rec: [string, string, string, string]): XlsxCell[] => [
+  const row = (date: string, p: ProjectRecord, scopeName: string, sm: DailyDetailedSummary, saved: [string | number, string, string | number], rec: [string, string, string, string], workType = ''): XlsxCell[] => [
     { kind: 'date', value: date },
     p.projectId,
     projectDisplayName(p, lang),
@@ -472,6 +472,7 @@ export function detailedDailyExecutionSheet(
     rec[1],
     rec[2],
     rec[3],
+    workType,
   ];
   for (const p of projects) {
     const mine = events.filter((e) => e.projectId === p.projectId);
@@ -486,7 +487,7 @@ export function detailedDailyExecutionSheet(
       rows.push(row(date, p, '', project, [cmp.executed.saved ?? '—', entry === null ? '—' : t(lang, executionSourceLabelKey(executionSourceOf(entry))), cmp.executed.difference ?? '—'], [t(lang, `exec.rec.coverage.${coverage.state}` as Parameters<typeof t>[1]), t(lang, `exec.rec.state.${rec.state}` as Parameters<typeof t>[1]), yesNo(rec.canAdopt), yesNo(isCaseDerivedAggregateStale(entry, project))]));
       for (const sc of scopes.filter((s) => s.projectId === p.projectId)) {
         const sm = dailyDetailedSummary({ ...input, scopeId: sc.id });
-        if (sm.eventCount > 0) rows.push(row(date, p, sc.name, sm, ['', '', ''], [t(lang, `exec.rec.coverage.${assessDetailedCoverage({ date, projectId: p.projectId, scopeId: sc.id, scopes, cases, events: mine, results }).state}` as Parameters<typeof t>[1]), '', '', '']));
+        if (sm.eventCount > 0) rows.push(row(date, p, sc.name, sm, ['', '', ''], [t(lang, `exec.rec.coverage.${assessDetailedCoverage({ date, projectId: p.projectId, scopeId: sc.id, scopes, cases, events: mine, results }).state}` as Parameters<typeof t>[1]), '', '', ''], t(lang, `qa.workType.${sc.workType ?? 'unspecified'}` as Parameters<typeof t>[1])));
       }
     }
   }
@@ -514,6 +515,7 @@ export function detailedDailyExecutionSheet(
       t(lang, 'exec.rec.exportState'),
       t(lang, 'exec.rec.exportEligible'),
       t(lang, 'exec.rec.exportStale'),
+      t(lang, 'qa.workType.export'),
     ],
     rows,
   };

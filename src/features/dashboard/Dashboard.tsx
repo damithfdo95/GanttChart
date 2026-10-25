@@ -64,6 +64,8 @@ import { ProjectControlCenter } from './ProjectControlCenter';
 import { TesterCapacityStrip } from './TesterCapacityStrip';
 import { DetailedExecutionCard } from './DetailedExecutionCard';
 import { ReadinessCard } from '../readiness/ReadinessCard';
+import { WorkMixCard } from './WorkMixCard';
+import { workMixOfProject } from '../../domain/qaWork';
 import { useReadiness } from '../readiness/useReadiness';
 import { canViewReadiness } from '../../domain/readiness';
 import { assessDetailedCoverage, dailyEntryFromDetailedSummary, detailedFingerprint, reconcileDailyExecution } from '../../domain/executionReconciliation';
@@ -593,6 +595,7 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
 
       {onOpenOverall !== undefined && !tester ? <ManagerPanel lang={lang} /> : null}
       {canViewReadiness(access) && readiness !== undefined ? <ReadinessCard lang={lang} readiness={readiness} /> : null}
+      {canViewReadiness(access) && activeProjectRecord !== undefined ? <WorkMixCard lang={lang} rows={workMixOfProject(activeProjectRecord.projectId, reportsApi.state.scopes ?? [], reportsApi.state.testCases ?? [])} /> : null}
       {!tester && activeProjectRecord !== undefined ? (
         <TesterCapacityStrip
           lang={lang}

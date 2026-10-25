@@ -4222,3 +4222,13 @@ body.mt-presenting .app-shell, body.mt-presenting .gantt-mode, body.mt-presentin
 .readiness-reason-blocking { font-weight: 600; }
 .readiness-metrics { margin-top: 8px; }
 .readiness-info { margin-top: 6px; font-size: 0.9em; }
+
+/* QA work type chips and the work-mix list. */
+.qa-worktype { margin-left: 6px; font-size: 0.8em; }
+.qa-worktype-regression { background: var(--info-bg); color: var(--info-fg); }
+.qa-worktype-sanity { background: var(--good-bg); color: var(--good-fg); }
+.qa-worktype-adhoc { background: #fff3e0; color: #8a4b00; }
+.qa-worktype-verification { background: var(--done-bg); color: var(--done-fg); }
+.qa-worktype-unspecified { background: var(--neutral-bg); color: var(--neutral-fg); }
+.work-mix-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.readiness-attention { margin-top: 6px; }

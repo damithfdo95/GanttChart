@@ -4,6 +4,7 @@ import { isProjectOverdue, projectPlanningStatus, projectProgress, projectProjec
 import { actualTesterCountForDate, assignedTesterCountForProject } from './testerCapacity';
 import { assessDetailedCoverage, isCaseDerivedAggregateStale, reconcileDailyExecution } from './executionReconciliation';
 import { dailyDetailedSummary } from './testManagement';
+import { defaultQaPolicy, isDefaultQaPolicy, type QaPolicy } from '../../shared/qaPolicy';
 
 /**
  * Release readiness: a rule-based, explainable assessment of one project - Ready, At Risk or Blocked - that always carries the
@@ -15,12 +16,13 @@ import { dailyDetailedSummary } from './testManagement';
  * exist (schedule / planning status, risk signals and thresholds, staffing counts, coverage and reconciliation); nothing here
  * recalculates a schedule or invents a threshold. It is read-only and deterministic: the business date and clock are INJECTED.
  *
- * What is, and is not, "Blocked" (audited against the data model):
- *  - Blocked: an UNRESOLVED defect explicitly recorded as Critical (severity Critical, status Open / In Progress). Severity is never
- *    guessed from text. A Critical ticket with no recorded status is only a warning (it may already be resolved).
- *  - NOT blocking, by design: failed or blocked test cases (the model has no release-blocker flag; one blocked case is not a blocked
- *    release), an overdue project with testing left (release completion is not defined as mandatory anywhere in the model), partial
- *    detailed coverage and aggregate-vs-detail differences (data quality, never release risk).
+ * What is, and is not, "Blocked" is the QA team's POLICY (an explicit input; `defaultQaPolicy()` reproduces the original behavior):
+ *  - By default: an UNRESOLVED defect of a release-blocking severity (Critical, status Open / In Progress) blocks. Severity is never
+ *    guessed from text. A blocking-severity ticket with no recorded status is only a warning (it may already be resolved).
+ *  - By default NOT blocking: failed or blocked test cases (At Risk; a team may choose Blocked), an overdue project with testing left
+ *    (release completion is not defined as mandatory anywhere in the model), partial detailed coverage and aggregate-vs-detail
+ *    differences (data quality, never release risk).
+ * A policy changes a reason's SEVERITY (and so the state), never its code. No rule requires any particular kind of QA work to exist.
  */
 
 export type ReadinessState = 'ready' | 'atRisk' | 'blocked';
@@ -39,6 +41,7 @@ export type ReadinessCode =
   | 'execution_incomplete'
   | 'test_failures_open'
   | 'no_recent_activity'
+  | 'no_execution_today'
   | 'no_execution_data'
   | 'insufficient_plan_data'
   | 'staffing_gap'
@@ -79,6 +82,8 @@ export interface ReadinessMetrics {
 export interface ReleaseReadiness {
   state: ReadinessState;
   applicability: ReadinessApplicability;
+  /** True when the QA policy in force differs from the default (the UI then says which policy produced the state). */
+  policyCustom: boolean;
   /** Deterministically ordered, de-duplicated. */
   reasons: ReadinessReason[];
   metrics: ReadinessMetrics;
@@ -98,6 +103,8 @@ export interface ReadinessInput {
   today: string;
   /** The current instant (ISO), injected, for the existing "no recent update" rule. */
   nowIso: string;
+  /** The QA team's policy. Explicit input - never read from global state. Omitted = the default policy. */
+  policy?: QaPolicy;
 }
 
 const SEVERITY_RANK: Record<ReadinessSeverity, number> = { blocking: 0, warning: 1, info: 2 };
@@ -113,6 +120,7 @@ const ORDER: Record<ReadinessCode, number> = {
   execution_incomplete: 7,
   test_failures_open: 8,
   no_recent_activity: 9,
+  no_execution_today: 9.5,
   no_execution_data: 10,
   insufficient_plan_data: 11,
   staffing_gap: 12,
@@ -137,11 +145,11 @@ const reason = (code: ReadinessCode, severity: ReadinessSeverity, category: Read
   ...(metadata === undefined ? {} : { metadata }),
 });
 
-const UNRESOLVED = new Set(['Open', 'In Progress']);
-
 /** The one central readiness selector. Pure and deterministic; it never mutates its inputs. */
 export function evaluateReleaseReadiness(input: ReadinessInput): ReleaseReadiness {
   const { project, today } = input;
+  const policy = input.policy ?? defaultQaPolicy();
+  const policyCustom = !isDefaultQaPolicy(policy);
   const assignments = input.assignments ?? [];
   const progress = projectProgress(project);
   const m = projectMetrics(project);
@@ -151,8 +159,8 @@ export function evaluateReleaseReadiness(input: ReadinessInput): ReleaseReadines
   const metrics: ReadinessMetrics = { progress: progress.ratio, failed: m.failed, blocked: m.blocked, remaining: progress.remaining, daysLate: null, planned, assigned, actualToday, staffingGap: planned - assigned };
 
   // Lifecycle: paused and finished projects are not asked "is it ready to ship?" (their lifecycle is the answer).
-  if (project.status === 'onHold') return { state: 'ready', applicability: 'onHold', reasons: [], metrics };
-  if (project.status === 'done') return { state: 'ready', applicability: 'completed', reasons: [], metrics };
+  if (project.status === 'onHold') return { state: 'ready', applicability: 'onHold', policyCustom, reasons: [], metrics };
+  if (project.status === 'done') return { state: 'ready', applicability: 'completed', policyCustom, reasons: [], metrics };
   const notStarted = project.status === 'todo';
 
   const reasons: ReadinessReason[] = [];
@@ -162,10 +170,11 @@ export function evaluateReleaseReadiness(input: ReadinessInput): ReleaseReadines
 
   // ---- defects: this project's recorded tickets only ----
   const tickets = (input.tickets ?? project.inputs.bugTickets ?? []).filter((x) => x.projectId === project.projectId);
-  const critical = tickets.filter((x) => x.severity === 'Critical');
-  const criticalOpen = critical.filter((x) => x.status !== undefined && UNRESOLVED.has(x.status));
+  const critical = tickets.filter((x) => x.severity !== undefined && (policy.blockingDefectSeverities as readonly string[]).includes(x.severity));
+  const unresolved = new Set<string>(policy.unresolvedDefectStatuses);
+  const criticalOpen = critical.filter((x) => x.status !== undefined && unresolved.has(x.status));
   const criticalUnknown = critical.filter((x) => x.status === undefined);
-  if (criticalOpen.length > 0) add(reason('critical_defect_open', 'blocking', 'defects', { count: criticalOpen.length, tickets: criticalOpen.slice(0, 3).map((x) => x.ticketKey ?? x.title).join(', ') }));
+  if (criticalOpen.length > 0) add(reason('critical_defect_open', policy.defectsAction === 'blocked' ? 'blocking' : 'warning', 'defects', { count: criticalOpen.length, tickets: criticalOpen.slice(0, 3).map((x) => x.ticketKey ?? x.title).join(', '), severities: policy.blockingDefectSeverities.join(' + '), statuses: policy.unresolvedDefectStatuses.join(' / ') }));
   if (criticalUnknown.length > 0) add(reason('critical_defect_status_unknown', 'warning', 'defects', { count: criticalUnknown.length }));
   if (tickets.length === 0) add(reason('no_defect_data', 'info', 'defects'));
 
@@ -189,8 +198,9 @@ export function evaluateReleaseReadiness(input: ReadinessInput): ReleaseReadines
 
   const dueSoon = signals.find((s) => s.code === 'due_soon_much_remaining');
   if (dueSoon !== undefined && !overdue) add(reason('execution_incomplete', 'warning', 'execution', { remaining: progress.remaining, daysLeft: dueSoon.value ?? null }));
-  if (m.blocked > 0) add(reason('blocked_cases_open', 'warning', 'execution', { count: m.blocked }));
-  if (m.failed > 0) add(reason('test_failures_open', 'warning', 'execution', { count: m.failed }));
+  const blockedSeverity: ReadinessSeverity = policy.blockedCases === 'blocked' ? 'blocking' : policy.blockedCases === 'info' ? 'info' : 'warning';
+  if (m.blocked > 0) add(reason('blocked_cases_open', blockedSeverity, 'execution', { count: m.blocked }));
+  if (m.failed > 0) add(reason('test_failures_open', policy.failedCases === 'blocked' ? 'blocking' : 'warning', 'execution', { count: m.failed }));
   const idle = signals.find((s) => s.code === 'no_recent_activity');
   if (idle !== undefined) add(reason('no_recent_activity', 'warning', 'execution', { days: idle.value ?? null }));
   if (signals.some((s) => s.code === 'completed_exceeds_planned')) add(reason('completed_exceeds_planned', 'info', 'dataQuality'));
@@ -198,13 +208,14 @@ export function evaluateReleaseReadiness(input: ReadinessInput): ReleaseReadines
   // ---- insufficient evidence (never "Ready" by silence) ----
   if (!notStarted) {
     if (project.inputs.totalCases <= 0) add(reason('insufficient_plan_data', 'warning', 'dataQuality'));
-    else if (project.inputs.startDate <= today && (project.inputs.dailyExecuted ?? []).length === 0 && project.inputs.casesCompleted <= 0 && progress.remaining > 0) add(reason('no_execution_data', 'warning', 'dataQuality'));
+    else if (project.inputs.startDate <= today && (project.inputs.dailyExecuted ?? []).length === 0 && project.inputs.casesCompleted <= 0 && progress.remaining > 0) add(reason('no_execution_data', policy.missingExecution === 'info' ? 'info' : 'warning', 'dataQuality'));
   }
 
   // ---- staffing: a warning only when it is part of a schedule / capacity problem ----
   if (assigned < planned) {
     const scheduleRisk = reasons.some((r) => r.category === 'schedule' || r.code === 'execution_incomplete');
-    add(reason('staffing_gap', scheduleRisk ? 'warning' : 'info', 'staffing', { planned, assigned, gap: planned - assigned }));
+    const gapSeverity: ReadinessSeverity = policy.staffingGap === 'alwaysAtRisk' ? 'warning' : policy.staffingGap === 'informational' ? 'info' : scheduleRisk ? 'warning' : 'info';
+    add(reason('staffing_gap', gapSeverity, 'staffing', { planned, assigned, gap: planned - assigned }));
   }
   if (actualToday !== null && actualToday < planned) add(reason('actual_below_planned', 'info', 'staffing', { planned, actual: actualToday }));
 
@@ -222,11 +233,23 @@ export function evaluateReleaseReadiness(input: ReadinessInput): ReleaseReadines
       else if (coverage.state === 'complete' && reconcileDailyExecution({ date: today, today, savedDaily: saved, summary, coverage, isSv: true }).state === 'difference') add(reason('reconciliation_difference', 'info', 'dataQuality'));
     }
   }
+  // A planned working day today with nothing recorded yet: something for the supervisor to chase, never a readiness state on its own.
+  if (!notStarted && progress.remaining > 0 && project.inputs.planningRows.some((r) => r.date === today && !r.nonWorkingDay) && actualToday === null && (project.inputs.dailyExecuted ?? []).length > 0) add(reason('no_execution_today', 'info', 'execution'));
   if (notStarted) add(reason('not_started', 'info', 'schedule'));
 
   reasons.sort((a, b) => ORDER[a.code] - ORDER[b.code] || SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || a.code.localeCompare(b.code));
   const state: ReadinessState = reasons.some((r) => r.severity === 'blocking') ? 'blocked' : reasons.some((r) => r.severity === 'warning') ? 'atRisk' : 'ready';
-  return { state, applicability: notStarted ? 'notStarted' : 'evaluated', reasons, metrics };
+  return { state, applicability: notStarted ? 'notStarted' : 'evaluated', policyCustom, reasons, metrics };
+}
+
+/**
+ * Informational reasons that are still the supervisor's to chase today (they never change the state): a planned day with nothing
+ * recorded, an out-of-date case-derived aggregate, a staffing gap or a lower turnout. Reuses the readiness reasons - no second engine.
+ */
+export const ATTENTION_INFO_CODES: readonly ReadinessCode[] = ['no_execution_today', 'case_aggregate_stale', 'staffing_gap', 'actual_below_planned'];
+
+export function attentionItems(r: ReleaseReadiness): ReadinessReason[] {
+  return r.reasons.filter((x) => x.severity === 'info' && ATTENTION_INFO_CODES.includes(x.code));
 }
 
 /** Readiness is management information: a Tester (whose view of tickets, scopes and counts is restricted) does not get it. */

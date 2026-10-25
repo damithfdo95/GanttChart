@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useReportsStateCtx } from '../../app/state-contexts';
 import { businessDate } from '../../../shared/businessTime';
+import { resolveQaPolicy } from '../../../shared/qaPolicy';
 import { evaluateReleaseReadiness, type ReleaseReadiness } from '../../domain/readiness';
 import type { ProjectRecord } from '../../types';
 
@@ -25,11 +26,12 @@ export function useReadiness(projects: readonly ProjectRecord[]): ReadonlyMap<st
           caseExecution: state.caseExecutions ?? [],
           assignments: state.testerAssignments ?? [],
           members: state.rcsMembers ?? [],
+          policy: resolveQaPolicy(state.settings.qaPolicy),
           today,
           nowIso,
         }),
       );
     }
     return map;
-  }, [projects, state.scopes, state.testCases, state.caseResults, state.caseExecutions, state.testerAssignments, state.rcsMembers, today]);
+  }, [projects, state.scopes, state.testCases, state.caseResults, state.caseExecutions, state.testerAssignments, state.rcsMembers, state.settings.qaPolicy, today]);
 }

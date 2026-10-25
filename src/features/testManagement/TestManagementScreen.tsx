@@ -3,6 +3,7 @@ import { useAppStateCtx } from '../../app/state-contexts';
 import { useTenant } from '../../app/tenant-context';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { resolveBilingualName, t, type TranslationKey } from '../../i18n';
+import { QA_WORK_TYPES, type QaWorkType } from '../../../shared/qaPolicy';
 import { ApiError } from '../../lib/tenancy/api';
 import { dictionaries } from '../../i18n/dictionaries';
 import { assigneeLabel } from '../../domain/people';
@@ -130,6 +131,7 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [description, setDescription] = useState('');
+  const [workType, setWorkType] = useState<string>('');
   const [note, setNote] = useState<Note>(null);
   const [pick, setPick] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -141,6 +143,7 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
     setName(scope?.name ?? '');
     setCode(scope?.code ?? '');
     setDescription(scope?.description ?? '');
+    setWorkType(scope?.workType ?? '');
     setNote(null);
   };
 
@@ -149,14 +152,14 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
     let failed: string | null = null;
     tm.update((state) => {
       if (editing === 'new') {
-        const made = newScope(state, { projectId: project.projectId, name, code, description }, now);
+        const made = newScope(state, { projectId: project.projectId, name, code, description, ...(workType === '' ? {} : { workType: workType as QaWorkType }) }, now);
         if (!made.ok) {
           failed = made.error;
           return state;
         }
         return { ...state, scopes: [...state.scopes, made.value] };
       }
-      const made = editScope(state, editing as string, { name, code, description }, now);
+      const made = editScope(state, editing as string, { name, code, description, workType: workType === '' ? null : (workType as QaWorkType) }, now);
       if (!made.ok) {
         failed = made.error;
         return state;
@@ -279,6 +282,17 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
           </label>
           <p className="link-help">{t(lang, 'tm.field.scopeCodeHelp')}</p>
           <label className="link-confirm">
+            {t(lang, 'qa.workType.label')}
+            <select className="input" value={workType} onChange={(e) => setWorkType(e.target.value)}>
+              <option value="">{t(lang, 'qa.workType.unspecified')}</option>
+              {QA_WORK_TYPES.map((w) => (
+                <option key={w} value={w}>
+                  {t(lang, `qa.workType.${w}` as TranslationKey)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="link-confirm">
             {t(lang, 'tm.field.description')}
             <input className="input" value={description} maxLength={1000} onChange={(e) => setDescription(e.target.value)} />
           </label>
@@ -321,6 +335,7 @@ function ScopesTab({ lang, project }: { lang: Language; project: ProjectRecord }
                     <th scope="row" className="tenancy-user-cell">
                       <strong>{scope.name}</strong>
                       {scope.code === undefined ? null : <span>{scope.code}</span>}
+                      {scope.workType === undefined ? null : <span className={`tag qa-worktype qa-worktype-${scope.workType}`}>{t(lang, `qa.workType.${scope.workType}` as TranslationKey)}</span>}
                       {/* Linked scopes show the LIVE TestRail run progress (device-local fetch; counts never persist). */}
                       {scope.testrail === undefined ? null : <TestRailScopeProgress lang={lang} scope={scope} />}
                     </th>

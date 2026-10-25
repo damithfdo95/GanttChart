@@ -12,6 +12,7 @@
  * Plain TypeScript with no dependencies: the same validators run in the browser (before saving) and in the Worker (before a commit is
  * accepted). Everything is checked on CHANGES only, so existing data is never refused for being old.
  */
+import { isQaWorkType, type QaWorkType } from './qaPolicy';
 
 export const SCOPE_STATUSES = ['active', 'archived'] as const;
 export type ScopeStatus = (typeof SCOPE_STATUSES)[number];
@@ -68,6 +69,8 @@ export const testrailLinkOk = (v: unknown): v is TestRailScopeLink => isObj(v) &
 
 export interface TestScope {
   id: string;
+  /** What kind of QA work this scope is (Regression, Sanity, Adhoc, Verification). Absent = unspecified (older scopes); never guessed from the name. */
+  workType?: QaWorkType;
   /** Stable project id ("PRJ-001"), the same one assignments use. */
   projectId: string;
   name: string;
@@ -199,6 +202,7 @@ export function checkScope(raw: unknown): Check<TestScope> {
   if (!text(raw.name, TM_LIMITS.scopeName) || raw.name.trim() === '') return { ok: false, error: 'scope_invalid_name' };
   if (raw.code !== undefined && normalizeScopeCode(raw.code) !== raw.code) return { ok: false, error: 'scope_invalid_code' };
   if (raw.description !== undefined && !text(raw.description, TM_LIMITS.scopeDescription)) return { ok: false, error: 'scope_invalid_description' };
+  if (raw.workType !== undefined && !isQaWorkType(raw.workType)) return { ok: false, error: 'scope_invalid_work_type' };
   if (raw.totalTestCases !== undefined && !(typeof raw.totalTestCases === 'number' && Number.isInteger(raw.totalTestCases) && raw.totalTestCases >= 0 && raw.totalTestCases <= TOTAL_TEST_CASES_MAX)) return { ok: false, error: 'scope_invalid_total' };
   // The TestRail link is lenient exactly like the other optional fields: absent = fine, present but malformed = rejected.
   if (raw.testrail !== undefined && !testrailLinkOk(raw.testrail)) return { ok: false, error: 'scope_invalid_testrail' };

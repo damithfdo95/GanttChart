@@ -21,6 +21,7 @@ import {
 } from '../../../shared/testManagement';
 import type { TesterProjectAssignment } from '../../types';
 import { cleanTotal } from './totals';
+import { isQaWorkType, type QaWorkType } from '../../../shared/qaPolicy';
 
 export * from '../../../shared/testManagement';
 export * from './executionHistory';
@@ -140,6 +141,7 @@ export type TmError =
   | 'scope_invalid_name'
   | 'scope_invalid_code'
   | 'scope_invalid_total'
+  | 'scope_invalid_work_type'
   | 'scope_invalid_testrail'
   | 'scope_code_taken'
   | 'scope_not_found'
@@ -158,7 +160,7 @@ const clean = (v: string | undefined): string | undefined => {
 
 export function newScope(
   state: Pick<TestManagementState, 'scopes'>,
-  input: { projectId: string; name: string; code?: string; description?: string; totalTestCases?: number; testrail?: TestRailScopeLink },
+  input: { projectId: string; name: string; code?: string; description?: string; totalTestCases?: number; testrail?: TestRailScopeLink; workType?: QaWorkType },
   now: string,
   id: string = `scp_${crypto.randomUUID()}`,
 ): Made<TestScope> {
@@ -171,14 +173,15 @@ export function newScope(
   const order = mine.reduce((m, s) => Math.max(m, s.order), 0) + 10;
   if (input.totalTestCases !== undefined && cleanTotal(input.totalTestCases) === null) return { ok: false, error: 'scope_invalid_total' };
   if (input.testrail !== undefined && !testrailLinkOk(input.testrail)) return { ok: false, error: 'scope_invalid_testrail' };
-  const scope: TestScope = { id, projectId: input.projectId, name, ...(code === undefined ? {} : { code }), ...(clean(input.description) === undefined ? {} : { description: clean(input.description) }), ...(input.totalTestCases === undefined ? {} : { totalTestCases: input.totalTestCases }), ...(input.testrail === undefined ? {} : { testrail: input.testrail }), status: 'active', order, createdAt: now, updatedAt: now };
+  if (input.workType !== undefined && !isQaWorkType(input.workType)) return { ok: false, error: 'scope_invalid_work_type' };
+  const scope: TestScope = { id, projectId: input.projectId, ...(input.workType === undefined ? {} : { workType: input.workType }), name, ...(code === undefined ? {} : { code }), ...(clean(input.description) === undefined ? {} : { description: clean(input.description) }), ...(input.totalTestCases === undefined ? {} : { totalTestCases: input.totalTestCases }), ...(input.testrail === undefined ? {} : { testrail: input.testrail }), status: 'active', order, createdAt: now, updatedAt: now };
   return checkScope(scope).ok ? { ok: true, value: scope } : { ok: false, error: 'scope_invalid_name' };
 }
 
 export function editScope(
   state: Pick<TestManagementState, 'scopes'>,
   scopeId: string,
-  patch: { name?: string; code?: string; description?: string; totalTestCases?: number | null },
+  patch: { name?: string; code?: string; description?: string; totalTestCases?: number | null; workType?: QaWorkType | null },
   now: string,
 ): Made<TestScope> {
   const prev = state.scopes.find((s) => s.id === scopeId);
@@ -200,8 +203,15 @@ export function editScope(
     if (cleanTotal(patch.totalTestCases) === null) return { ok: false, error: 'scope_invalid_total' };
     total = patch.totalTestCases;
   }
-  const { code: _c, description: _d, totalTestCases: _t, ...rest } = prev;
-  return { ok: true, value: { ...rest, ...(code === undefined ? {} : { code }), ...(description === undefined ? {} : { description }), ...(total === undefined ? {} : { totalTestCases: total }), name, updatedAt: prev.totalTestCases === total && patch.name === undefined && patch.code === undefined && patch.description === undefined ? prev.updatedAt : now } };
+  // undefined keeps the type, null clears it (unspecified), a known type sets it.
+  let workType = prev.workType;
+  if (patch.workType === null) workType = undefined;
+  else if (patch.workType !== undefined) {
+    if (!isQaWorkType(patch.workType)) return { ok: false, error: 'scope_invalid_work_type' };
+    workType = patch.workType;
+  }
+  const { code: _c, description: _d, totalTestCases: _t, workType: _w, ...rest } = prev;
+  return { ok: true, value: { ...rest, ...(workType === undefined ? {} : { workType }), ...(code === undefined ? {} : { code }), ...(description === undefined ? {} : { description }), ...(total === undefined ? {} : { totalTestCases: total }), name, updatedAt: prev.totalTestCases === total && patch.name === undefined && patch.code === undefined && patch.description === undefined && prev.workType === workType ? prev.updatedAt : now } };
 }
 
 export function setScopeStatus(scope: TestScope, status: 'active' | 'archived', now: string): TestScope {

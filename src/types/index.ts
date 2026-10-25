@@ -7,6 +7,7 @@ export type Language = 'en' | 'ja';
  * either language (see resolveBilingualName).
  */
 import type { CycleRecord, CycleStatus } from '../../shared/qaRules';
+import type { QaPolicy } from '../../shared/qaPolicy';
 import type { CaseExecutionEvent, CaseResult, TestCase, TestScope } from '../../shared/testManagement';
 import type { DailyTeamPlan, MeetingNote } from '../../shared/meeting';
 import type { NotificationAck, NotificationDef } from '../../shared/notifications';
@@ -743,6 +744,8 @@ export interface ReportSettings {
   toolName?: string;
   /** Stage 8E: how many days of meeting plans and notes are kept (90, 180, 365 or 730). Absent = 365. */
   planRetentionDays?: number;
+  /** The QA team's release-readiness policy (workspace-level, shared). Absent = the default policy. */
+  qaPolicy?: QaPolicy;
   /**
    * JIRA import connection (Stage: JIRA import). Absent = feature off.
    * Stored locally with the other settings (including the token — the UI

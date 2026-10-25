@@ -207,7 +207,7 @@ describe('export', () => {
   for (const lang of ['en', 'ja'] as const) {
     it(`[${lang}] one project row with the saved aggregate and one row per scope`, () => {
       const sheet = detailedDailyExecutionSheet(lang, [project], [scope('scp_a', 420)], [tcase('a'), tcase('b'), tcase('c')], events);
-      expect(sheet.headers).toHaveLength(21);
+      expect(sheet.headers).toHaveLength(22);
       expect(sheet.headers[6]).toBe(dict(lang)['exec.detail.exportUnique']);
       expect(sheet.headers[7]).toBe(dict(lang)['exec.detail.exportEvents']);
       expect(sheet.rows).toHaveLength(2);
