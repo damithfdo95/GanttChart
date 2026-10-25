@@ -1,0 +1,38 @@
+name: Dependency audit
+
+# Weekly and on demand. Production dependencies must be free of High/Critical advisories (blocking).
+# The full audit including development tooling is informational: its fixes are breaking major upgrades (see docs/SAAS_READINESS.md)
+# and are handled as reviewed Dependabot pull requests, never with `npm audit fix --force`.
+
+on:
+  schedule:
+    - cron: '41 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Root production dependencies (blocking)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Worker production dependencies (blocking)
+        working-directory: worker
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Full audit incl. dev tooling (informational)
+        run: npm audit --audit-level=high || true
+
+      - name: Full Worker audit incl. dev tooling (informational)
+        working-directory: worker
+        run: npm audit --audit-level=high || true

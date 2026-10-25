@@ -21,12 +21,14 @@ import type {
   TestRailResultsRequest,
   TestRailRunProgress,
   TestRailRunRef,
+  TestRailSuiteRef,
   TestRailTestRow,
   TestRailUser,
 } from '../../../shared/testrail';
 import { runProgressFromCounts } from '../../../shared/testrail';
 import type { FetchLike } from '../tenancy/api';
 import { encodeBasicAuth } from '../jira/client';
+import { isSecureIntegrationUrl } from '../../../shared/integrationUrl';
 
 const PAGE_SIZE = 250;
 const DEFAULT_MAX_TOTAL = 5000;
@@ -55,7 +57,15 @@ export interface TestRailClient {
    */
   getTestsForRun(runId: number): Promise<TestRailTestRow[]>;  /** All cases of a suite (get_cases, paged): the reusable case definitions
    * (title, priority, type). Used by the Test Management case import. */
-  getCases(suiteId: number): Promise<TestRailCaseRow[]>;  /** All results of a run (paged), optionally bounded by creation time. */
+  getCases(projectId: number, suiteId: number): Promise<TestRailCaseRow[]>;
+  /** One suite (get_suite): reports the project it belongs to. */
+  getSuite(suiteId: number): Promise<TestRailSuiteRef>;
+  /**
+   * The cases of a run's suite, with the documented project/suite contract: uses the run's own project id when it reports one,
+   * otherwise resolves it through get_suite (never guessing project id = suite id), and refuses a suite that belongs to another
+   * project than the run reports (nothing is imported).
+   */
+  getCasesForRun(run: { projectId?: number; suiteId: number }): Promise<TestRailCaseRow[]>;  /** All results of a run (paged), optionally bounded by creation time. */
   getResultsForRun(runId: number, request?: TestRailResultsRequest): Promise<TestRailResultRow[]>;
 }
 
@@ -91,6 +101,7 @@ interface RawUser {
 
 interface RawRun {
   id?: unknown;
+  project_id?: unknown;
   name?: unknown;
   suite_id?: unknown;
   config?: unknown;
@@ -153,11 +164,13 @@ function mapUser(raw: RawUser): TestRailUser {
 
 function mapRun(raw: RawRun, planId?: number): TestRailRunRef {
   const suiteId = num(raw.suite_id);
+  const projectId = num(raw.project_id);
   return {
     id: num(raw.id) ?? -1,
     name: typeof raw.name === 'string' ? raw.name : '',
     ...(planId === undefined ? {} : { planId }),
     ...(suiteId !== null ? { suiteId } : {}),
+    ...(projectId !== null && Number.isInteger(projectId) && projectId > 0 ? { projectId } : {}),
     ...(typeof raw.config === 'string' && raw.config !== '' ? { config: raw.config } : {}),
     // The counts that ride with the run object itself; a missing field maps to 0 (defensive).
     progress: runProgressFromCounts(raw as unknown as Record<string, unknown>),
@@ -222,6 +235,7 @@ export function createTestRailClient(conn: TestRailConnection, fetchLike: FetchL
   // all requests go there with the original TestRail path appended.
   const base = trimSlash(proxyUrl !== '' ? proxyUrl : baseUrl);
   if (base === '') throw clientError('notConfigured', 'No TestRail base URL configured.');
+  if (!isSecureIntegrationUrl(base)) throw clientError('notConfigured', 'The TestRail address must use https:// (http:// is only allowed on this computer).');
   const useProxy = proxyUrl !== '';
 
   const email = conn.email?.trim() ?? '';
@@ -361,6 +375,33 @@ export function createTestRailClient(conn: TestRailConnection, fetchLike: FetchL
     return out;
   }
 
+  /** TestRail ids are positive integers; anything else never reaches a URL path. */
+  function requireId(value: number, what: string): number {
+    if (!Number.isInteger(value) || value <= 0) throw clientError('badRequest', `Invalid TestRail ${what} id.`);
+    return value;
+  }
+
+  /** get_suite: the suite's project id (a payload without one is unusable and reported as such). */
+  async function fetchSuite(suiteId: number): Promise<TestRailSuiteRef> {
+    const id = requireId(suiteId, 'suite');
+    const raw = await doRequest<Record<string, unknown> | null>(api(`get_suite/${id}`, {}), DEFAULT_TIMEOUT_MS);
+    const projectId = raw !== null && typeof raw === 'object' ? num(raw.project_id) : null;
+    if (projectId === null || !Number.isInteger(projectId) || projectId <= 0) throw clientError('unknown', 'TestRail returned an unreadable suite.');
+    return { id, projectId, name: typeof raw?.name === 'string' ? raw.name : '' };
+  }
+
+  /** The documented request: get_cases/{project_id}&suite_id={suite_id}, paged (limit/offset or the links.next envelope). */
+  async function fetchCases(projectId: number, suiteId: number): Promise<TestRailCaseRow[]> {
+    const project = requireId(projectId, 'project');
+    const suite = requireId(suiteId, 'suite');
+    // Same defensive hard cap as getTestsForRun: never page unbounded.
+    const maxTotal = Math.max(1, Math.min(DEFAULT_MAX_TOTAL, HARD_CAP_TOTAL));
+    const rows = await getPaged<RawCase>(`get_cases/${project}`, { suite_id: suite }, DEFAULT_TIMEOUT_MS, maxTotal, 'cases');
+    // A server that ignores offset would repeat its first page; a case id is never imported twice.
+    const seen = new Set<number>();
+    return rows.map((raw) => mapCase(raw)).filter((c) => (seen.has(c.caseId) ? false : (seen.add(c.caseId), true)));
+  }
+
   return {
     testConnection: () => getPaged<unknown>('get_projects', {}, DEFAULT_TIMEOUT_MS, PAGE_SIZE, 'projects').then((projects) => projects.length),
 
@@ -398,10 +439,18 @@ export function createTestRailClient(conn: TestRailConnection, fetchLike: FetchL
       return getPaged<RawTest>(`get_tests/${runId}`, {}, DEFAULT_TIMEOUT_MS, maxTotal, 'tests').then((rows) => rows.map((raw) => mapTest(raw)));
     },
 
-    getCases: (suiteId: number) => {
-      // Same defensive hard cap as getTestsForRun: never page unbounded.
-      const maxTotal = Math.max(1, Math.min(DEFAULT_MAX_TOTAL, HARD_CAP_TOTAL));
-      return getPaged<RawCase>(`get_cases/${suiteId}`, {}, DEFAULT_TIMEOUT_MS, maxTotal, 'cases').then((rows) => rows.map((raw) => mapCase(raw)));
+    getCases: (projectId: number, suiteId: number) => fetchCases(projectId, suiteId),
+
+    getSuite: (suiteId: number) => fetchSuite(suiteId),
+
+    getCasesForRun: async (run: { projectId?: number; suiteId: number }) => {
+      const suite = await fetchSuite(run.suiteId);
+      // The run's own project id, when it reports one, must agree with the suite's: a mismatch means the link is wrong (or the
+      // data is), so nothing is imported rather than mixing another project's cases into this scope.
+      if (run.projectId !== undefined && suite.projectId !== run.projectId) {
+        throw clientError('mismatch', 'The suite belongs to a different TestRail project than the run reports; nothing was imported.');
+      }
+      return fetchCases(suite.projectId, run.suiteId);
     },
 
     getResultsForRun: (runId: number, request: TestRailResultsRequest = {}) => {

@@ -128,7 +128,7 @@ export function JiraIntegration() {
           onChange={(e) => commit({ baseUrl: e.target.value })}
         />
       </label>
-      {problems.baseUrl ? <p className="field-error" role="alert">{t(lang, 'jira.baseUrlInvalid')}</p> : null}
+      {problems.baseUrl ? <p className="field-error" role="alert">{t(lang, isInsecureProxy(draft.baseUrl) ? 'jira.baseUrlInsecure' : 'jira.baseUrlInvalid')}</p> : null}
 
       <label className="settings-field">
         {t(lang, 'jira.flavor')}
@@ -179,8 +179,7 @@ export function JiraIntegration() {
           onChange={(e) => commit({ proxyUrl: e.target.value })}
         />
       </label>
-      {problems.proxyUrl ? <p className="field-error" role="alert">{t(lang, 'jira.proxyUrlInvalid')}</p> : null}
-      {!problems.proxyUrl && isInsecureProxy(draft.proxyUrl) ? <p className="qa-warning" role="note">{t(lang, 'jira.proxyInsecure')}</p> : null}
+      {problems.proxyUrl ? <p className="field-error" role="alert">{t(lang, isInsecureProxy(draft.proxyUrl) ? 'jira.proxyInsecure' : 'jira.proxyUrlInvalid')}</p> : null}
       <p className="dr-summary">{t(lang, 'jira.proxyHint')}</p>
 
       <p className="dr-summary" role="note">

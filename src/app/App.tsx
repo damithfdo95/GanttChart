@@ -18,6 +18,7 @@ import { NAV_ITEMS, navItems, type Screen } from './navigation';
 import { AccountBadge } from '../features/tenancy/AccountBadge';
 import { BrandMark } from '../features/branding/BrandMark';
 import { NotificationBanner } from '../features/notifications/NotificationBanner';
+import { ScreenErrorBoundary } from '../components/ErrorBoundary';
 
 // Screens other than the landing Dashboard load on first visit, keeping the first download small.
 const CommandCenter = lazy(() => import('../features/commandCenter/CommandCenter').then((m) => ({ default: m.CommandCenter })));
@@ -310,6 +311,8 @@ function Shell() {
       <CorruptionBanner />
       <StorageFallbackBanner />
       <AutoBackupBanner />
+      {/* One failing screen never blanks the app: the boundary resets when another screen is chosen. */}
+      <ScreenErrorBoundary key={activeScreen} lang={state.language} onHome={() => setScreen('dashboard')}>
       <Suspense fallback={<p className="dr-summary" role="status">{t(state.language, 'app.loadingScreen')}</p>}>
       {activeScreen === 'dashboard' ? (
         <Dashboard onOpenOverall={openOverall} onOpenMeeting={openMeeting} />
@@ -354,6 +357,7 @@ function Shell() {
         <Settings />
       )}
       </Suspense>
+      </ScreenErrorBoundary>
     </>
   );
 }

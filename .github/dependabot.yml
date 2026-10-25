@@ -1,0 +1,26 @@
+# Weekly dependency update pull requests. Nothing is merged automatically: each PR is reviewed and must pass CI.
+# The proxies (jira-proxy, testrail-proxy) have no npm dependencies of their own; they are plain Cloudflare Workers deployed with wrangler.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /worker
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

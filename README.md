@@ -1,12 +1,23 @@
 # GanttChart — QA management for test execution
 
-A local-first, offline-capable dashboard that answers one question:
-**"Are we going to finish testing on time?"**
+A QA-management dashboard for a test-execution team. It answers one question:
+**"Are we going to finish testing on time?"** - and, over time, **"how can we run QA better?"**
 
-- Runs 100% locally in the browser — no server, no cloud, no accounts
-- Data is stored locally in the browser database (IndexedDB, `GanttChartDB`), with the pre-V6.6 `localStorage` copy retained as a migration fallback, plus user-exported JSON files
-- Japanese (default) / English UI switch, fully bilingual
-- No runtime network requests by default — works with the network adapter disabled. The only exceptions are opt-in: the shared-web sync mode and the JIRA Integration (Settings → JIRA Integration), each active only when an SV configures it
+It runs in two modes that share one code base:
+
+- **Local mode** - a single person, in the browser, with no server and no account. Data is stored in the browser database
+  (IndexedDB, `GanttChartDB`) plus user-exported JSON backups. This is what you get from `npm run dev` or any static host of `dist/`.
+- **Shared workspace** - a team signs in (Cloudflare Access) and works on one live workspace served by a Cloudflare Worker with
+  Durable Objects. People are **SVs** (supervisors, who manage everything) or **Testers** (who see and edit only what they work
+  with); a **Super Admin** manages workspaces but never sees their QA data. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- Japanese (default) / English UI, fully bilingual.
+- Network use is limited to what the mode needs: the shared-workspace API and WebSocket, and the opt-in **JIRA** and **TestRail**
+  integrations (Settings), which talk only to the addresses an SV configures (normally through a small proxy Worker in
+  `jira-proxy/` and `testrail-proxy/`). Integration credentials stay on the SV's own device. Local mode works with the network disabled.
+
+Security, release and operations documents: [SECURITY.md](SECURITY.md), [docs/RELEASING.md](docs/RELEASING.md),
+[docs/RECOVERY.md](docs/RECOVERY.md), [docs/BACKUP_FORMAT.md](docs/BACKUP_FORMAT.md), [docs/SAAS_READINESS.md](docs/SAAS_READINESS.md),
+[CHANGELOG.md](CHANGELOG.md). The sections below are the feature history, newest concepts last.
 
 See [docs/DATABASE.md](docs/DATABASE.md) for the local database architecture:
 object stores, the automatic localStorage → IndexedDB migration and how to
@@ -70,7 +81,7 @@ PROJECT CREATION (New Project form)           DAILY (Dashboard → Today's Execu
 ## Shared web version (optional)
 
 The same app can run as a **shared web app** so a team sees the same data live.
-Without the backend it is exactly the local-only app described above.
+Without the backend it is exactly the local mode described above.
 
 * Design and decisions: [docs/CLOUD_ARCHITECTURE.md](docs/CLOUD_ARCHITECTURE.md)
 * The production model, the Cloudflare configuration, the manual rollout and rollback
@@ -304,11 +315,11 @@ Key design points:
   removed.
 - **Export** writes a JSON file via `Blob` + `URL.createObjectURL`
   (`input type="file"` + `FileReader` for import). Files never leave the
-  machine. There is no server and no fetch/XHR in the default app; the only
-  network calls in the whole codebase belong to the opt-in JIRA Integration
-  (Settings → JIRA Integration, below) and the optional shared-web sync mode
-  — both inactive until an SV configures them, and neither is involved in
-  exports or backups.
+  machine. In local mode there is no server and no fetch/XHR; the only network
+  calls in the codebase belong to the shared-workspace sync, the opt-in JIRA
+  Integration and the opt-in TestRail Integration - each inactive until it is
+  configured, and none of them is involved in exports or backups. Integration
+  credentials are device-local: they are never part of shared sync or backups.
 - **Reset** restores the demo defaults (keeps your language choice). The
   demo data is: 36 total cases, 8 testers, 13:00–17:00, no lunch (both lunch
   fields empty), 4 cases/h/tester, 15 completed / 11 passed — giving 32
@@ -739,9 +750,9 @@ The architecture is deliberately wrapper-friendly:
   paths already work from the `file://` protocol.
 - **Tauri:** set `frontendDist` to `../dist` (or run `npm run build` as the
   `beforeBuildCommand`). The webview serves the same local files.
-- Because the default app makes no network calls, packaged builds stay offline with
-  no CSP exceptions beyond local file access. (The opt-in JIRA integration performs
-  fetches only to the configured JIRA/proxy origin when an SV uses it.)
+- Because local mode makes no network calls, a packaged build stays offline with
+  no CSP exceptions beyond local file access. (The opt-in JIRA and TestRail
+  integrations fetch only from the configured instance/proxy origin when an SV uses them.)
 
 ## Stage 8A: QA test execution management
 

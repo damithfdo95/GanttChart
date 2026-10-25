@@ -31,6 +31,7 @@ import {
   type ServerMessage,
 } from '../../shared/protocol';
 import { qaCommitError } from '../../shared/qaRules';
+import { logEvent, safeError } from './log';
 import { memberRoleOf } from '../../shared/members';
 import { businessClock, businessDate } from '../../shared/businessTime';
 import { ackId, ackIsPrunable, audienceIncludes, checkNotification, checkNotificationAck, isAckableOccurrence, type NotificationAck, type NotificationDef, type NotificationFields, type Recipient } from '../../shared/notifications';
@@ -159,6 +160,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
         ws.close(WS_CLOSE_MESSAGE_TOO_BIG, 'message too large');
         return;
       }
+      logEvent('warn', 'bad_message', { error: parsed.error.slice(0, 80) });
       this.send(ws, { t: 'error', code: 'bad_message', message: parsed.error });
       return;
     }
@@ -210,7 +212,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
   }
 
   override async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-    console.error(JSON.stringify({ event: 'ws_error', error: String(error) }));
+    logEvent('error', 'ws_error', { error: safeError(error) });
     this.finishClose(ws, 1011, 'error');
   }
 
@@ -251,11 +253,13 @@ export class WorkspaceRoom extends DurableObject<Env> {
       });
     } catch (error) {
       // transactionSync rolled back: nothing was applied.
-      console.error(JSON.stringify({ event: 'commit_failed', error: String(error) }));
+      logEvent('error', 'commit_failed', { error: safeError(error) });
       this.send(ws, { t: 'reject', id: msg.id, reason: 'invalid', revision: this.store.revision(), conflicts: [], message: 'commit failed' });
       return;
     }
     if (!result.ok) {
+      // Why a write was refused (a code and the role - never the records themselves).
+      logEvent('warn', 'commit_denied', { reason: result.reason, role: attachment.role, ...(result.reason === 'invalid' ? { rule: result.message.slice(0, 80) } : {}) });
       this.send(ws, {
         t: 'reject',
         id: msg.id,
@@ -893,7 +897,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
         now: new Date().toISOString(),
       });
     } catch (error) {
-      console.error(JSON.stringify({ event: 'import_failed', error: String(error) }));
+      logEvent('error', 'import_failed', { error: safeError(error) });
       return { ok: false, error: 'failed' };
     }
     if (!result.ok) return { ok: false, error: 'failed', message: result.reason, revision: result.revision };
@@ -979,7 +983,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
     const days = Number(this.env.HISTORY_RETENTION_DAYS ?? DEFAULT_RETENTION_DAYS);
     let retention = Number.isFinite(days) && days >= 7 ? Math.min(days, MAX_RETENTION_DAYS) : DEFAULT_RETENTION_DAYS;
     if (this.ctx.storage.sql.databaseSize > SIZE_GUARD_BYTES) {
-      console.warn(JSON.stringify({ event: 'size_guard', bytes: this.ctx.storage.sql.databaseSize }));
+      logEvent('warn', 'size_guard', { bytes: this.ctx.storage.sql.databaseSize });
       retention = Math.min(retention, SIZE_GUARD_RETENTION_DAYS);
     }
     this.store.prune(new Date(Date.now() - retention * DAY_MS).toISOString());

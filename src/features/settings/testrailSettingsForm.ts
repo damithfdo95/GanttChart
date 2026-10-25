@@ -1,5 +1,5 @@
 import type { TestRailConnection } from '../../../shared/testrail';
-import { isHttpUrl } from './jiraSettingsForm';
+import { isHttpUrl, isInsecureRemoteUrl, isSecureIntegrationUrl } from '../../../shared/integrationUrl';
 
 /** What the Settings → TestRail Integration form holds while it is being edited. */
 export interface TestRailDraft {
@@ -20,7 +20,7 @@ export interface TestRailDraftProblems {
 export function testrailDraftProblems(draft: TestRailDraft): TestRailDraftProblems {
   const base = draft.baseUrl.trim();
   const proxy = draft.proxyUrl.trim();
-  return { baseUrl: base !== '' && !isHttpUrl(base), proxyUrl: proxy !== '' && !isHttpUrl(proxy) };
+  return { baseUrl: base !== '' && (!isHttpUrl(base) || (proxy === '' && isInsecureRemoteUrl(base))), proxyUrl: proxy !== '' && !isSecureIntegrationUrl(proxy) };
 }
 
 /**
@@ -32,13 +32,14 @@ export function testrailDraftProblems(draft: TestRailDraft): TestRailDraftProble
  */
 export function testrailConnectionFromDraft(draft: TestRailDraft, keptApiKey: string | undefined): TestRailConnection | undefined {
   const baseUrl = draft.baseUrl.trim();
-  if (baseUrl === '' || !isHttpUrl(baseUrl)) return undefined;
+  const proxyAddress = draft.proxyUrl.trim();
+  if (baseUrl === '' || !isHttpUrl(baseUrl) || (proxyAddress === '' && isInsecureRemoteUrl(baseUrl))) return undefined;
   const conn: TestRailConnection = { baseUrl };
   const email = draft.email.trim();
   if (email !== '') conn.email = email;
   const apiKey = draft.apiKey.trim() !== '' ? draft.apiKey.trim() : keptApiKey;
   if (apiKey !== undefined && apiKey !== '') conn.apiKey = apiKey;
   const proxyUrl = draft.proxyUrl.trim();
-  if (proxyUrl !== '' && isHttpUrl(proxyUrl)) conn.proxyUrl = proxyUrl;
+  if (proxyUrl !== '' && isSecureIntegrationUrl(proxyUrl)) conn.proxyUrl = proxyUrl;
   return conn;
 }

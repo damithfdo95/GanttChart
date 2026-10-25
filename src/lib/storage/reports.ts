@@ -33,6 +33,7 @@ import { ensureProjectIds } from '../../domain/projects/migrations';
 import { migrateAssignmentsToMembers } from '../../domain/assignments';
 import { migrateAttendanceIdentity, migrateProjectBugTickets } from '../../domain/identityResolution';
 import { sanitizeReportPublication } from '../reporting/publication';
+import { isInsecureRemoteUrl, isSecureIntegrationUrl } from '../../../shared/integrationUrl';
 
 /** Versioned localStorage key for the daily-report module (V3). */
 export const REPORTS_STORAGE_KEY = 'ganttchart.reports.v1';
@@ -356,6 +357,9 @@ function normalizeJiraConnection(v: unknown): JiraConnection | undefined {
   const trimStr = (x: unknown): string => (typeof x === 'string' ? x.trim() : '');
   const baseUrl = trimStr(r.baseUrl);
   if (baseUrl === '' || !/^https?:\/\//i.test(baseUrl)) return undefined;
+  const proxyAddress = trimStr(r.proxyUrl);
+  // Credentials only ever go to a secure address: the proxy when set, otherwise the instance itself.
+  if ((proxyAddress === '' || !isSecureIntegrationUrl(proxyAddress)) && isInsecureRemoteUrl(baseUrl)) return undefined;
   const out: JiraConnection = { baseUrl };
   if (r.flavor === 'cloud' || r.flavor === 'dc' || r.flavor === 'auto') out.flavor = r.flavor;
   const email = trimStr(r.email);
@@ -363,7 +367,7 @@ function normalizeJiraConnection(v: unknown): JiraConnection | undefined {
   const token = trimStr(r.token);
   if (token !== '') out.token = token;
   const proxyUrl = trimStr(r.proxyUrl);
-  if (proxyUrl !== '' && /^https?:\/\//i.test(proxyUrl)) out.proxyUrl = proxyUrl;
+  if (proxyUrl !== '' && isSecureIntegrationUrl(proxyUrl)) out.proxyUrl = proxyUrl;
   return out;
 }
 
@@ -379,13 +383,15 @@ function normalizeTestrailConnection(v: unknown): TestRailConnection | undefined
   const trimStr = (x: unknown): string => (typeof x === 'string' ? x.trim() : '');
   const baseUrl = trimStr(r.baseUrl);
   if (baseUrl === '' || !/^https?:\/\//i.test(baseUrl)) return undefined;
+  const proxyAddress = trimStr(r.proxyUrl);
+  if ((proxyAddress === '' || !isSecureIntegrationUrl(proxyAddress)) && isInsecureRemoteUrl(baseUrl)) return undefined;
   const out: TestRailConnection = { baseUrl };
   const email = trimStr(r.email);
   if (email !== '') out.email = email;
   const apiKey = trimStr(r.apiKey);
   if (apiKey !== '') out.apiKey = apiKey;
   const proxyUrl = trimStr(r.proxyUrl);
-  if (proxyUrl !== '' && /^https?:\/\//i.test(proxyUrl)) out.proxyUrl = proxyUrl;
+  if (proxyUrl !== '' && isSecureIntegrationUrl(proxyUrl)) out.proxyUrl = proxyUrl;
   return out;
 }
 

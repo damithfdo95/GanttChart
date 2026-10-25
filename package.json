@@ -13,7 +13,11 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
-    "typecheck:strict": "tsc --noEmit -p tsconfig.strict.json"
+    "typecheck:strict": "tsc --noEmit -p tsconfig.strict.json",
+    "audit:prod": "npm audit --omit=dev --audit-level=high",
+    "sbom": "npx --yes @cyclonedx/cyclonedx-npm@6.0.1 --omit dev --output-format JSON --output-file sbom.cdx.json",
+    "licenses": "node scripts/licenses.mjs",
+    "bundle:check": "node scripts/check-bundle-size.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

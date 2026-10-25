@@ -341,40 +341,128 @@ describe('TestRail client', () => {
     expect(calls).toHaveLength(1); // the get_users call only — no get_user round-trips
   });
 
-  it('getCases fetches the cases of a suite (nested priority/type objects)', async () => {
+  it('getCases(projectId, suiteId) uses the documented contract get_cases/12&suite_id=34 (never get_cases/34)', async () => {
     const raw = [
       { id: 101, title: 'Login', priority: { id: 4, name: 'Critical' }, type: { id: 1, name: 'Functional' } },
       { id: 102, title: 'Logout', priority: 'Low', type: 'Regression' },
       { id: 103, title: 'Bare' },
     ];
     const { fetch, calls } = recordingFetch(() => response(200, raw));
-    const rows = await createTestRailClient(CONN, fetch).getCases(7);
+    const rows = await createTestRailClient(CONN, fetch).getCases(12, 34);
     expect(rows).toEqual([
       { caseId: 101, title: 'Login', priorityName: 'Critical', typeName: 'Functional' },
       { caseId: 102, title: 'Logout', priorityName: 'Low', typeName: 'Regression' },
       { caseId: 103, title: 'Bare' },
     ]);
-    expect(calls[0]?.url).toBe('https://rkong.testrail.com/index.php?/api/v2/get_cases/7&limit=250&offset=0');
+    expect(calls[0]?.url).toBe('https://rkong.testrail.com/index.php?/api/v2/get_cases/12&suite_id=34&limit=250&offset=0');
+    expect(calls[0]?.url).not.toContain('get_cases/34');
   });
 
-  it('getCases pages following the cases envelope', async () => {
-    const page1 = {
-      offset: 0,
-      limit: 250,
-      size: 1,
-      links: { next: '/api/v2/get_cases/7&limit=250&offset=1' },
-      cases: [{ id: 101, title: 'Login' }],
-    };
-    const page2 = {
-      offset: 1,
-      limit: 250,
-      size: 1,
-      links: { next: null },
-      cases: [{ id: 102, title: 'Logout' }],
-    };
+  it('getCases pages following the cases envelope (links.next), keeping project and suite on every page', async () => {
+    const page1 = { offset: 0, limit: 250, size: 1, links: { next: '/api/v2/get_cases/12&suite_id=34&limit=250&offset=1' }, cases: [{ id: 101, title: 'Login' }] };
+    const page2 = { offset: 1, limit: 250, size: 1, links: { next: null }, cases: [{ id: 102, title: 'Logout' }] };
     const { fetch, calls } = recordingFetch((call) => (call.url.includes('offset=1') ? response(200, page2) : response(200, page1)));
-    const rows = await createTestRailClient(CONN, fetch).getCases(7);
+    const rows = await createTestRailClient(CONN, fetch).getCases(12, 34);
     expect(rows.map((r) => r.caseId)).toEqual([101, 102]);
-    expect(calls[1]?.url).toBe('https://rkong.testrail.com/index.php?/api/v2/get_cases/7&limit=250&offset=1');
+    expect(calls[1]?.url).toBe('https://rkong.testrail.com/index.php?/api/v2/get_cases/12&suite_id=34&limit=250&offset=1');
+  });
+
+  it('imports more than one full page (limit/offset over bare arrays) and never silently stops at the first page', async () => {
+    const rowsOf = (from: number, n: number) => Array.from({ length: n }, (_, i) => ({ id: from + i, title: `Case ${from + i}` }));
+    const { fetch, calls } = recordingFetch((call) => {
+      if (call.url.includes('offset=0')) return response(200, rowsOf(1, 250));
+      if (call.url.includes('offset=250')) return response(200, rowsOf(251, 250));
+      return response(200, rowsOf(501, 40));
+    });
+    const rows = await createTestRailClient(CONN, fetch).getCases(12, 34);
+    expect(rows).toHaveLength(540);
+    expect(calls.map((c) => c.url.match(/offset=(\d+)/)?.[1])).toEqual(['0', '250', '500']);
+    expect(calls.every((c) => c.url.includes('get_cases/12&suite_id=34'))).toBe(true);
+  });
+
+  it('a server that ignores offset cannot make a case import twice', async () => {
+    const same = Array.from({ length: 250 }, (_, i) => ({ id: i + 1, title: `Case ${i + 1}` }));
+    let n = 0;
+    const { fetch } = recordingFetch(() => response(200, (n += 1) > 3 ? [] : same));
+    const rows = await createTestRailClient(CONN, fetch).getCases(12, 34);
+    expect(new Set(rows.map((r) => r.caseId)).size).toBe(rows.length);
+    expect(rows).toHaveLength(250);
+  });
+
+  it('getSuite reads the project the suite belongs to', async () => {
+    const { fetch, calls } = recordingFetch(() => response(200, { id: 34, name: 'Master', project_id: 12 }));
+    expect(await createTestRailClient(CONN, fetch).getSuite(34)).toEqual({ id: 34, projectId: 12, name: 'Master' });
+    expect(calls[0]?.url).toBe('https://rkong.testrail.com/index.php?/api/v2/get_suite/34');
+  });
+
+  it('getCasesForRun resolves the project through get_suite when the run does not report one (project id is never guessed from the suite id)', async () => {
+    const { fetch, calls } = recordingFetch((call) => (call.url.includes('get_suite/34') ? response(200, { id: 34, project_id: 12 }) : response(200, [{ id: 1, title: 'A' }])));
+    const rows = await createTestRailClient(CONN, fetch).getCasesForRun({ suiteId: 34 });
+    expect(rows.map((r) => r.caseId)).toEqual([1]);
+    expect(calls.map((c) => c.url.split('api/v2/')[1])).toEqual(['get_suite/34', 'get_cases/12&suite_id=34&limit=250&offset=0']);
+  });
+
+  it('a suite that belongs to a different project than the run reports is a clear error and imports nothing', async () => {
+    const { fetch, calls } = recordingFetch((call) => (call.url.includes('get_suite/34') ? response(200, { id: 34, project_id: 99 }) : response(200, [{ id: 1, title: 'A' }])));
+    const err = await failure(() => createTestRailClient(CONN, fetch).getCasesForRun({ projectId: 12, suiteId: 34 }));
+    expect(err.kind).toBe('mismatch');
+    expect(calls.some((c) => c.url.includes('get_cases'))).toBe(false);
+    const ok = recordingFetch((call) => (call.url.includes('get_suite/34') ? response(200, { id: 34, project_id: 12 }) : response(200, [{ id: 1, title: 'A' }])));
+    expect((await createTestRailClient(CONN, ok.fetch).getCasesForRun({ projectId: 12, suiteId: 34 })).length).toBe(1);
+  });
+
+  it('a malformed suite payload is reported, not guessed', async () => {
+    const { fetch } = recordingFetch(() => response(200, { id: 34, name: 'No project' }));
+    expect((await failure(() => createTestRailClient(CONN, fetch).getSuite(34))).kind).toBe('unknown');
+  });
+
+  it('ids that are not positive integers never reach a URL', async () => {
+    const { fetch, calls } = recordingFetch(() => response(200, []));
+    const client = createTestRailClient(CONN, fetch);
+    for (const bad of [0, -1, 1.5, Number.NaN]) {
+      expect((await failure(() => client.getCases(bad, 34))).kind).toBe('badRequest');
+      expect((await failure(() => client.getSuite(bad))).kind).toBe('badRequest');
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  it('runs report their project when TestRail does (get_run / plan runs)', async () => {
+    const { fetch } = recordingFetch(() => response(200, { id: 9, name: 'R', suite_id: 34, project_id: 12 }));
+    expect(await createTestRailClient(CONN, fetch).getRun(9)).toMatchObject({ id: 9, suiteId: 34, projectId: 12 });
+    const none = recordingFetch(() => response(200, { id: 9, name: 'R', suite_id: 34 }));
+    expect((await createTestRailClient(CONN, none.fetch).getRun(9)).projectId).toBeUndefined();
+  });
+
+  describe('API failures give safe, typed errors without credentials', () => {
+    const cases: Array<[number, string]> = [[400, 'badRequest'], [401, 'auth'], [403, 'forbidden'], [404, 'badRequest'], [500, 'server']];
+    for (const [status, kind] of cases) {
+      it(`HTTP ${status} -> ${kind}`, async () => {
+        const { fetch } = recordingFetch(() => response(status, { error: 'Field :project_id is not a valid project.' }));
+        const err = await failure(() => createTestRailClient(CONN, fetch).getCases(12, 34));
+        expect(err.kind).toBe(kind);
+        expect(JSON.stringify(err)).not.toContain('key-123');
+        expect(JSON.stringify(err)).not.toContain('sv@example.com');
+      });
+    }
+
+    it('429 retries once after Retry-After then reports a rate limit', async () => {
+      const { fetch, calls } = recordingFetch(() => response(429, {}, { 'retry-after': '0' }));
+      expect((await failure(() => createTestRailClient(CONN, fetch).getCases(12, 34))).kind).toBe('rateLimit');
+      expect(calls).toHaveLength(2);
+    });
+
+    it('a network failure and an unreadable response are typed, with no raw error text', async () => {
+      const down: FetchLike = async () => {
+        throw new TypeError('Failed to fetch https://user:secret@host');
+      };
+      const proxied = { ...CONN, proxyUrl: 'https://proxy.example.com' };
+      const net = await failure(() => createTestRailClient(proxied, down).getCases(12, 34));
+      expect(net.kind).toBe('network');
+      expect(JSON.stringify(net)).not.toContain('secret');
+      const broken: FetchLike = async () => ({ status: 200, ok: true, headers: { get: () => null }, json: async () => { throw new SyntaxError('Unexpected token <'); } }) as unknown as Response;
+      const rows = await createTestRailClient(CONN, broken).getCases(12, 34).catch((e: TestRailClientError) => e);
+      expect(Array.isArray(rows) ? rows : [rows]).toBeTruthy();
+      expect(JSON.stringify(rows)).not.toContain('Unexpected token');
+    });
   });
 });

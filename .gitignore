@@ -19,3 +19,17 @@ Application Audience*
 
 # Pre-change workspace snapshots contain real project data.
 docs/ganttchart-before-*.json
+
+# Environment and key material: never commit (templates named *.example stay allowed).
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+secrets/
+sbom.cdx.json
+*.cdx.json

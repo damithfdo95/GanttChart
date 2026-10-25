@@ -215,7 +215,7 @@ export function TestRailScopeImportDialog({ lang, project, tm, onClose, onDone }
       try {
         const run = await client.getRun(runId);
         if (run.suiteId === undefined) continue;
-        const cases = await client.getCases(run.suiteId);
+        const cases = await client.getCasesForRun({ suiteId: run.suiteId, ...(run.projectId === undefined ? {} : { projectId: run.projectId }) });
         if (cases.length === 0) continue;
         const scope = tm.scopes.find((s) => s.id === scopeId);
         const casePlan = planTestRailCaseImport(cases, tm.testCases, project.projectId, scope?.code ?? '');

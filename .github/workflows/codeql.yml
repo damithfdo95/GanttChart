@@ -1,0 +1,35 @@
+name: CodeQL
+
+# Static security analysis of the JavaScript/TypeScript source (frontend, Worker, shared rules, proxies).
+# Runs on pull requests, on every push to main, and weekly. Results appear under Security > Code scanning.
+# Availability: free for public repositories; a private repository needs GitHub Code Security (paid).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '23 3 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:javascript-typescript'

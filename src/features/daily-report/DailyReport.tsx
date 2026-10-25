@@ -693,6 +693,7 @@ export function DailyReport({ initialDate, prepare = false }: { initialDate?: st
                 <input
                   className="input"
                   type="text"
+                  aria-label={t(uiLang, 'dailyReport.jiraSection')}
                   placeholder="https://…"
                   value={draft?.jiraUrl ?? ''}
                   onChange={(e) => {

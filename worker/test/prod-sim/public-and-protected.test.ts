@@ -204,7 +204,7 @@ describe('PROTECTED: no token, no data — whatever Access did or did not do', (
     for (const path of GETS) {
       const r = await send('GET', path);
       expect(r.status, path).toBe(401);
-      expect(Object.keys(r.json), path).toEqual(['error']);
+      expect(Object.keys(r.json).sort(), path).toEqual(['error', 'requestId']);
       expect(r.text, path).not.toMatch(/ten_|usr_|@/);
     }
   });
@@ -213,7 +213,7 @@ describe('PROTECTED: no token, no data — whatever Access did or did not do', (
     for (const path of POSTS) {
       const r = await send('POST', path, { body: { email: 'a@rakuten.com', name: 'x', adminEmail: 'a@rakuten.com' } });
       expect(r.status, path).toBe(401);
-      expect(Object.keys(r.json), path).toEqual(['error']);
+      expect(Object.keys(r.json).sort(), path).toEqual(['error', 'requestId']);
     }
     for (const method of ['PATCH', 'PUT', 'DELETE']) {
       expect((await send(method, '/api/tenant/users/usr_00000000-0000-0000-0000-000000000000', { body: { status: 'disabled' } })).status, method).toBe(401);

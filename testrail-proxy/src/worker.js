@@ -30,6 +30,15 @@ const RATE_LIMIT_MAX = 120;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const hits = new Map();
 
+/**
+ * A path that tries to leave the allowed API: encoded dots or slashes, backslashes, control characters or a NUL. The URL parser already
+ * folds literal ../ segments; the encoded forms must not reach the upstream, where a server may decode them differently.
+ */
+const SUSPICIOUS_PATH = /%2e|%2f|%5c|%00|\\|[\u0000-\u001f\u007f]/i;
+
+/** Read-only relay: the app only reads from TestRail, so only GET/HEAD are forwarded. */
+const METHOD_ALLOWED = (method) => method === 'GET' || method === 'HEAD';
+
 function rateLimited(ip) {
   const now = Date.now();
   const entry = hits.get(ip);
@@ -64,9 +73,10 @@ export default {
 
     const url = new URL(request.url);
     // TestRail's whole API is /index.php with the command in the query string.
-    if (url.pathname !== '/index.php' || !url.search.startsWith('?/api/v2/')) {
+    if (url.pathname !== '/index.php' || !url.search.startsWith('?/api/v2/') || SUSPICIOUS_PATH.test(url.search.split('&')[0])) {
       return new Response('Not found', { status: 404 });
     }
+    if (!METHOD_ALLOWED(request.method)) return new Response('Method not allowed', { status: 405, headers: { ...CORS, Allow: 'GET, HEAD' } });
 
     const origin = String(env.TESTRAIL_ORIGIN ?? '').replace(/\/+$/, '');
     if (origin === '') return new Response('TESTRAIL_ORIGIN not configured', { status: 500, headers: CORS });

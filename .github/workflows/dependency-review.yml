@@ -1,0 +1,23 @@
+name: Dependency review
+
+# Blocks a pull request that introduces a dependency with a known High/Critical vulnerability.
+# Availability: free for public repositories; a private repository needs GitHub Advanced Security / Code Security.
+# If the repository is private without that plan, this job fails with a clear message - disable the workflow instead of ignoring it.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Review dependency changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

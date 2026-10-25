@@ -63,7 +63,7 @@ export function TestRailCaseImportDialog({ lang, scope, tm, onClose, onDone }: T
         setError('tm.testrailCases.noSuite');
         return;
       }
-      const cases = await client.getCases(run.suiteId);
+      const cases = await client.getCasesForRun({ suiteId: run.suiteId, ...(run.projectId === undefined ? {} : { projectId: run.projectId }) });
       if (cases.length === 0) {
         setError('tm.testrailCases.empty');
         return;

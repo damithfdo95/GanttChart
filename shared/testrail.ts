@@ -54,6 +54,8 @@ export interface TestRailRunRef {
   name: string;
   /** Suite id when the API exposed one on the run. */
   suiteId?: number;
+  /** The TestRail project the run belongs to (get_run / plan runs report `project_id`); needed by get_cases. */
+  projectId?: number;
   /** Config label(s), e.g. "Chrome" — plan entries create one run per config. */
   config?: string;
   /** The run's parent plan id — only present when the run was fetched through a plan. */
@@ -259,8 +261,17 @@ export type TestRailClientErrorKind =
   /** Browser blocked the request (CORS / mixed content / offline). TestRail never sends CORS headers. */
   | 'cors'
   | 'badRequest'
+  /** The suite does not belong to the project the run reports: nothing is imported. */
+  | 'mismatch'
   | 'server'
   | 'unknown';
+
+/** One suite (get_suite): the project it belongs to is what get_cases needs. */
+export interface TestRailSuiteRef {
+  id: number;
+  projectId: number;
+  name: string;
+}
 
 export interface TestRailClientError {
   kind: TestRailClientErrorKind;

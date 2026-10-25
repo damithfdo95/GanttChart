@@ -23,6 +23,7 @@ import type {
 } from '../../../shared/jira';
 import type { FetchLike } from '../tenancy/api';
 import { adfToPlainText, cleanPlainText } from './adf';
+import { isSecureIntegrationUrl } from '../../../shared/integrationUrl';
 
 const PAGE_SIZE = 100;
 const DEFAULT_MAX_TOTAL = 500;
@@ -168,6 +169,7 @@ export function createJiraClient(conn: JiraConnection, fetchLike: FetchLike = (i
   const baseUrl = (conn.baseUrl ?? '').trim();
   const base = trimSlash(proxyUrl !== '' ? proxyUrl : baseUrl);
   if (base === '') throw clientError('notConfigured', 'No JIRA base URL configured.');
+  if (!isSecureIntegrationUrl(base)) throw clientError('notConfigured', 'The JIRA address must use https:// (http:// is only allowed on this computer).');
   // Flavor comes from the JIRA host (the proxy host must not decide it).
   const flavorHost = baseUrl !== '' ? baseUrl : base;
   const flavor = resolveJiraFlavor(conn, flavorHost) === 'cloud' ? 'cloud' : 'dc';

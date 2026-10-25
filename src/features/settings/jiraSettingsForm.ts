@@ -1,4 +1,7 @@
 import type { JiraConnection, JiraFlavor } from '../../../shared/jira';
+import { isHttpUrl, isInsecureRemoteUrl, isSecureIntegrationUrl } from '../../../shared/integrationUrl';
+
+export { isHttpUrl };
 
 /** What the Settings → JIRA Integration form holds while it is being edited. */
 export interface JiraDraft {
@@ -12,17 +15,9 @@ export interface JiraDraft {
 
 export const EMPTY_JIRA_DRAFT: JiraDraft = { baseUrl: '', flavor: 'auto', email: '', token: '', proxyUrl: '' };
 
-const HTTP_URL = /^https?:\/\/[^\s/]+/i;
-
-export function isHttpUrl(value: string): boolean {
-  return HTTP_URL.test(value.trim());
-}
-
 /** True for a plain-http proxy that is not on this computer (the token would cross the network unencrypted). */
 export function isInsecureProxy(value: string): boolean {
-  const v = value.trim();
-  if (!/^http:\/\//i.test(v)) return false;
-  return !/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(v);
+  return isInsecureRemoteUrl(value);
 }
 
 export interface JiraDraftProblems {
@@ -33,7 +28,8 @@ export interface JiraDraftProblems {
 export function jiraDraftProblems(draft: JiraDraft): JiraDraftProblems {
   const base = draft.baseUrl.trim();
   const proxy = draft.proxyUrl.trim();
-  return { baseUrl: base !== '' && !isHttpUrl(base), proxyUrl: proxy !== '' && !isHttpUrl(proxy) };
+  // The address credentials are sent to must be secure: the proxy when one is set, otherwise the instance itself.
+  return { baseUrl: base !== '' && (!isHttpUrl(base) || (proxy === '' && isInsecureRemoteUrl(base))), proxyUrl: proxy !== '' && !isSecureIntegrationUrl(proxy) };
 }
 
 /**
@@ -44,7 +40,8 @@ export function jiraDraftProblems(draft: JiraDraft): JiraDraftProblems {
  */
 export function connectionFromDraft(draft: JiraDraft, keptToken: string | undefined): JiraConnection | undefined {
   const baseUrl = draft.baseUrl.trim();
-  if (baseUrl === '' || !isHttpUrl(baseUrl)) return undefined;
+  const proxyAddress = draft.proxyUrl.trim();
+  if (baseUrl === '' || !isHttpUrl(baseUrl) || (proxyAddress === '' && isInsecureRemoteUrl(baseUrl))) return undefined;
   const conn: JiraConnection = { baseUrl };
   if (draft.flavor !== 'auto') conn.flavor = draft.flavor;
   const email = draft.email.trim();
@@ -52,6 +49,6 @@ export function connectionFromDraft(draft: JiraDraft, keptToken: string | undefi
   const token = draft.token.trim() !== '' ? draft.token.trim() : keptToken;
   if (token !== undefined && token !== '') conn.token = token;
   const proxyUrl = draft.proxyUrl.trim();
-  if (proxyUrl !== '' && isHttpUrl(proxyUrl)) conn.proxyUrl = proxyUrl;
+  if (proxyUrl !== '' && isSecureIntegrationUrl(proxyUrl)) conn.proxyUrl = proxyUrl;
   return conn;
 }

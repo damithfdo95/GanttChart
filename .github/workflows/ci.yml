@@ -6,6 +6,15 @@ on:
   pull_request:
     branches: [main]
 
+# Least privilege: CI only reads the repository.
+permissions:
+  contents: read
+
+# A newer push to the same ref supersedes an older run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   frontend:
     name: Frontend (typecheck, lint, tests)
@@ -30,8 +39,12 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Includes the TestRail/JIRA client contract tests, the proxy tests and the security/config baseline tests.
       - name: Unit tests
         run: npm test
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Build
         run: npm run build

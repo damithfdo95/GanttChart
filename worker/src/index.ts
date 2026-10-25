@@ -33,6 +33,7 @@ import {
 import { RegistryRoom } from './registryRoom';
 import { emailDomain, type DenyReason } from '../../shared/tenancy';
 import { forgedTenant, json, member, need, originAllowed, problem, roomFor, SECURITY_HEADERS, type Ctx } from './http';
+import { logEvent, newRequestId, safeError, withRequestId } from './log';
 import { tenantRoutes } from './routes/tenant';
 import { superRoutes } from './routes/super';
 
@@ -47,16 +48,24 @@ const INTENT_HEADER = 'x-gc-intent';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const requestId = newRequestId();
+    const path = new URL(request.url).pathname;
+    let response: Response;
     try {
-      return await route(request, env);
+      response = await route(request, env);
     } catch (error) {
       if (error instanceof AuthError) {
-        if (error.status === 500) console.error(JSON.stringify({ event: 'auth_misconfigured' }));
-        return problem(error.status, error.message);
+        // 500 = the Worker itself is misconfigured; 401/403 = a caller that could not be authenticated (category only, never the token).
+        logEvent(error.status === 500 ? 'error' : 'warn', error.status === 500 ? 'auth_misconfigured' : 'auth_failed', { requestId, status: error.status, path });
+        response = problem(error.status, error.message);
+      } else {
+        // The browser gets a stable code and the request id; the technical detail stays in the server log (no stack trace leaves the Worker).
+        logEvent('error', 'unhandled', { requestId, path, error: safeError(error) });
+        response = problem(500, 'Internal error', { code: 'internal_error' });
       }
-      console.error(JSON.stringify({ event: 'unhandled', error: String(error) }));
-      return problem(500, 'Internal error');
     }
+    // Static assets are not API responses: only the Worker's own routes carry a request id.
+    return isWorkerPath(path) ? withRequestId(response, requestId) : response;
   },
 } satisfies ExportedHandler<Env>;
 
@@ -112,7 +121,7 @@ async function route(request: Request, env: Env): Promise<Response> {
 function denied(reason: DenyReason, email: string): Response {
   // A person Cloudflare Access let in but the application does not know (or no longer allows). Logged without the
   // mailbox name: enough to see that someone is trying, not enough to build a list of people.
-  console.warn(JSON.stringify({ event: 'access_denied', reason, domain: emailDomain(email) }));
+  logEvent('warn', 'access_denied', { reason, domain: emailDomain(email) });
   return problem(403, 'forbidden', { reason, email });
 }
 

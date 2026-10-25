@@ -160,7 +160,7 @@ describe('Cloudflare authentication is not GanttChart authorization', () => {
     const w = await twoTenants();
     const who = await whoami(rk('nobody'));
     const text = JSON.stringify(who.json);
-    expect(Object.keys(who.json).sort()).toEqual(['email', 'error', 'reason']);
+    expect(Object.keys(who.json).sort()).toEqual(['email', 'error', 'reason', 'requestId']);
     for (const secret of [w.a.id, w.b.id, w.a.adminEmail, w.b.adminEmail, w.a.name, w.b.name]) expect(text).not.toContain(secret);
   });
 

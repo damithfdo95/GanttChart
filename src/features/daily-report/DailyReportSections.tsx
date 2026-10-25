@@ -191,6 +191,7 @@ export function EodPreviewSection({
       <textarea
         className="dr-preview"
         rows={20}
+        aria-label={t(uiLang, 'dailyReport.previewSection')}
         value={previewText}
         onChange={(e) => onPreviewChange(e.target.value)}
       />
@@ -267,6 +268,7 @@ export function MorningPreviewSection({
       <textarea
         className="dr-preview"
         rows={20}
+        aria-label={t(uiLang, 'dailyReport.morningPreviewSection')}
         value={morningPreview}
         onChange={(e) => onPreviewChange(e.target.value)}
       />

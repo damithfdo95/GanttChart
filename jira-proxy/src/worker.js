@@ -28,6 +28,18 @@ const RATE_LIMIT_MAX = 120;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const hits = new Map();
 
+/**
+ * A path that tries to leave the allowed API: encoded dots or slashes, backslashes, control characters or a NUL. The URL parser already
+ * folds literal ../ segments; the encoded forms must not reach the upstream, where a server may decode them differently.
+ */
+const SUSPICIOUS_PATH = /%2e|%2f|%5c|%00|\\|[\u0000-\u001f\u007f]/i;
+
+/** Read-only relay: GET/HEAD, plus POST only for the JQL search the app uses. Nothing is ever written to JIRA through this worker. */
+function methodAllowed(method, pathname) {
+  if (method === 'GET' || method === 'HEAD') return true;
+  return method === 'POST' && /^\/rest\/api\/(2|3)\/search(\/jql)?$/.test(pathname);
+}
+
 function rateLimited(ip) {
   const now = Date.now();
   const entry = hits.get(ip);
@@ -61,7 +73,8 @@ export default {
     }
 
     const url = new URL(request.url);
-    if (!url.pathname.startsWith('/rest/')) return new Response('Not found', { status: 404 });
+    if (!url.pathname.startsWith('/rest/') || SUSPICIOUS_PATH.test(url.pathname)) return new Response('Not found', { status: 404 });
+    if (!methodAllowed(request.method, url.pathname)) return new Response('Method not allowed', { status: 405, headers: { ...CORS, Allow: 'GET, HEAD' } });
 
     const origin = String(env.JIRA_ORIGIN ?? '').replace(/\/+$/, '');
     if (origin === '') return new Response('JIRA_ORIGIN not configured', { status: 500, headers: CORS });

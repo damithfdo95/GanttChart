@@ -126,7 +126,7 @@ export function TestRailIntegration() {
           onChange={(e) => commit({ baseUrl: e.target.value })}
         />
       </label>
-      {problems.baseUrl ? <p className="field-error" role="alert">{t(lang, 'testrail.baseUrlInvalid')}</p> : null}
+      {problems.baseUrl ? <p className="field-error" role="alert">{t(lang, isInsecureProxy(draft.baseUrl) ? 'testrail.baseUrlInsecure' : 'testrail.baseUrlInvalid')}</p> : null}
 
       <label className="settings-field">
         {t(lang, 'testrail.email')}
@@ -166,8 +166,7 @@ export function TestRailIntegration() {
           onChange={(e) => commit({ proxyUrl: e.target.value })}
         />
       </label>
-      {problems.proxyUrl ? <p className="field-error" role="alert">{t(lang, 'testrail.proxyUrlInvalid')}</p> : null}
-      {!problems.proxyUrl && isInsecureProxy(draft.proxyUrl) ? <p className="qa-warning" role="note">{t(lang, 'testrail.proxyInsecure')}</p> : null}
+      {problems.proxyUrl ? <p className="field-error" role="alert">{t(lang, isInsecureProxy(draft.proxyUrl) ? 'testrail.proxyInsecure' : 'testrail.proxyUrlInvalid')}</p> : null}
       <p className="dr-summary">{t(lang, 'testrail.proxyHint')}</p>
 
       <p className="dr-summary" role="note">
