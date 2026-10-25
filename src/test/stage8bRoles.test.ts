@@ -43,6 +43,7 @@ describe('the role and screen matrix (one table for the navigation and the scree
   it('a Tester: inputs only on Dashboard (Today’s Execution), Tickets and Performance; reads Overall and Gantt; has their own profile; nothing else', () => {
     const expected: Record<ScreenId, string> = {
       dashboard: 'input',
+      commandCenter: 'none',
       overall: 'view',
       gantt: 'view',
       tickets: 'input',

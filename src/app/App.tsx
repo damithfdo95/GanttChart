@@ -20,6 +20,7 @@ import { BrandMark } from '../features/branding/BrandMark';
 import { NotificationBanner } from '../features/notifications/NotificationBanner';
 
 // Screens other than the landing Dashboard load on first visit, keeping the first download small.
+const CommandCenter = lazy(() => import('../features/commandCenter/CommandCenter').then((m) => ({ default: m.CommandCenter })));
 const Overall = lazy(() => import('../features/overall/Overall').then((m) => ({ default: m.Overall })));
 const Gantt = lazy(() => import('../features/gantt/Gantt').then((m) => ({ default: m.Gantt })));
 const DailyReport = lazy(() => import('../features/daily-report/DailyReport').then((m) => ({ default: m.DailyReport })));
@@ -230,7 +231,10 @@ function Shell() {
   // the entry is filtered out of the navigation below, and an active tab falls
   // back to the dashboard the moment the connection is removed.
   const jiraConfigured = reports.state.settings.jira !== undefined;
-  const activeScreen: Screen = screen === 'jira' && !jiraConfigured ? 'dashboard' : screen;
+  // A screen the role has no access to (e.g. a Tester asking for the Command Center) is never rendered: the Dashboard stands in.
+  const visibleNav = navItems(principal?.role ?? null);
+  const allowed = visibleNav.some((item) => item.id === screen);
+  const activeScreen: Screen = (screen === 'jira' && !jiraConfigured) || !allowed ? 'dashboard' : screen;
 
   // Document language/title follow the UI language on every screen (not
   // just the Dashboard) so screen readers and browser history stay correct.
@@ -271,7 +275,7 @@ function Shell() {
         <nav className="app-nav" aria-label={t(state.language, 'nav.mainNavigation')}>
           <BrandMark lang={state.language} />
           <div className="app-nav-tabs">
-            {navItems(principal?.role ?? null)
+            {visibleNav
               .filter((item) => item.id !== 'jira' || jiraConfigured)
               .map((item) => (
                 <button
@@ -303,6 +307,8 @@ function Shell() {
       <Suspense fallback={<p className="dr-summary" role="status">{t(state.language, 'app.loadingScreen')}</p>}>
       {activeScreen === 'dashboard' ? (
         <Dashboard onOpenOverall={openOverall} onOpenMeeting={openMeeting} />
+      ) : activeScreen === 'commandCenter' ? (
+        <CommandCenter onNavigate={setScreen} onOpenGantt={openGantt} />
       ) : activeScreen === 'cycles' ? (
         <CyclesScreen />
       ) : activeScreen === 'testManagement' ? (

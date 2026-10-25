@@ -19,11 +19,13 @@ export type UiRole = 'sv' | 'tester';
 /** manage = change anything there; input = enter their own data only; view = read only; none = not offered. */
 export type ScreenAccess = 'manage' | 'input' | 'view' | 'none';
 
-export type ScreenId = 'dashboard' | 'testManagement' | 'myTesting' | 'cycles' | 'overall' | 'gantt' | 'dailyReport' | 'tickets' | 'performance' | 'review' | 'reports' | 'team' | 'history' | 'settings' | 'jira';
+export type ScreenId = 'dashboard' | 'commandCenter' | 'testManagement' | 'myTesting' | 'cycles' | 'overall' | 'gantt' | 'dailyReport' | 'tickets' | 'performance' | 'review' | 'reports' | 'team' | 'history' | 'settings' | 'jira';
 
 export const SCREEN_ACCESS: Readonly<Record<ScreenId, Readonly<Record<UiRole, ScreenAccess>>>> = {
   // A Tester sees the Operator section (and enters Today's Execution); the manager panels are the SV's.
   dashboard: { sv: 'manage', tester: 'input' },
+  // The supervisor's daily operating view: management information (readiness, tickets, staffing across scopes) - never a Tester's.
+  commandCenter: { sv: 'manage', tester: 'none' },
   // Stage 8C: Test Management is the SV's workspace for scopes, cases and execution; My Testing is the Tester's focused view.
   testManagement: { sv: 'manage', tester: 'none' },
   myTesting: { sv: 'none', tester: 'input' },

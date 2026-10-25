@@ -20,6 +20,7 @@ export interface NavItem {
  */
 export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'dashboard', key: 'nav.dashboard' },
+  { id: 'commandCenter', key: 'nav.commandCenter' },
   { id: 'cycles', key: 'nav.cycles' },
   { id: 'overall', key: 'nav.overall' },
   { id: 'gantt', key: 'nav.gantt' },

@@ -16,6 +16,7 @@ import {
   executionHistorySheet,
   caseExecutionHistorySheet,
   detailedDailyExecutionSheet,
+  supervisorDailyOperationsSheet,
   executionLogsSheet,
   filterAttendanceRecords,
   filterReports,
@@ -41,6 +42,9 @@ import { createBackupPayload, parseBackupPayload } from '../../lib/backup/backup
 import { sanitizeRestoredAccountLinks } from '../../lib/backup/restoreLinks';
 import { useTenant } from '../../app/tenant-context';
 import { useReadiness } from '../readiness/useReadiness';
+import { buildSupervisorDailyOperations } from '../../domain/supervisorOperations';
+import { resolveQaPolicy } from '../../../shared/qaPolicy';
+import { businessDate } from '../../../shared/businessTime';
 import { persistWorkspaceAsync } from '../../lib/storage/db/persistenceBackend';
 import { XLSX_MIME } from '../../lib/statusKeys';
 
@@ -168,6 +172,27 @@ export function ReportsExport() {
         build: () => {
           const events = (reportsApi.state.caseExecutions ?? []).filter((e) => (filters.dateFrom === null || e.executedAt.slice(0, 10) >= filters.dateFrom) && (filters.dateTo === null || e.executedAt.slice(0, 10) <= filters.dateTo));
           const sheet = detailedDailyExecutionSheet(lang, reportsApi.state.projects, reportsApi.state.scopes ?? [], reportsApi.state.testCases ?? [], events, reportsApi.state.caseResults ?? []);
+          return { sheet, json: sheet.rows };
+        },
+      },
+      {
+        id: 'supervisorOperations',
+        labelKey: 'ops.export.sheet',
+        build: () => {
+          const ops = buildSupervisorDailyOperations({
+            projects: reportsApi.state.projects,
+            scopes: reportsApi.state.scopes ?? [],
+            cases: reportsApi.state.testCases ?? [],
+            caseResults: reportsApi.state.caseResults ?? [],
+            caseExecution: reportsApi.state.caseExecutions ?? [],
+            assignments: reportsApi.state.testerAssignments ?? [],
+            members: reportsApi.state.rcsMembers ?? [],
+            policy: resolveQaPolicy(reportsApi.state.settings.qaPolicy),
+            selectedDate: businessDate(),
+            today: businessDate(),
+            nowIso: new Date().toISOString(),
+          });
+          const sheet = supervisorDailyOperationsSheet(lang, ops);
           return { sheet, json: sheet.rows };
         },
       },

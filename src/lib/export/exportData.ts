@@ -40,6 +40,7 @@ import type { TicketAnalysis } from '../../domain/jira';
 import type { XlsxCell, XlsxSheet } from './xlsx';
 import { readinessReasonTexts, readinessStateLabel } from '../../features/readiness/readinessText';
 import type { ReleaseReadiness } from '../../domain/readiness';
+import type { SupervisorDailyOperations } from '../../domain/supervisorOperations';
 import { assessDetailedCoverage, isCaseDerivedAggregateStale, reconcileDailyExecution } from '../../domain/executionReconciliation';
 import { compareDailyExecution, dailyDetailedSummary, eventActorLabel, eventBusinessDate, sortEventsAscending, type CaseExecutionEvent, type DailyDetailedSummary, type TestCase, type TestScope } from '../../domain/testManagement';
 import { buildManagementReportRow, riskStatusLabel, type ManagementReportRow } from './management';
@@ -518,6 +519,53 @@ export function detailedDailyExecutionSheet(
       t(lang, 'qa.workType.export'),
     ],
     rows,
+  };
+}
+
+/**
+ * SV Daily Operations: one row per project for the selected day. Units stay explicit (cases, tickets, testers). Saved figures are the
+ * daily aggregate; readiness, tickets and the forecast are CURRENT. Derived from the same selector as the Command Center.
+ */
+export function supervisorDailyOperationsSheet(lang: Language, ops: SupervisorDailyOperations): XlsxSheet {
+  const attention = (id: string): string => ops.summary.attentionItems.filter((a) => a.projectId === id).map((a) => a.reasonCode).join(';');
+  return {
+    name: t(lang, 'ops.export.sheet'),
+    headers: [
+      t(lang, 'columns.date'),
+      t(lang, 'tm.history.exportProjectId'),
+      t(lang, 'columns.name'),
+      t(lang, 'qa.workType.export'),
+      t(lang, 'readiness.column'),
+      t(lang, 'fields.currentTesters'),
+      t(lang, 'capacity.assigned'),
+      t(lang, 'exec.actualTesters'),
+      t(lang, 'exec.detail.exportSaved'),
+      t(lang, 'tm.status.pass'),
+      t(lang, 'tm.status.fail'),
+      t(lang, 'tm.status.blocked'),
+      t(lang, 'ops.export.projected'),
+      t(lang, 'ops.export.plannedEnd'),
+      t(lang, 'ops.export.criticalTickets'),
+      t(lang, 'ops.export.codes'),
+    ],
+    rows: ops.projects.map((p) => [
+      { kind: 'date', value: ops.selectedDate },
+      p.projectId,
+      p.projectName,
+      p.workTypes.map((w) => t(lang, `qa.workType.${w}` as Parameters<typeof t>[1])).join('; '),
+      readinessStateLabel(lang, p.readiness),
+      p.staffing.planned,
+      p.staffing.assigned,
+      p.staffing.actual ?? '—',
+      p.saved?.executed ?? '—',
+      p.saved?.passed ?? '—',
+      p.saved?.failed ?? '—',
+      p.saved?.blocked ?? '—',
+      p.schedule.projectedFinish ?? '—',
+      p.schedule.plannedEnd ?? '—',
+      p.tickets.criticalUnresolved,
+      attention(p.projectId),
+    ]),
   };
 }
 

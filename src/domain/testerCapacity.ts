@@ -9,7 +9,7 @@ import type { DailyExecutionEntry, RcsMember, TesterProjectAssignment } from '..
  */
 
 /** A stable person key: the Team Member when known (an account id resolves to its linked member), else the account, else a legacy name. */
-function personKey(a: TesterProjectAssignment, members: readonly RcsMember[]): string | null {
+export function personKey(a: TesterProjectAssignment, members: readonly RcsMember[]): string | null {
   if (a.memberId !== undefined) return `m:${a.memberId}`;
   if (a.userId !== undefined) {
     const linked = members.find((m) => m.userId === a.userId);
