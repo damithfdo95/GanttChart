@@ -1667,6 +1667,56 @@ input[type='checkbox'] {
   }
 }
 
+.ia-chart {
+  margin: 12px 0;
+}
+
+.ia-chart figcaption {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.ia-svg {
+  width: 100%;
+  max-width: 640px;
+  height: auto;
+  color: var(--muted, #52606d);
+}
+
+.ia-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.ia-bars li {
+  display: grid;
+  grid-template-columns: minmax(80px, 140px) 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.ia-bar {
+  display: block;
+  background: var(--border);
+  border-radius: 3px;
+  height: 12px;
+}
+
+.ia-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent, #1a56db);
+  border-radius: 3px;
+}
+
+.ia-signals {
+  margin: 4px 0 12px;
+  padding-left: 18px;
+}
+
 .dr-progress-preview {
   background: var(--bg);
   border: 1px solid var(--border);

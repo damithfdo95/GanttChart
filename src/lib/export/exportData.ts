@@ -44,6 +44,7 @@ import type { SupervisorDailyOperations } from '../../domain/supervisorOperation
 import { assessDetailedCoverage, isCaseDerivedAggregateStale, reconcileDailyExecution } from '../../domain/executionReconciliation';
 import { compareDailyExecution, dailyDetailedSummary, eventActorLabel, eventBusinessDate, sortEventsAscending, type CaseExecutionEvent, type DailyDetailedSummary, type TestCase, type TestScope } from '../../domain/testManagement';
 import { isPublished } from '../../../shared/reportPublication';
+import type { QaImprovementAnalytics } from '../../domain/qaImprovementAnalytics';
 import { buildManagementReportRow, riskStatusLabel, type ManagementReportRow } from './management';
 /** Export filters (date range, team, attendance status). */
 
@@ -533,6 +534,46 @@ export function detailedDailyExecutionSheet(
  * SV Daily Operations: one row per project for the selected day. Units stay explicit (cases, tickets, testers). Saved figures are the
  * daily aggregate; readiness, tickets and the forecast are CURRENT. Derived from the same selector as the Command Center.
  */
+/** The QA Improvement Analytics workbook: separate logical tables (never one denormalised sheet). */
+export function improvementSheets(lang: Language, a: QaImprovementAnalytics): XlsxSheet[] {
+  const wtLabel = (w: string): string => t(lang, `qa.workType.${w}` as Parameters<typeof t>[1]);
+  const dash = (v: number | null): string | number => (v === null ? '—' : v);
+  const rate = (v: number | null): string | number => (v === null ? '—' : Math.round(v * 1000) / 10);
+  const round1 = (v: number | null): number | null => (v === null ? null : Math.round(v * 10) / 10);
+  return [
+    {
+      name: t(lang, 'ia.export.sheetDaily'),
+      headers: [t(lang, 'ia.col.date'), t(lang, 'ia.col.completed'), t(lang, 'ia.col.failed'), t(lang, 'ia.col.blocked'), t(lang, 'ia.col.events'), t(lang, 'ia.col.unique'), t(lang, 'ia.col.retest'), t(lang, 'ia.col.planned'), t(lang, 'ia.col.actual')],
+      rows: a.days.map((d) => [{ kind: 'date', value: d.date }, dash(d.completed), dash(d.failed), dash(d.blocked), dash(d.events), dash(d.uniqueCases), dash(d.retestEvents), dash(d.plannedTesters), dash(d.actualTesters)]),
+    },
+    {
+      name: t(lang, 'ia.export.sheetWorkTypes'),
+      headers: [t(lang, 'ia.col.workType'), t(lang, 'ia.col.scopes'), t(lang, 'ia.col.completed'), t(lang, 'ia.col.failureRate'), t(lang, 'ia.col.events'), t(lang, 'ia.col.unique'), t(lang, 'ia.col.retest'), t(lang, 'ia.col.retestPer100'), t(lang, 'ia.col.activeDays'), t(lang, 'ia.col.perDay'), t(lang, 'ia.col.tickets')],
+      rows: a.workTypes.map((w) => [wtLabel(w.workType), w.scopes, w.completedCases, rate(w.failureRate), w.events, w.uniqueCases, w.retestEvents, dash(round1(w.retestPer100Events)), w.activeDays, dash(round1(w.completedPerActiveDay)), dash(w.tickets)]),
+    },
+    {
+      name: t(lang, 'ia.export.sheetReleases'),
+      headers: [t(lang, 'ia.col.project'), t(lang, 'ia.col.plannedFinish'), t(lang, 'ia.col.actualCompletion'), t(lang, 'ia.col.variance'), t(lang, 'ia.col.outcome'), t(lang, 'ia.col.completed'), t(lang, 'ia.col.failureRate'), t(lang, 'ia.col.blockedAtEnd'), t(lang, 'ia.col.duration'), t(lang, 'ia.col.testers'), t(lang, 'ia.col.volume')],
+      rows: a.releases.map((r) => [r.projectName, r.plannedFinish ?? '—', r.actualCompletion, dash(r.daysVariance), t(lang, `ia.outcome.${r.outcome}` as Parameters<typeof t>[1]), r.completedCases, rate(r.failureRate), dash(r.blockedAtEnd), `${r.plannedDurationDays ?? '—'} / ${r.actualDurationDays ?? '—'}`, `${r.plannedAvgTesters === null ? '—' : r.plannedAvgTesters.toFixed(1)} / ${r.actualAvgTesters === null ? '—' : r.actualAvgTesters.toFixed(1)}`, r.plannedVolume]),
+    },
+    {
+      name: t(lang, 'ia.export.sheetStaffing'),
+      headers: [t(lang, 'ia.col.project'), t(lang, 'ia.col.compared'), t(lang, 'ia.col.under'), t(lang, 'ia.col.avgVariance')],
+      rows: (a.staffing?.byProject ?? []).map((p) => [p.projectName, p.comparedDays, p.understaffedDays, dash(p.avgVariance === null ? null : Math.round(p.avgVariance * 100) / 100)]),
+    },
+    {
+      name: t(lang, 'ia.export.sheetComparison'),
+      headers: [t(lang, 'ia.col.metric'), t(lang, 'ia.col.current'), t(lang, 'ia.col.previous'), t(lang, 'ia.col.change')],
+      rows: a.comparison.map((c) => {
+        const label: Record<typeof c.metric, Parameters<typeof t>[1]> = { completed: 'ia.m.completed', failureRate: 'ia.m.failureRate', retestEvents: 'ia.m.retest', staffingVariance: 'ia.m.staffingVariance', executionEvents: 'ia.m.events', uniqueCases: 'ia.m.unique' };
+        const isRate = c.metric === 'failureRate';
+        const show = (v: number | null): string | number => (v === null ? '—' : isRate ? Math.round(v * 1000) / 10 : Math.round(v * 100) / 100);
+        return [t(lang, label[c.metric]), show(c.current), show(c.previous), c.percent !== null ? `${Math.round(c.percent * 1000) / 10}%` : c.absolute === null ? '—' : isRate ? `${Math.round(c.absolute * 1000) / 10} pp` : Math.round(c.absolute * 100) / 100];
+      }),
+    },
+  ];
+}
+
 export function supervisorDailyOperationsSheet(lang: Language, ops: SupervisorDailyOperations): XlsxSheet {
   const attention = (id: string): string => ops.summary.attentionItems.filter((a) => a.projectId === id).map((a) => a.reasonCode).join(';');
   return {

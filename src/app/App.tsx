@@ -21,6 +21,7 @@ import { NotificationBanner } from '../features/notifications/NotificationBanner
 
 // Screens other than the landing Dashboard load on first visit, keeping the first download small.
 const CommandCenter = lazy(() => import('../features/commandCenter/CommandCenter').then((m) => ({ default: m.CommandCenter })));
+const ImprovementAnalytics = lazy(() => import('../features/improvement/ImprovementAnalytics').then((m) => ({ default: m.ImprovementAnalytics })));
 const Overall = lazy(() => import('../features/overall/Overall').then((m) => ({ default: m.Overall })));
 const Gantt = lazy(() => import('../features/gantt/Gantt').then((m) => ({ default: m.Gantt })));
 const DailyReport = lazy(() => import('../features/daily-report/DailyReport').then((m) => ({ default: m.DailyReport })));
@@ -321,6 +322,8 @@ function Shell() {
             setScreen('dailyReport');
           }}
         />
+      ) : activeScreen === 'improvement' ? (
+        <ImprovementAnalytics />
       ) : activeScreen === 'cycles' ? (
         <CyclesScreen />
       ) : activeScreen === 'testManagement' ? (

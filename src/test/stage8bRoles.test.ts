@@ -44,6 +44,7 @@ describe('the role and screen matrix (one table for the navigation and the scree
     const expected: Record<ScreenId, string> = {
       dashboard: 'input',
       commandCenter: 'none',
+      improvement: 'none',
       overall: 'view',
       gantt: 'view',
       tickets: 'input',
