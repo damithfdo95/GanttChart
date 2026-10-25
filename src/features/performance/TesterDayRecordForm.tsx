@@ -5,7 +5,7 @@ import { formatDate, todayEpochDays } from '../../lib/dates/dates';
 import { Field } from '../../components/Field';
 import type { TesterDailyPerformance } from '../../types';
 
-export interface DailyExecutionFormValues {
+export interface TesterDayRecordFormValues {
   date: string;
   testerName: string;
   memberId: string;
@@ -20,7 +20,7 @@ export interface DailyExecutionFormValues {
   casesSpoAssigned: string;
 }
 
-function emptyForm(today: string): DailyExecutionFormValues {
+function emptyForm(today: string): TesterDayRecordFormValues {
   return {
     date: today,
     testerName: '',
@@ -37,7 +37,7 @@ function emptyForm(today: string): DailyExecutionFormValues {
   };
 }
 
-function fromRecord(record: TesterDailyPerformance): DailyExecutionFormValues {
+function fromRecord(record: TesterDailyPerformance): TesterDayRecordFormValues {
   const num = (v: number | undefined): string => (v === undefined ? '' : String(v));
   return {
     date: record.date,
@@ -79,7 +79,7 @@ function parseCount(value: string): number | undefined {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
-interface DailyExecutionFormProps {
+interface TesterDayRecordFormProps {
   lang: Language;
   /** Active RCS members for the selector (V6.8); empty → legacy free-text fallback. */
   members: readonly RcsMember[];
@@ -105,20 +105,20 @@ interface DailyExecutionFormProps {
  * master exists. Totals stay authoritative and the status tallies optional
  * overlays.
  */
-export function DailyExecutionForm({ lang, members, memberNames, existing, lockedMember, disabled: disabledProp = false, onSubmit, onCancelEdit }: DailyExecutionFormProps) {
+export function TesterDayRecordForm({ lang, members, memberNames, existing, lockedMember, disabled: disabledProp = false, onSubmit, onCancelEdit }: TesterDayRecordFormProps) {
   const locked = lockedMember !== undefined;
   const disabled = disabledProp || (locked && lockedMember === null);
   const today = formatDate(todayEpochDays());
-  const own = (): DailyExecutionFormValues => (lockedMember ? { ...emptyForm(today), memberId: lockedMember.id, testerName: lockedMember.name, team: lockedMember.team } : emptyForm(today));
-  const [form, setForm] = useState<DailyExecutionFormValues>(() => (existing === undefined ? own() : fromRecord(existing)));
-  const [errors, setErrors] = useState<Partial<Record<keyof DailyExecutionFormValues, string>>>({});
+  const own = (): TesterDayRecordFormValues => (lockedMember ? { ...emptyForm(today), memberId: lockedMember.id, testerName: lockedMember.name, team: lockedMember.team } : emptyForm(today));
+  const [form, setForm] = useState<TesterDayRecordFormValues>(() => (existing === undefined ? own() : fromRecord(existing)));
+  const [errors, setErrors] = useState<Partial<Record<keyof TesterDayRecordFormValues, string>>>({});
 
-  const handleChange = (patch: Partial<DailyExecutionFormValues>): void => {
+  const handleChange = (patch: Partial<TesterDayRecordFormValues>): void => {
     setForm((prev) => ({ ...prev, ...patch }));
   };
 
   const handleSubmit = (): void => {
-    const nextErrors: Partial<Record<keyof DailyExecutionFormValues, string>> = {};
+    const nextErrors: Partial<Record<keyof TesterDayRecordFormValues, string>> = {};
     if (form.date === '' || /^\d{4}-\d{2}-\d{2}$/.test(form.date) === false) {
       nextErrors.date = t(lang, 'errors.ticketDateInvalid');
     }
@@ -158,7 +158,7 @@ export function DailyExecutionForm({ lang, members, memberNames, existing, locke
     setForm(own());
   };
 
-  const numericFields: { key: keyof DailyExecutionFormValues; label: string }[] = [
+  const numericFields: { key: keyof TesterDayRecordFormValues; label: string }[] = [
     { key: 'casesPassed', label: t(lang, 'columns.pass') },
     { key: 'casesFailed', label: t(lang, 'fields.casesFailed') },
     { key: 'casesNotApplicable', label: t(lang, 'columns.notApplicable') },
@@ -245,7 +245,7 @@ export function DailyExecutionForm({ lang, members, memberNames, existing, locke
             min={0}
             step={1}
             value={form[field.key]}
-            onChange={(e) => handleChange({ [field.key]: e.target.value } as Partial<DailyExecutionFormValues>)}
+            onChange={(e) => handleChange({ [field.key]: e.target.value } as Partial<TesterDayRecordFormValues>)}
           />
         </Field>
       ))}

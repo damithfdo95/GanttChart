@@ -24,6 +24,8 @@ export interface WhatIfLabels {
 interface WhatIfTableProps {
   rows: WhatIfRow[];
   currentTesters: number;
+  /** The row being explored (local preview state); null = none. Never the project's Current Testers. */
+  selectedTesters?: number | null;
   onSelect: (testers: number) => void;
   labels: WhatIfLabels;
   lang?: Language;
@@ -33,11 +35,11 @@ interface WhatIfTableProps {
 
 /**
  * What-if tester planning table (§19). The currently selected tester count is
- * highlighted; clicking a row applies that count to Current Testers. The
+ * tagged; clicking a row only previews that count (highlight) and never changes Current Testers. The
  * table shows 10 tester rows by default; onMore/onFewer let the user extend
  * or reduce the visible range.
  */
-export function WhatIfTable({ rows, currentTesters, onSelect, labels, lang, onMore, onFewer }: WhatIfTableProps) {
+export function WhatIfTable({ rows, currentTesters, selectedTesters = null, onSelect, labels, lang, onMore, onFewer }: WhatIfTableProps) {
   return (
     <CollapsibleSection title={labels.title} subtitle={labels.hint} defaultOpen>
       <div className="table-wrap">
@@ -54,14 +56,14 @@ export function WhatIfTable({ rows, currentTesters, onSelect, labels, lang, onMo
             {rows.map((row) => (
               <tr
                 key={row.testers}
-                className={row.testers === currentTesters ? 'selected' : undefined}
+                className={row.testers === selectedTesters ? 'selected' : undefined}
                 onClick={() => onSelect(row.testers)}
               >
                 <td className="num">
                   <button
                     type="button"
                     className="whatif-select"
-                    aria-pressed={row.testers === currentTesters}
+                    aria-pressed={row.testers === selectedTesters}
                     onClick={() => onSelect(row.testers)}
                   >
                     {row.testers}

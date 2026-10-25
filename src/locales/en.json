@@ -117,7 +117,7 @@
   "timeline.totalSpoActual": "Total SPO Actual",
 
   "whatIf.title": "What-If: Tester Count",
-  "whatIf.hint": "Click a row to apply that tester count",
+  "whatIf.hint": "Click a row to preview that tester count (Current Testers is not changed)",
   "whatIf.testers": "Testers",
   "whatIf.hourlyCapacity": "Hourly Capacity",
   "whatIf.requiredTime": "Required Time",

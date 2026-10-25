@@ -7,6 +7,7 @@ import { calculateMultiDayProjection } from '../../lib/calculations/planning';
 import { WORK_DAY_END, WORK_LUNCH } from '../../lib/calculations/workday';
 import { projectPlanningStatus, projectProgress, buildDayTimeline } from '../../domain/projects';
 import { formatCases, formatClock, formatInteger, formatNumber } from '../../lib/formatting/format';
+import { hasAuthoritativeScopeTotals } from '../../domain/testManagement/totals';
 import { PlanningPanel } from '../../components/PlanningPanel';
 import { useAccess } from '../../app/access';
 import { SectionCard } from '../../components/SectionCard';
@@ -275,6 +276,7 @@ function GanttPlanning({ focusProjectId, onFocusHandled, viewSwitch, langToggle 
           <PlanningPanel
             inputs={app.state}
             lang={lang}
+            totalFromScopes={hasAuthoritativeScopeTotals(activeProject, reportsApi.state.scopes ?? [], reportsApi.state.testCases ?? [])}
             onChangeStartDate={app.changeStartDate}
             onSetTargetCompletionDate={(value) => app.updateField('targetCompletionDate', value)}
             onSetTargetCompletionTime={(value) => app.updateField('targetCompletionTime', value)}

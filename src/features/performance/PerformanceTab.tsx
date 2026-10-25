@@ -27,7 +27,7 @@ import { dailyAttributionMismatches } from '../../lib/calculations/testerAttribu
 import { PerformanceSummaryCards } from './PerformanceSummary';
 import { TesterPerformanceTable, sourceLabel } from './TesterPerformanceTable';
 import { TesterDetail, type TesterDetailSummary } from './TesterDetail';
-import { DailyExecutionForm, type ParsedDailyExecution } from './DailyExecutionForm';
+import { TesterDayRecordForm, type ParsedDailyExecution } from './TesterDayRecordForm';
 import { SyncSection } from './SyncSection';
 import { useAccess } from '../../app/access';
 import { TesterProfileNotice } from '../tenancy/TesterProfileNotice';
@@ -464,7 +464,7 @@ export function PerformanceTab() {
           {activeProjectName === '' ? '' : `${activeProjectName} — `}
           {t(lang, 'performance.casesTested')}: {formatInteger(activeRecords.reduce((sum, r) => sum + r.casesTested, 0), lang)}
         </p>
-        <DailyExecutionForm
+        <TesterDayRecordForm
           key={editingRecord?.id ?? 'new'}
           lang={lang}
           members={activeMembers}

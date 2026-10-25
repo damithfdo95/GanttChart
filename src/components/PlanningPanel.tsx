@@ -22,6 +22,8 @@ import { otherLanguage, t } from '../i18n';
 interface PlanningPanelProps {
   inputs: AppState;
   lang: Language;
+  /** Total Test Cases is derived from the project's scopes: shown read-only (same rule as the Dashboard INPUT section). */
+  totalFromScopes?: boolean;
   onChangeStartDate: (date: string) => void;
   onSetTargetCompletionDate: (value: string | null) => void;
   onSetTargetCompletionTime: (value: string | null) => void;
@@ -56,6 +58,7 @@ const PLAN_STATUS_KEY: Record<PlanStatus, 'status.completed' | 'status.capacityS
 export function PlanningPanel({
   inputs,
   lang,
+  totalFromScopes = false,
   onChangeStartDate,
   onSetTargetCompletionDate,
   onSetTargetCompletionTime,
@@ -194,8 +197,15 @@ export function PlanningPanel({
               step={1}
               value={inputs.totalCases}
               aria-label={t(lang, 'fields.totalCases')}
+              readOnly={totalFromScopes}
+              aria-describedby={totalFromScopes ? 'plan-total-from-scopes' : undefined}
               onChange={(e) => onSetTotalCases(Math.max(0, Number(e.target.value) || 0))}
             />
+            {totalFromScopes ? (
+              <span id="plan-total-from-scopes" className="link-help">
+                {t(lang, 'tm.total.fromScopes')}
+              </span>
+            ) : null}
           </Field>
           <Field label={t(lang, 'fields.currentTesters')}>
             <input

@@ -117,7 +117,7 @@
   "timeline.totalSpoActual": "SPO実績合計",
 
   "whatIf.title": "テスター数シミュレーション",
-  "whatIf.hint": "行をクリックするとそのテスター数を適用します",
+  "whatIf.hint": "行をクリックするとそのテスター数を確認できます（現在のテスター数は変更されません）",
   "whatIf.testers": "テスター数",
   "whatIf.hourlyCapacity": "処理能力/時",
   "whatIf.requiredTime": "所要時間",

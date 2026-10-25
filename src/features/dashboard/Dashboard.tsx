@@ -61,7 +61,7 @@ import { WorkspaceEmptyNotice } from './WorkspaceEmptyNotice';
 import { ManagerPanel } from './ManagerPanel';
 import { toolNameOf } from '../../domain/branding';
 import { ProjectControlCenter } from './ProjectControlCenter';
-import { derivedTotalFor } from '../../domain/testManagement/totals';
+import { hasAuthoritativeScopeTotals } from '../../domain/testManagement/totals';
 import { MultiDayTimeline } from '../../components/MultiDayTimeline';
 import { CapacityProjectionSections, ExecutionSection, InputSection } from './DashboardSections';
 import { useTestRailScopeProgress } from './hooks/useTestRailScopeProgress';
@@ -99,12 +99,11 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
   // A Tester sees the Operator section (and enters Today's Execution) only; the manager panels are the SV's.
   const tester = access.isTester;
   const reportsApi = useReportsStateCtx();
-  const totalFromScopes =
-    derivedTotalFor(
-      reportsApi.state.projects.find((p) => p.id === reportsApi.state.activeProjectId),
-      reportsApi.state.scopes ?? [],
-      reportsApi.state.testCases ?? [],
-    ) !== null;
+  const totalFromScopes = hasAuthoritativeScopeTotals(
+    reportsApi.state.projects.find((p) => p.id === reportsApi.state.activeProjectId),
+    reportsApi.state.scopes ?? [],
+    reportsApi.state.testCases ?? [],
+  );
   const now = useNow(30_000);
   // The date loaded in the "Today's Execution" form (editable past days
   // included) — owned here so the Daily Progress panel's per-row Edit
@@ -349,6 +348,8 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
   );
   const offDays = useMemo(() => excludedEpochDays(state.planningRows), [state.planningRows]);
   const [whatIfCount, setWhatIfCount] = useState(10);
+  // Exploring a scenario is local: the chosen row is only highlighted and never written to Current Testers.
+  const [whatIfSelected, setWhatIfSelected] = useState<number | null>(null);
   const whatIfRemainingCases = Math.max(0, state.totalCases - state.casesCompleted);
   const whatIfRows = useMemo<WhatIfRow[]>(() => {
     // Bounded like the More button (200): a huge tester count must not
@@ -660,7 +661,8 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
         <WhatIfTable
           rows={whatIfRows}
           currentTesters={state.currentTesters}
-          onSelect={(testers) => updateField('currentTesters', testers)}
+          selectedTesters={whatIfSelected}
+          onSelect={setWhatIfSelected}
           lang={lang}
           labels={{
             title: t(lang, 'whatIf.title'),

@@ -128,3 +128,8 @@ export function derivedTotalFor(project: Pick<ProjectRecord, 'projectId' | 'inpu
   const totals = projectTotals(project, scopes, cases);
   return totals.source === 'scopes' ? totals.total : null;
 }
+
+/** True when the project's Total Test Cases is derived from its scopes (so every editing surface must show it read-only). */
+export function hasAuthoritativeScopeTotals(project: Pick<ProjectRecord, 'projectId' | 'inputs'> | undefined, scopes: readonly TestScope[], cases: readonly TestCase[]): boolean {
+  return derivedTotalFor(project, scopes, cases) !== null;
+}
