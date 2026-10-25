@@ -1,5 +1,5 @@
 import { ApiError } from '../../lib/tenancy/api';
-import type { TranslationKey } from '../../i18n';
+import { t, type TranslationKey } from '../../i18n';
 import type { Language } from '../../types';
 
 const KNOWN_ERRORS: ReadonlySet<string> = new Set([
@@ -51,6 +51,13 @@ export function errorKey(error: unknown, context?: 'tester'): TranslationKey {
   // Adding a Tester: "already registered" means in THIS workspace (another workspace has its own answer).
   if (context === 'tester' && code === 'email_taken') return 'tenancy.error.tester_duplicate';
   return (KNOWN_ERRORS.has(code) ? `tenancy.error.${code}` : 'tenancy.error.generic') as TranslationKey;
+}
+
+/** A translated message for a failed API call, with the server's Error ID appended when there is one (never a stack or raw server text). */
+export function errorMessage(lang: Language, error: unknown, context?: 'tester'): string {
+  const base = t(lang, errorKey(error, context));
+  const id = error instanceof ApiError ? error.requestId : null;
+  return id === null ? base : `${base} (${t(lang, 'support.errorId', { id })})`;
 }
 
 /**

@@ -3,6 +3,7 @@ import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
 import { t, type TranslationKey } from '../../i18n';
 import { businessDate } from '../../../shared/businessTime';
 import { MetricCard } from '../../components/MetricCard';
+import { FirstUseNotice } from '../../components/FirstUseNotice';
 import { formatInteger, formatNumber } from '../../lib/formatting/format';
 import { buildXlsx } from '../../lib/export/xlsx';
 import { downloadBinaryFile } from '../../lib/export/download';
@@ -169,7 +170,7 @@ function changeText(row: ComparisonRow | undefined, kind: 'percent' | 'pp' | 'ab
 }
 
 /** Management view of QA process improvement over time. Everything shown is derived from the workspace (no network call, nothing stored). */
-export function ImprovementAnalytics() {
+export function ImprovementAnalytics({ onOpenProjects }: { onOpenProjects?: () => void } = {}) {
   const lang = useAppStateCtx().state.language;
   const { state } = useReportsStateCtx();
   const today = businessDate();
@@ -290,7 +291,11 @@ export function ImprovementAnalytics() {
       </section>
 
       {noProjects ? (
-        <p className="dr-empty">{t(lang, 'ia.empty.noProjects')}</p>
+        state.projects.length === 0 && onOpenProjects !== undefined ? (
+          <FirstUseNotice lang={lang} bodyKey="firstUse.ia.body" onAction={onOpenProjects} />
+        ) : (
+          <p className="dr-empty">{t(lang, 'ia.empty.noProjects')}</p>
+        )
       ) : (
         <>
           <section className="dr-section" aria-labelledby="ia-summary">

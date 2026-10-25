@@ -4,7 +4,7 @@ import { useConfirm } from '../../components/ConfirmDialog';
 import type { DeletionAudit, TenancyApi } from '../../lib/tenancy/api';
 import type { PrincipalDto, TenantListQuery, TenantSummaryDto } from '../../../shared/tenancy';
 import type { Language } from '../../types';
-import { errorKey, isSessionEnded, whenText } from './format';
+import { errorMessage, isSessionEnded, whenText } from './format';
 import { LogoutButton } from './LogoutButton';
 import { AuditLog } from './AuditLog';
 import { StatusBadge } from './UsersManager';
@@ -64,7 +64,7 @@ export function SuperAdminConsole({ initialLang, principal, api }: { initialLang
   const fail = useCallback(
     (e: unknown) => {
       if (isSessionEnded(e)) session.endSession('expired'); // the sign-in ended: same signed-out flow as everywhere
-      else setMessage({ kind: 'error', text: t(lang, errorKey(e)) });
+      else setMessage({ kind: 'error', text: errorMessage(lang, e) });
     },
     [lang, session],
   );
@@ -531,7 +531,7 @@ function CreateAdmin({
       setDisplayName('');
     } catch (e) {
       if (isSessionEnded(e)) onError(e);
-      else setProblem(t(lang, errorKey(e)));
+      else setProblem(errorMessage(lang, e));
     } finally {
       setBusy(false);
     }

@@ -13,6 +13,7 @@ declare const __BUILD_VERSION__: string;
 declare const __BUILD_COMMIT__: string;
 declare const __BUILD_RELEASE__: string;
 declare const __BUILD_DATE__: string;
+declare const __BUILD_CHANNEL__: string;
 
 export interface BuildInfo {
   /** package.json version at build time, e.g. "1.0.0". */
@@ -23,6 +24,8 @@ export interface BuildInfo {
   release: string;
   /** Build timestamp (ISO 8601, UTC). */
   builtAt: string;
+  /** Release channel of this build ('pilot' for the pilot baseline). Support context only; it changes no behaviour. */
+  channel: string;
 }
 
 /** The single build-time snapshot; safe to import anywhere (plain constants). */
@@ -31,6 +34,7 @@ export const BUILD_INFO: BuildInfo = {
   commit: __BUILD_COMMIT__,
   release: __BUILD_RELEASE__,
   builtAt: __BUILD_DATE__,
+  channel: __BUILD_CHANNEL__,
 };
 
 /** True when the bundle was built from a git checkout with at least one tag. */

@@ -12,6 +12,7 @@ import { businessStamp } from '../../../shared/businessTime';
 import { MIGRATION_FAILURE_LABEL_KEY, readMigrationFailureRecord } from '../../lib/storage/db/recovery';
 import { WorkspacePanel } from '../tenancy/WorkspacePanel';
 import { DataBackup } from './DataBackup';
+import { SupportPanel } from './SupportPanel';
 import { WorkspaceAppearance } from './WorkspaceAppearance';
 import { QaPolicySettings } from './QaPolicySettings';
 import { JiraIntegration } from './JiraIntegration';
@@ -403,6 +404,8 @@ export function Settings() {
           ) : null}
         </div>
       </section>
+
+      <SupportPanel lang={lang} storage={diagnostics} />
 
       <section className="dr-section">
         <h2>{t(lang, 'settings.releaseTitle')}</h2>

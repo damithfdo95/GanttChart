@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { t, type TranslationKey } from '../../i18n';
 import type { AdminAuditDto } from '../../../shared/tenancy';
 import type { Language } from '../../types';
-import { errorKey, isSessionEnded, whenText } from './format';
+import { errorMessage, isSessionEnded, whenText } from './format';
 import { useSession } from '../../app/session-context';
 
 /**
@@ -21,7 +21,7 @@ export function AuditLog({ lang, load, title, emptyKey }: { lang: Language; load
       setRows(await load());
     } catch (e) {
       if (isSessionEnded(e)) session.endSession('expired');
-      else setError(t(lang, errorKey(e)));
+      else setError(errorMessage(lang, e));
     }
   }, [load, lang, session]);
 

@@ -326,7 +326,7 @@ function Shell() {
           }}
         />
       ) : activeScreen === 'improvement' ? (
-        <ImprovementAnalytics />
+        <ImprovementAnalytics onOpenProjects={() => setScreen('overall')} />
       ) : activeScreen === 'cycles' ? (
         <CyclesScreen />
       ) : activeScreen === 'testManagement' ? (
@@ -338,7 +338,7 @@ function Shell() {
       ) : activeScreen === 'gantt' ? (
         <Gantt focusProjectId={ganttFocusProjectId} onFocusHandled={() => setGanttFocusProjectId(null)} meeting={meetingIntent} onMeetingHandled={() => setMeetingIntent(null)} />
       ) : activeScreen === 'dailyReport' ? (
-        <DailyReport {...(reportIntent === null ? {} : { initialDate: reportIntent.date, prepare: true })} />
+        <DailyReport onOpenProjects={() => setScreen('overall')} {...(reportIntent === null ? {} : { initialDate: reportIntent.date, prepare: true })} />
       ) : activeScreen === 'tickets' ? (
         <TicketTab />
       ) : activeScreen === 'performance' ? (

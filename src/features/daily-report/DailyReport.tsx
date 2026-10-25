@@ -36,6 +36,7 @@ import { useAccess } from '../../app/access';
 import { canPublishReport, copyWithFallback, dailyReportFileName, formatDailyReportChatText, formatDailyReportPlainText, markReportPublished } from '../../lib/reporting/publication';
 import type { ReportPublicationMethod } from '../../../shared/reportPublication';
 import { PreparedDraftPanel } from './PreparedDraftPanel';
+import { FirstUseNotice } from '../../components/FirstUseNotice';
 import { preparedTopicsAsRecords } from './preparedDraft';
 import { prepareDailyReportDraft, reportStateForDate } from '../../domain/dailyReportDraft';
 import { businessDate } from '../../../shared/businessTime';
@@ -51,7 +52,7 @@ function nowIso(): string {
  * per date; finalizing freezes a snapshot so historical numbers are never
  * recalculated; revised versions preserve previous ones.
  */
-export function DailyReport({ initialDate, prepare = false }: { initialDate?: string; prepare?: boolean } = {}) {
+export function DailyReport({ initialDate, prepare = false, onOpenProjects }: { initialDate?: string; prepare?: boolean; onOpenProjects?: () => void } = {}) {
   const app = useAppStateCtx();
   const reportsApi = useReportsStateCtx();
   const uiLang = app.state.language;
@@ -584,6 +585,8 @@ export function DailyReport({ initialDate, prepare = false }: { initialDate?: st
       </header>
 
       {message !== null ? <div className={`dr-message ${message.kind}`} role="status">{message.text}</div> : null}
+
+      {reportsApi.state.projects.length === 0 && onOpenProjects !== undefined ? <FirstUseNotice lang={uiLang} bodyKey="firstUse.dr.body" onAction={onOpenProjects} /> : null}
 
       {viewingReport !== null ? (
         <ViewingReportBanner

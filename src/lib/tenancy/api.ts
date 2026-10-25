@@ -5,6 +5,7 @@
  */
 
 import type { RecordPut } from '../../../shared/protocol';
+import { recordClientError } from '../support/clientErrors';
 import type { NotificationFields } from '../../../shared/notifications';
 import { REQUEST_DELETION_CONFIRMATION, TRANSFER_OWNERSHIP_CONFIRMATION, type TesterDto, type AdminAuditDto, type PrincipalDto, type TenantDto, type TenantListQuery, type TenantListResult, type UserAccess, type UserDto } from '../../../shared/tenancy';
 
@@ -17,7 +18,13 @@ export class ApiError extends Error {
   ) {
     super(`${status} ${code}`);
     this.name = 'ApiError';
+    // The server's request id (Phase 13) lets a person quote "Error ID" and support find the matching log line.
+    this.requestId = typeof body.requestId === 'string' ? body.requestId : null;
+    recordClientError({ requestId: this.requestId, code, status });
   }
+
+  /** The server's request id for this failure, when it sent one. */
+  readonly requestId: string | null;
 }
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;

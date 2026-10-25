@@ -8,7 +8,7 @@ import { browserMigrationDeps } from './migrationDeps';
 import { MigrateToLocal } from './MigrateToLocal';
 import { MigrateToWeb } from './MigrateToWeb';
 import { StorageModeExplainer } from './TeamScreen';
-import { errorKey, isSessionEnded, panelCapabilities, whenText } from './format';
+import { errorMessage, isSessionEnded, panelCapabilities, whenText } from './format';
 import { useSession } from '../../app/session-context';
 
 type Dialog = 'to-web' | 'to-local' | null;
@@ -44,7 +44,7 @@ export function WorkspacePanel() {
 
   const handle = (e: unknown): void => {
     if (isSessionEnded(e)) session.endSession('expired');
-    else setMessage({ kind: 'error', text: t(lang, errorKey(e)) });
+    else setMessage({ kind: 'error', text: errorMessage(lang, e) });
   };
 
   const requestDeletion = async (): Promise<void> => {

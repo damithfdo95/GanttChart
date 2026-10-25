@@ -3,7 +3,25 @@
 Meaningful user-facing and security changes only, newest first. Categories: Added, Changed, Fixed, Security.
 Version numbers follow the rules in [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased (after v0.9.0)
+## Pilot baseline (unreleased; tag pending the version decision in docs/PILOT_RELEASE.md)
+
+Summary of what the pilot contains, by product area (not every commit):
+
+- **Command Center** - one daily view: situation, readiness, attention items, execution, staffing, allocation, report block.
+- **Release readiness** - explainable Ready / At Risk / Blocked with reasons (no score).
+- **Staffing model** - Planned, Assigned and Actual testers are separate and labelled as staffing, not attendance.
+- **Execution history** - append-only case-execution history, daily summaries from history, controlled reconciliation, provenance on daily figures.
+- **Daily Reports** - prepared from operational data, work-type grouping, finalize/revise, and **publishing** (copy plain text / Teams-Slack, export, print, Mark as Published).
+- **Improvement Analytics** - throughput, retest, failure, blocked, staffing accuracy, release schedule variance, period comparison (management only).
+- **TestRail / JIRA** - TestRail `get_cases` contract fixed, https-only integration addresses, read-only proxies, device-local credentials.
+- **Support & Pilot** - Settings section with build info and the Pilot channel, Copy Diagnostics, Report Feedback (copy only), Known Limitations, Error IDs on failed requests.
+- **Hardening** - request ids, structured logs, recovery screen for a failing screen, security baseline tests, CI security workflows, SECURITY.md.
+
+### Changed (pilot preparation)
+- Deleting a project now says exactly what it removes (scopes, cases, results, history, plans and reports, including finalized and published ones).
+- Empty workspace: Command Center, Daily Report and Improvement Analytics explain why they are empty and offer "Create a project".
+
+## Earlier, after v0.9.0
 
 ### Added
 - **Improvement Analytics** (management only): throughput, unique cases, retest load, failure and blocked trends, staffing plan

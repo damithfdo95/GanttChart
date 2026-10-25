@@ -23,6 +23,8 @@ const BUILD_INFO_DEFINE = {
   __BUILD_COMMIT__: JSON.stringify(git('rev-parse --short=12 HEAD')),
   __BUILD_RELEASE__: JSON.stringify(git('describe --tags --always --dirty')),
   __BUILD_DATE__: JSON.stringify(new Date().toISOString()),
+  // Release channel: this baseline is the pilot. Override with RELEASE_CHANNEL when a different channel exists.
+  __BUILD_CHANNEL__: JSON.stringify(process.env.RELEASE_CHANNEL ?? 'pilot'),
 };
 
 // base './' keeps all asset URLs relative so dist/ can be served from any

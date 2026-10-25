@@ -17,7 +17,9 @@ It runs in two modes that share one code base:
 
 Security, release and operations documents: [SECURITY.md](SECURITY.md), [docs/RELEASING.md](docs/RELEASING.md),
 [docs/RECOVERY.md](docs/RECOVERY.md), [docs/BACKUP_FORMAT.md](docs/BACKUP_FORMAT.md), [docs/SAAS_READINESS.md](docs/SAAS_READINESS.md),
-[CHANGELOG.md](CHANGELOG.md). The sections below are the feature history, newest concepts last.
+[CHANGELOG.md](CHANGELOG.md). Pilot use: [docs/PILOT_RELEASE.md](docs/PILOT_RELEASE.md), [docs/PILOT_OPERATIONS.md](docs/PILOT_OPERATIONS.md),
+[docs/PILOT_FEEDBACK.md](docs/PILOT_FEEDBACK.md), [docs/PILOT_SUCCESS_CRITERIA.md](docs/PILOT_SUCCESS_CRITERIA.md),
+[docs/PRODUCTION_SMOKE.md](docs/PRODUCTION_SMOKE.md), [docs/PILOT_SUPPORT_MATRIX.md](docs/PILOT_SUPPORT_MATRIX.md). The sections below are the feature history, newest concepts last.
 
 See [docs/DATABASE.md](docs/DATABASE.md) for the local database architecture:
 object stores, the automatic localStorage → IndexedDB migration and how to

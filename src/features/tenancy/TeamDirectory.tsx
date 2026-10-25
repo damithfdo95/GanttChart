@@ -10,7 +10,7 @@ import type { Language, ProjectRecord, RcsMember, TesterProjectAssignment } from
 import { compactNames } from '../../domain/people';
 import { directoryRows, emailTaken, intendedRoleOf, isLinked, memberState, normalizeMemberEmail, optionLabel, ownershipCandidates, type DirectoryRow } from '../../domain/teamMembers';
 import { nextMemberId } from '../../domain/members';
-import { errorKey, isSessionEnded } from './format';
+import { errorMessage, isSessionEnded } from './format';
 import { StatusBadge } from './UsersManager';
 
 type Message = { kind: 'ok' | 'error'; text: string } | null;
@@ -69,7 +69,7 @@ export function TeamDirectory({
   const handle = useCallback(
     (e: unknown): void => {
       if (isSessionEnded(e)) session.endSession('expired');
-      else setMessage({ kind: 'error', text: t(lang, errorKey(e)) });
+      else setMessage({ kind: 'error', text: errorMessage(lang, e) });
     },
     [lang, session],
   );

@@ -9,6 +9,7 @@ import { buildSupervisorDailyOperations, type AttentionCategory, type ProjectDay
 import { ReadinessBadge } from '../readiness/ReadinessCard';
 import { readinessReasonText } from '../readiness/readinessText';
 import { MetricCard } from '../../components/MetricCard';
+import { FirstUseNotice } from '../../components/FirstUseNotice';
 import { executionSourceLabelKey } from '../../domain/executionSource';
 import { prepareDailyReportDraft, reportDeliveryStateForDate, type DailyReportDeliveryState } from '../../domain/dailyReportDraft';
 import { MISSING_KEY, preparedDraftPreview, preparedTopicLine } from '../daily-report/preparedDraft';
@@ -117,6 +118,8 @@ export function CommandCenter({ onNavigate, onOpenGantt, onPrepareReport }: { on
         </div>
         {ops.isHistorical ? <p className="qa-warning" role="note">{t(lang, 'ops.historicalNote', { date })}</p> : null}
       </header>
+
+      {state.projects.length === 0 ? <FirstUseNotice lang={lang} bodyKey="firstUse.cc.body" onAction={() => onNavigate('overall')} /> : null}
 
       <section className="dr-section" aria-labelledby="ops-situation">
         <h2 id="ops-situation">

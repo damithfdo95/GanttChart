@@ -14,7 +14,7 @@ There are four different identifiers; they answer different questions and must n
 | Build commit + time | exactly which source was built | injected by `vite.config.ts`; shown in Settings |
 | Cloudflare **Version ID** | which *deployment* is live | Cloudflare dashboard / wrangler output - never the product version |
 
-**Current ambiguity (decision needed from the owner, not guessed here):** the only tag is `v0.9.0`
+**Current ambiguity (decision needed from the owner, not guessed here; the pilot rules that depend on it are in [PILOT_RELEASE.md](PILOT_RELEASE.md)):** the only tag is `v0.9.0`
 ("stable pre-SaaS production baseline", 2026-10-18) but `package.json` still says `1.0.0`. Settings therefore shows a release such as
 `v0.9.0-36-g…` next to version `1.0.0`. Pick ONE of: (a) set `package.json` to `0.9.0` and bump it together with each tag
 (recommended while pre-SaaS), or (b) declare `1.0.0` and tag `v1.0.0`. Until then, the tag is authoritative for "what was released".
@@ -34,8 +34,11 @@ At release time: bump `package.json`, commit, tag that commit, then build - so `
 10. Update `CHANGELOG.md` (Added / Changed / Fixed / Security) and the version (see above).
 11. **Push** (manual, by the owner).
 12. **Deploy** (manual, by the owner; see DEPLOYMENT_PLAN.md - frontend build first, then the Worker).
-13. Production smoke (the curl checks in DEPLOYMENT_PLAN.md and one sign-in).
-14. Tag the released commit and create release notes.
+13. **Production smoke** - the full checklist in [PRODUCTION_SMOKE.md](PRODUCTION_SMOKE.md) (login, sync, screens, integrations, report, publishing, analytics, backup export).
+14. Tag the released commit (pilot builds: `vX.Y.Z-pilot.N`, see [PILOT_RELEASE.md](PILOT_RELEASE.md)) and write the **pilot release notes** from its template.
+15. Post-release monitoring checklist for the first day ([PILOT_OPERATIONS.md](PILOT_OPERATIONS.md)).
+
+Flow: release checklist -> push -> deploy -> production smoke -> tag -> pilot notes -> monitoring. Prefer **fixing forward** for small issues; roll back only for severe regressions.
 
 Rollback basics: see [RECOVERY.md](RECOVERY.md).
 

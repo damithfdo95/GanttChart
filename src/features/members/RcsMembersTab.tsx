@@ -10,7 +10,7 @@ import { normalizeMemberNameHistory } from '../../domain/members';
 import { emailTaken, isLinked, normalizeMemberEmail } from '../../domain/teamMembers';
 import { hasMemberReferences, memberReferenceScope } from '../../domain/identityResolution';
 import { validateRcsMember } from '../../lib/validation/validateMember';
-import { errorKey } from '../tenancy/format';
+import { errorMessage } from '../tenancy/format';
 import { IdentityResolutionCenter } from './IdentityResolutionCenter';
 
 interface MemberDraft {
@@ -108,7 +108,7 @@ export function RcsMembersTab({ editMemberId = null, onClose }: { editMemberId?:
         });
         setSaved(t(lang, 'dir.edit.saved'));
       } catch (e) {
-        setEmailError(t(lang, errorKey(e)));
+        setEmailError(errorMessage(lang, e));
       } finally {
         setBusy(false);
       }
