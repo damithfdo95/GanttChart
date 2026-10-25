@@ -506,22 +506,22 @@ describe('Excel export (§18)', () => {
     const sheet = executionHistorySheet('en', [daySnapshot(1, '2026-09-28'), daySnapshot(2, '2026-09-29')], 100);
     expect(sheet.headers).toEqual([
       'Date', 'Pass', 'Fail', 'N/A', 'SPO', 'Tested (excl. SPO)', 'Completed (incl. SPO)', 'Remaining Test Cases',
-      'Blocked', 'Retest', 'Question (質問中)',
+      'Blocked', 'Retest', 'Question (質問中)', 'Execution Source', 'Source Updated At',
     ]);
-    expect(sheet.rows[0]).toEqual([{ kind: 'date', value: '2026-09-28' }, 30, 2, 3, 5, 35, 40, 60, 4, 1, 2]);
-    expect(sheet.rows[1]).toEqual([{ kind: 'date', value: '2026-09-29' }, 60, 5, 5, 20, 70, 90, 10, 3, 2, 1]);
+    expect(sheet.rows[0]).toEqual([{ kind: 'date', value: '2026-09-28' }, 30, 2, 3, 5, 35, 40, 60, 4, 1, 2, '—', '—']);
+    expect(sheet.rows[1]).toEqual([{ kind: 'date', value: '2026-09-29' }, 60, 5, 5, 20, 70, 90, 10, 3, 2, 1, '—', '—']);
   });
 
   it('legacy snapshots export "not available" — never a false zero', () => {
     const legacy: DailyActualSnapshot = { id: 'old-1', date: '2026-09-27', executed: 70, passed: 60 };
     const sheet = executionHistorySheet('en', [legacy], 100);
-    expect(sheet.rows[0]).toEqual([{ kind: 'date', value: '2026-09-27' }, 60, '—', '—', '—', 70, 70, 30, '—', '—', '—']);
+    expect(sheet.rows[0]).toEqual([{ kind: 'date', value: '2026-09-27' }, 60, '—', '—', '—', 70, 70, 30, '—', '—', '—', '—', '—']);
   });
 
   it('empty history yields a header-only sheet', () => {
     const sheet = executionHistorySheet('en', [], 100);
     expect(sheet.rows).toEqual([]);
-    expect(sheet.headers).toHaveLength(11);
+    expect(sheet.headers).toHaveLength(13);
   });
 
   it('round-trip data preservation: sheet values match the snapshots', () => {

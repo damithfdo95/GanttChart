@@ -146,7 +146,7 @@ export function ReportsExport() {
         labelKey: 'dataset.executionHistory',
         build: () => {
           const snapshots = app.state.dailyActuals ?? [];
-          const sheet = executionHistorySheet(lang, snapshots, app.state.totalCases);
+          const sheet = executionHistorySheet(lang, snapshots, app.state.totalCases, app.state.dailyExecuted ?? []);
           return { sheet, json: snapshots };
         },
       },
@@ -306,7 +306,7 @@ export function ReportsExport() {
       projectsSheet(lang, reportsApi.state.projects),
       wbsSheet(lang, app.state),
       dailyProgressSheet(lang, filteredReports, settings.progressRules),
-      executionHistorySheet(lang, app.state.dailyActuals ?? [], app.state.totalCases),
+      executionHistorySheet(lang, app.state.dailyActuals ?? [], app.state.totalCases, app.state.dailyExecuted ?? []),
       capacitySheet(lang, app.state),
       attendanceSheet(lang, filterAttendanceRecords(reportsApi.state.attendance, filters), reportsApi.state.rcsMembers ?? []),
       executionLogsSheet(lang, filteredReports),

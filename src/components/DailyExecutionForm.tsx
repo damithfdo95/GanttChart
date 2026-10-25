@@ -33,6 +33,7 @@ import { Field } from './Field';
 import { CsvFileButton } from './CsvFileButton';
 import { testrailDayFromCsv } from '../domain/testrail/csvImport';
 import { businessDate } from '../../shared/businessTime';
+import { decideImport, decideManualSave, detailedExecutionSummary, executionSourceLabelKey, executionSourceOf, withExecutionProvenance, type ExecutionSource, type ExecutionSourceRef } from '../domain/executionSource';
 
 interface DailyExecutionFormProps {
   lang: Language;
@@ -112,13 +113,29 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
     set({ [key]: Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0 } as Partial<DailyExecutionEntry>);
   };
 
+  // A source replacement waits here for the user's confirmation (never applied silently).
+  const [pending, setPending] = useState<{ replaces: ExecutionSource; to: ExecutionSource; run: () => void } | null>(null);
+  useEffect(() => setPending(null), [date]);
+
   const handleSave = (): void => {
-    saveDailyExecutionEntry({
+    const built: DailyExecutionEntry = {
       ...form,
       ...derive(form),
       overtimeMinutes: clampOvertimeMinutes(form.overtimeMinutes),
       testers: Math.max(0, Math.round(form.testers)),
-    });
+    };
+    const decision = decideManualSave(existing, built, new Date().toISOString());
+    if (decision.needsConfirmation && decision.replaces !== null) {
+      setPending({ replaces: decision.replaces, to: 'manual', run: () => saveDailyExecutionEntry(decision.entry) });
+      return;
+    }
+    saveDailyExecutionEntry(decision.entry);
+  };
+
+  const confirmPending = (): void => {
+    const run = pending?.run;
+    setPending(null);
+    run?.();
   };
 
   const dayTotal = derived.pass + derived.fail + derived.notApplicable + derived.spo + (form.uncategorizedCompleted ?? 0);
@@ -140,6 +157,33 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
   const [testrailBusy, setTestrailBusy] = useState(false);
   const [testrailMessage, setTestrailMessage] = useState<{ kind: 'ok' | 'error' | 'note'; text: string } | null>(null);
   const [linkDraft, setLinkDraft] = useState('');
+
+  /**
+   * Write one imported TestRail day: merge the per-tester records, fill the form and save the entry stamped with its TestRail
+   * provenance. Only called once any source replacement has been confirmed.
+   */
+  const commitTestRailDay = (day: Parameters<typeof applyTestRailDayToEntry>[1], ref: ExecutionSourceRef | undefined): ReturnType<typeof mergeTestRailTesterRecords> => {
+    if (activeProject === null) throw new Error('no active project');
+    const merged = mergeTestRailTesterRecords(state.testerDailyPerformance ?? [], activeProject.projectId, day);
+    updateField('testerDailyPerformance', merged.records);
+    const entry = applyTestRailDayToEntry(form, day, previous, mode);
+    setForm(entry);
+    // The imported numbers are TestRail's facts for this day: saved at once, stamped as TestRail's.
+    saveDailyExecutionEntry(
+      withExecutionProvenance(
+        {
+          ...entry,
+          ...derive(entry),
+          overtimeMinutes: clampOvertimeMinutes(entry.overtimeMinutes),
+          testers: Math.max(0, Math.round(entry.testers)),
+        },
+        'testrail',
+        new Date().toISOString(),
+        ref,
+      ),
+    );
+    return merged;
+  };
 
   /**
    * Fetch the linked plan/run's results for the SELECTED date (default today)
@@ -187,23 +231,20 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
         setTestrailMessage({ kind: 'note', text: t(lang, 'exec.testrailNoResults', { date }) });
         return;
       }
-      const merged = mergeTestRailTesterRecords(state.testerDailyPerformance ?? [], activeProject.projectId, day);
-      updateField('testerDailyPerformance', merged.records);
-      const entry = applyTestRailDayToEntry(form, day, previous, mode);
-      setForm(entry);
-      // The fetched numbers are TestRail's facts for this day — save the
-      // entry immediately (the same commit the Save button performs) so the
-      // data is in the database the moment it is fetched.
-      saveDailyExecutionEntry({
-        ...entry,
-        ...derive(entry),
-        overtimeMinutes: clampOvertimeMinutes(entry.overtimeMinutes),
-        testers: Math.max(0, Math.round(entry.testers)),
-      });
-      const parts = [t(lang, 'exec.testrailFetched', { executed: day.totals.executed, testers: day.totals.testers })];
-      if (day.unassignedCount > 0) parts.push(t(lang, 'exec.testrailUnassigned', { count: day.unassignedCount }));
-      if (merged.keptManual > 0) parts.push(t(lang, 'exec.testrailKeptManual', { count: merged.keptManual }));
-      setTestrailMessage({ kind: 'ok', text: parts.join(' ') });
+      const ref: ExecutionSourceRef = testrailLink.kind === 'plan' ? { provider: 'testrail', planId: testrailLink.id } : { provider: 'testrail', runId: testrailLink.id };
+      const apply = (): void => {
+        const merged = commitTestRailDay(day, ref);
+        const parts = [t(lang, 'exec.testrailFetched', { executed: day.totals.executed, testers: day.totals.testers })];
+        if (day.unassignedCount > 0) parts.push(t(lang, 'exec.testrailUnassigned', { count: day.unassignedCount }));
+        if (merged.keptManual > 0) parts.push(t(lang, 'exec.testrailKeptManual', { count: merged.keptManual }));
+        setTestrailMessage({ kind: 'ok', text: parts.join(' ') });
+      };
+      const decision = decideImport(existing, 'testrail');
+      if (decision.needsConfirmation && decision.replaces !== null) {
+        setPending({ replaces: decision.replaces, to: 'testrail', run: apply });
+      } else {
+        apply();
+      }
     } catch (e) {
       const err = e as TestRailClientError;
       const hint = t(lang, `testrail.error.${err.kind}`);
@@ -251,27 +292,28 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
       return;
     }
     const day = linkTestRailMembers(imported.day, [], reports.state.rcsMembers ?? [], reports.state.externalIdentities ?? []);
-    const merged = mergeTestRailTesterRecords(state.testerDailyPerformance ?? [], activeProject.projectId, day);
-    updateField('testerDailyPerformance', merged.records);
-    const entry = applyTestRailDayToEntry(form, day, previous, mode);
-    setForm(entry);
-    // Same rule as the live fetch: the imported numbers are saved
-    // immediately, not left pending in the form.
-    saveDailyExecutionEntry({
-      ...entry,
-      ...derive(entry),
-      overtimeMinutes: clampOvertimeMinutes(entry.overtimeMinutes),
-      testers: Math.max(0, Math.round(entry.testers)),
-    });
-    const parts = [t(lang, 'exec.testrailCsvLoaded', { file: fileName, executed: day.totals.executed, testers: day.totals.testers })];
-    if (day.skippedUntested > 0) parts.push(t(lang, 'exec.testrailUnassigned', { count: day.skippedUntested }));
-    if (merged.keptManual > 0) parts.push(t(lang, 'exec.testrailKeptManual', { count: merged.keptManual }));
-    if (imported.errors.length > 0) parts.push(t(lang, 'exec.testrailCsvRowErrors', { count: imported.errors.length }));
-    setTestrailMessage({ kind: imported.errors.length > 0 ? 'error' : 'ok', text: parts.join(' ') });
+    const apply = (): void => {
+      // Same rule as the live fetch: the imported numbers are saved immediately (and stamped TestRail).
+      const merged = commitTestRailDay(day, undefined);
+      const parts = [t(lang, 'exec.testrailCsvLoaded', { file: fileName, executed: day.totals.executed, testers: day.totals.testers })];
+      if (day.skippedUntested > 0) parts.push(t(lang, 'exec.testrailUnassigned', { count: day.skippedUntested }));
+      if (merged.keptManual > 0) parts.push(t(lang, 'exec.testrailKeptManual', { count: merged.keptManual }));
+      if (imported.errors.length > 0) parts.push(t(lang, 'exec.testrailCsvRowErrors', { count: imported.errors.length }));
+      setTestrailMessage({ kind: imported.errors.length > 0 ? 'error' : 'ok', text: parts.join(' ') });
+    };
+    const decision = decideImport(existing, 'testrail');
+    if (decision.needsConfirmation && decision.replaces !== null) setPending({ replaces: decision.replaces, to: 'testrail', run: apply });
+    else apply();
   };
+
+  const detailed =
+    activeProject === null
+      ? null
+      : detailedExecutionSummary(activeProject, reports.state.scopes ?? [], reports.state.testCases ?? [], reports.state.caseResults ?? []);
 
   return (
     <div className="daily-execution-form">
+      <ExecutionSourceBar lang={lang} entry={existing} detailed={detailed} />
       <div className="execution-inputs-grid">
         <Field label={t(lang, 'exec.entryDate')} error={undefined}>
           <input
@@ -422,6 +464,23 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
         </p>
       ) : null}
 
+      {pending !== null ? (
+        <div className="recovery-confirm" role="alertdialog" aria-label={t(lang, 'exec.sourceConfirmTitle')}>
+          <div className="recovery-confirm-title">{t(lang, 'exec.sourceConfirmTitle')}</div>
+          <p className="recovery-note">
+            {t(lang, 'exec.sourceConfirmBody', { from: t(lang, executionSourceLabelKey(pending.replaces)), to: t(lang, executionSourceLabelKey(pending.to)), date })}
+          </p>
+          <div className="recovery-confirm-actions">
+            <button type="button" className="btn" onClick={confirmPending}>
+              {t(lang, 'exec.sourceConfirmOk')}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => setPending(null)}>
+              {t(lang, 'exec.sourceConfirmCancel')}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="exec-form-actions">
         <button type="button" className="btn" onClick={handleSave} disabled={blockedReason !== undefined}>
           {t(lang, 'exec.saveEntry')}
@@ -537,4 +596,45 @@ function seed(
     return { ...base, ...cumulativeThroughDate(entries, date) };
   }
   return base;
+}
+
+/** "10:42" for today, else "2026-10-07 10:42" (local time): when the figures were last written by their source. */
+function stampText(iso: string, now: Date = new Date()): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const p = (n: number): string => String(n).padStart(2, '0');
+  const time = `${p(d.getHours())}:${p(d.getMinutes())}`;
+  const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  return sameDay ? time : `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${time}`;
+}
+
+/** Compact provenance line of the selected day: its source, when it was last written, the TestRail run, and the detailed-case counts. */
+export function ExecutionSourceBar({ lang, entry, detailed }: { lang: Language; entry: DailyExecutionEntry | null; detailed: { registered: number; executed: number; scopeTotal: number } | null }) {
+  const source = executionSourceOf(entry);
+  const ref = entry?.sourceRef;
+  return (
+    <div className="exec-source-bar" role="status">
+      {entry === null ? (
+        <span className="exec-help">{t(lang, 'exec.source.noEntry')}</span>
+      ) : (
+        <>
+          <span className={`gap-pill exec-source-${source}`}>
+            {t(lang, 'exec.source.label')}: {t(lang, executionSourceLabelKey(source))}
+          </span>
+          {ref?.runId !== undefined ? <span className="exec-help">{t(lang, 'exec.source.run', { id: ref.runId })}</span> : null}
+          {ref?.planId !== undefined ? <span className="exec-help">{t(lang, 'exec.source.plan', { id: ref.planId })}</span> : null}
+          {entry.sourceUpdatedAt !== undefined && stampText(entry.sourceUpdatedAt) !== '' ? (
+            <span className="exec-help">
+              {t(lang, source === 'testrail' ? 'exec.source.lastSynced' : 'exec.source.lastUpdated')}: {stampText(entry.sourceUpdatedAt)}
+            </span>
+          ) : null}
+        </>
+      )}
+      {detailed !== null && detailed.registered > 0 ? (
+        <span className="exec-help" title={t(lang, 'exec.source.detailedHint')}>
+          {t(lang, 'exec.source.detailed', { registered: detailed.registered, executed: detailed.executed, total: detailed.scopeTotal })}
+        </span>
+      ) : null}
+    </div>
+  );
 }

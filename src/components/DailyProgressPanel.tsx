@@ -19,6 +19,7 @@ import { usePagedRows } from '../lib/pagination/usePagedRows';
 import { ExecutionHistoryPanel } from './ExecutionHistoryPanel';
 import { TablePager } from './TablePager';
 import type { DailyTargetOverride } from '../types';
+import { executionSourceLabelKey, executionSourceOf } from '../domain/executionSource';
 
 /**
  * Level 2 §3–§4 (V7): automatic daily execution/pass plan (AUTO/MANUAL) and
@@ -330,6 +331,7 @@ export function DailyProgressPanel({
                 <th scope="col" className="num">{t(lang, 'fields.casesRetest')}</th>
                 <th scope="col" className="num">{t(lang, 'fields.casesQuestioned')}</th>
                 <th scope="col" className="num">{t(lang, 'gap.dayExecuted')}</th>
+                <th scope="col">{t(lang, 'exec.source.column')}</th>
                 {onEditEntry !== undefined || onDeleteEntry !== undefined ? <th scope="col">{t(lang, 'columns.actions')}</th> : null}
               </tr>
             </thead>
@@ -357,6 +359,11 @@ export function DailyProgressPanel({
                     {entry.uncategorizedCompleted !== undefined && entry.uncategorizedCompleted > 0 ? (
                       <span className="tag tag-warn" title={t(lang, 'exec.uncategorized')}> +{formatInteger(entry.uncategorizedCompleted, lang)}</span>
                     ) : null}
+                  </td>
+                  <td>
+                    <span className={`tag exec-source-${executionSourceOf(entry)}`} title={entry.sourceUpdatedAt}>
+                      {t(lang, executionSourceLabelKey(executionSourceOf(entry)))}
+                    </span>
                   </td>
                   {onEditEntry !== undefined || onDeleteEntry !== undefined ? (
                     <td className="dr-row-actions">

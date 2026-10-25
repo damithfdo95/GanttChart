@@ -16,6 +16,7 @@ import { BLOCKING_CATEGORIES, BUG_SEVERITIES, BUG_STATUSES, PERFORMANCE_RECORD_S
 import { formatDate, todayEpochDays } from '../dates/dates';
 import { generateId } from '../id';
 import { minutesToTimeInput } from '../formatting/format';
+import { normalizeEntryProvenance } from '../../domain/executionSource';
 import { migrateDailyExecuted, syncActualsFromDailyExecuted } from '../calculations/dailyExecuted';
 import { hasRecoveryPayload, stashCorruptedRaw } from './corruption';
 
@@ -248,7 +249,7 @@ export function normalizeQaInputs<T extends QaInputs>(inputs: T): T {
     milestones: inputs.milestones ?? defaultMilestones(),
     bugTickets: (inputs.bugTickets ?? []).filter(isBugTicket),
     testerDailyPerformance: (inputs.testerDailyPerformance ?? []).filter(isTesterDailyPerformance),
-    dailyExecuted: inputs.dailyExecuted === undefined ? undefined : inputs.dailyExecuted.filter(isDailyExecutionEntry),
+    dailyExecuted: inputs.dailyExecuted === undefined ? undefined : inputs.dailyExecuted.filter(isDailyExecutionEntry).map(normalizeEntryProvenance),
   };
 }
 

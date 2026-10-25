@@ -65,6 +65,14 @@ describe('daily execution entries', () => {
     expect(executionEntryError(entry({ uncategorizedCompleted: 4 }))).toBeNull();
   });
 
+  it('accepts optional provenance (source, stamp, TestRail ids) and rejects unknown sources or foreign reference keys', () => {
+    expect(executionEntryError(entry({ source: 'testrail', sourceUpdatedAt: '2026-10-08T01:42:00.000Z', sourceRef: { provider: 'testrail', runId: 9001 } }))).toBeNull();
+    expect(executionEntryError(entry({ source: 'manual' }))).toBeNull();
+    expect(executionEntryError(entry({ source: 'excel' }))).toBe('execution_entry_invalid_source');
+    expect(executionEntryError(entry({ sourceUpdatedAt: 'yesterday' }))).toBe('execution_entry_invalid_sourceUpdatedAt');
+    expect(executionEntryError(entry({ sourceRef: { provider: 'testrail', apiKey: 'x' } }))).toBe('execution_entry_invalid_sourceRef');
+  });
+
   it('rejects negative, fractional, non-numeric and absurd counts and impossible dates', () => {
     for (const f of ['pass', 'fail', 'notApplicable', 'spo', 'blocked', 'retest', 'questioned']) {
       for (const bad of [-1, 1.5, NaN, Infinity, '3', null, 20_000_000]) expect(executionEntryError(entry({ [f]: bad })), `${f}=${String(bad)}`).toBe(`execution_entry_invalid_${f}`);

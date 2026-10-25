@@ -4198,3 +4198,8 @@ body.mt-presenting .app-shell, body.mt-presenting .gantt-mode, body.mt-presentin
 .revision-history .history-table-card > .metrics-grid { margin-bottom: 12px; }
 .team-screen .tenancy-empty { padding: 14px 18px; margin: 0 0 16px; }
 .revision-history .plan-actions { margin-top: 12px; }
+
+/* Execution provenance: a compact source line above the daily form, and the Source tag in the history table. */
+.exec-source-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 8px; }
+.exec-source-testrail { background: var(--info-bg, #e8f0fe); }
+.exec-source-caseExecution { background: var(--good-bg, #e6f4ea); }

@@ -353,6 +353,7 @@ export function AnalysisTab({ lang, project }: { lang: Language; project: Projec
     return (
       <section className="dr-section tenancy-empty" role="note">
         <h2>{t(lang, 'tm.analysis.title')}</h2>
+        <p className="link-help">{t(lang, 'tm.analysis.viewOnly')}</p>
         <p>{t(lang, 'tm.analysis.empty')}</p>
         <div className="dr-button-row">
           <CsvFileButton label={t(lang, 'tm.analysis.importCsv')} onText={onCsv} />
@@ -377,6 +378,7 @@ export function AnalysisTab({ lang, project }: { lang: Language; project: Projec
     <section className="dr-section">
       <div className="dr-button-row">
         <h2>{t(lang, 'tm.analysis.title')}</h2>
+        <span className="link-help">{t(lang, 'tm.analysis.viewOnly')}</span>
         <span className="link-help">{loaded.fileName}</span>
         <CsvFileButton label={t(lang, 'tm.analysis.importCsv')} onText={onCsv} className="btn btn-ghost" />
         {conn !== undefined ? (

@@ -104,6 +104,30 @@ function isCount(value: unknown): boolean {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 10_000_000;
 }
 
+/** Where a day's aggregate came from. Absent on older entries (read as a manual entry). */
+export const EXECUTION_SOURCES = ['manual', 'caseExecution', 'testrail'] as const;
+export type ExecutionSourceValue = (typeof EXECUTION_SOURCES)[number];
+/** The only keys a source reference may carry - ids of the TestRail plan/run, never a credential or URL. */
+export const EXECUTION_SOURCE_REF_KEYS = ['provider', 'runId', 'planId'] as const;
+
+const isPositiveInteger = (v: unknown): boolean => typeof v === 'number' && Number.isInteger(v) && v > 0 && v <= 2_000_000_000;
+
+/** Why a daily entry's provenance fields are invalid, or null (all three are optional). */
+export function executionProvenanceError(e: Record<string, unknown>): string | null {
+  if (e.source !== undefined && (typeof e.source !== 'string' || !(EXECUTION_SOURCES as readonly string[]).includes(e.source))) return 'execution_entry_invalid_source';
+  if (e.sourceUpdatedAt !== undefined && (typeof e.sourceUpdatedAt !== 'string' || e.sourceUpdatedAt.length > 40 || Number.isNaN(Date.parse(e.sourceUpdatedAt)))) return 'execution_entry_invalid_sourceUpdatedAt';
+  if (e.sourceRef !== undefined) {
+    const r = e.sourceRef;
+    if (typeof r !== 'object' || r === null || Array.isArray(r)) return 'execution_entry_invalid_sourceRef';
+    const ref = r as Record<string, unknown>;
+    if (Object.keys(ref).some((k) => !(EXECUTION_SOURCE_REF_KEYS as readonly string[]).includes(k))) return 'execution_entry_invalid_sourceRef';
+    if (ref.provider !== 'testrail') return 'execution_entry_invalid_sourceRef';
+    if (ref.runId !== undefined && !isPositiveInteger(ref.runId)) return 'execution_entry_invalid_sourceRef';
+    if (ref.planId !== undefined && !isPositiveInteger(ref.planId)) return 'execution_entry_invalid_sourceRef';
+  }
+  return null;
+}
+
 /** Why one daily execution entry can never be valid, or null. Shape only: no totals, no history. */
 export function executionEntryError(entry: unknown): string | null {
   if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return 'execution_entry_not_an_object';
@@ -115,7 +139,7 @@ export function executionEntryError(entry: unknown): string | null {
   // People on the day: a head count, but half-day planning can make it fractional, so only "a sane non-negative number" is required.
   if (typeof e.testers !== 'number' || !Number.isFinite(e.testers) || e.testers < 0 || e.testers > 100_000) return 'execution_entry_invalid_testers';
   if (typeof e.overtimeMinutes !== 'number' || !Number.isInteger(e.overtimeMinutes) || e.overtimeMinutes < 0 || e.overtimeMinutes > 180) return 'execution_entry_invalid_overtimeMinutes';
-  return null;
+  return executionProvenanceError(e);
 }
 
 /** Cases a day's entry counts as completed (the four completed categories + the migrated remainder). */

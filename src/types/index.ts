@@ -547,6 +547,15 @@ export interface DailyExecutionEntry {
   /** Completed cases that fit no status (migration seed; hand-editable). */
   uncategorizedCompleted?: number;
   note: string;
+  /**
+   * Provenance of this day's aggregate (optional, so older entries stay valid and read as a manual entry): who produced the
+   * counts - typed by hand, imported from TestRail, or derived from detailed case results.
+   */
+  source?: 'manual' | 'caseExecution' | 'testrail';
+  /** ISO time the source last wrote this entry's figures. */
+  sourceUpdatedAt?: string;
+  /** Non-secret pointer to what was imported (TestRail plan/run ids only - never credentials or URLs). */
+  sourceRef?: { provider: 'testrail'; runId?: number; planId?: number };
 }
 
 export type MilestoneType = 'EXECUTE' | 'PASS';

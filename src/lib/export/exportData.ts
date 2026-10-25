@@ -1,9 +1,11 @@
+import { executionSourceLabelKey, executionSourceOf } from '../../domain/executionSource';
 import type {
   AppState,
   AttendanceRecord,
   AttendanceStatus,
   BugTicket,
   DailyActualSnapshot,
+  DailyExecutionEntry,
   DailyReport,
   IdentityAuditEntry,
   Language,
@@ -326,8 +328,10 @@ export function executionHistorySheet(
   lang: Language,
   snapshots: DailyActualSnapshot[],
   totalCases: number,
+  entries: readonly DailyExecutionEntry[] = [],
 ): XlsxSheet {
   const history = buildExecutionHistory(snapshots, totalCases);
+  const entryOf = (date: string): DailyExecutionEntry | undefined => entries.find((e) => e.date === date);
   return {
     name: t(lang, 'dataset.executionHistory'),
     headers: [
@@ -342,6 +346,8 @@ export function executionHistorySheet(
       t(lang, 'fields.casesBlocked'),
       t(lang, 'fields.casesRetest'),
       t(lang, 'fields.casesQuestioned'),
+      t(lang, 'exec.source.exportSource'),
+      t(lang, 'exec.source.exportUpdatedAt'),
     ],
     rows: history.map((row) => [
       { kind: 'date', value: row.date },
@@ -355,6 +361,9 @@ export function executionHistorySheet(
       row.blocked ?? '—',
       row.retest ?? '—',
       row.questioned ?? '—',
+      // A day with an entry reads its source (older entries: Manual); a snapshot without an entry has no recorded source.
+      entryOf(row.date) === undefined ? '—' : t(lang, executionSourceLabelKey(executionSourceOf(entryOf(row.date)))),
+      entryOf(row.date)?.sourceUpdatedAt ?? '—',
     ]),
   };
 }
