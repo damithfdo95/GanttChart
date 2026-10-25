@@ -3,7 +3,7 @@ import { useAppStateCtx } from '../../app/state-contexts';
 import { useAccess } from '../../app/access';
 import { resolveBilingualName, t } from '../../i18n';
 import { userLabel } from '../../domain/people';
-import { assignedScopes, filterCases, sortCases, summarize, type TestScope } from '../../domain/testManagement';
+import { assignedScopes, eventActorLabel, filterCases, sortCases, summarize, type TestScope } from '../../domain/testManagement';
 import { ExecutionTable } from './ExecutionTable';
 import { SummaryBlock, pct } from './SummaryParts';
 import { useBusinessToday, usePeopleDirectory, useTestManagement } from './useTestManagement';
@@ -57,6 +57,7 @@ export function MyTestingScreen() {
           canEdit={(tc) => tc.status === 'active' && open.status === 'active'}
           onPatch={(tc, patch) => tm.patchResult(tc, patch)}
           nameOf={(id) => userLabel(lang, id, directory)}
+          history={{ events: tm.caseExecutions, actorLabel: (e) => eventActorLabel(e, tm.reports.state.rcsMembers ?? [], (id) => userLabel(lang, id, directory)) }}
         />
       </div>
     );

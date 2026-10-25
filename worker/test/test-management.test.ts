@@ -251,3 +251,55 @@ describe('assignments with a scope', () => {
     expect(run('admin', [put('assignment', 'a9', assignment({ id: 'a9', scopeId: 'scp_1' }))], rec)).toBe('assignment_requires_api');
   });
 });
+
+describe('case execution history (append-only events)', () => {
+  const evt = (over: Record<string, unknown> = {}) => ({ id: 'evt_1', projectId: P, scopeId: 'scp_1', testCaseId: 'tc_1', status: 'fail', executedAt: NOW, executedByUserId: 'usr_a', source: 'manual', ...over });
+  const trEvt = (over: Record<string, unknown> = {}) => evt({ id: 'evt_tr_1_5001', source: 'testrail', executedByUserId: null, sourceRef: { provider: 'testrail', runId: 1, resultId: 5001 }, ...over });
+  const withEvent = (e: Record<string, unknown> = evt()) => world({ [`caseExecution:${String(e.id)}`]: J(e) });
+
+  it('an SV and an assigned Tester append their own events; nobody appends for someone else', () => {
+    expect(run('admin', [put('caseExecution', 'evt_1', evt())])).toBeNull();
+    expect(run('editor', [put('caseExecution', 'evt_1', evt())])).toBeNull();
+    expect(run('editor', [put('caseExecution', 'evt_1', evt({ executedByUserId: 'usr_b' }))])).toBe('execution_actor_mismatch');
+    expect(run('admin', [put('caseExecution', 'evt_1', evt({ executedByUserId: null }))])).toBe('execution_actor_mismatch');
+    expect(run('editor', [put('caseExecution', 'evt_1', evt({ executedByMemberId: 'USER0009' }))])).toBe('execution_member_mismatch');
+    expect(run('editor', [put('caseExecution', 'evt_1', evt({ executedByMemberId: 'USER0001' }))], world({ 'member:m1': J({ id: 'USER0001', userId: 'usr_a', name: 'A' }) }))).toBeNull();
+  });
+
+  it('a Tester cannot write history for an unassigned scope, another project, or an archived scope', () => {
+    expect(run('editor', [put('caseExecution', 'evt_1', evt())], world({ 'assignment:a1': J(assignment({ userId: 'usr_b' })) }))).toBe('tester_result_not_assigned');
+    expect(run('editor', [put('caseExecution', 'evt_1', evt({ projectId: 'PRJ-002' }))])).toBe('execution_case_mismatch');
+    expect(run('editor', [put('caseExecution', 'evt_1', evt({ testCaseId: 'tc_404' }))])).toBe('execution_case_not_found');
+    expect(run('admin', [put('caseExecution', 'evt_1', evt())], world({ 'scope:scp_1': J(scope({ status: 'archived' })) }))).toBe('execution_scope_archived');
+  });
+
+  it('TestRail events name no account; the same event again is a no-op, a changed one is an edit', () => {
+    expect(run('admin', [put('caseExecution', 'evt_tr_1_5001', trEvt())])).toBeNull();
+    expect(run('admin', [put('caseExecution', 'evt_tr_1_5001', trEvt({ executedByUserId: 'usr_a' }))])).toBe('execution_actor_mismatch');
+    expect(run('admin', [put('caseExecution', 'evt_tr_1_5001', trEvt())], withEvent(trEvt()))).toBeNull();
+    expect(run('admin', [put('caseExecution', 'evt_tr_1_5001', trEvt({ status: 'pass' }))], withEvent(trEvt()))).toBe('execution_append_only');
+  });
+
+  it('events are append-only: no edit, no delete (Tester or SV), except with their project or after their case is gone', () => {
+    expect(run('admin', [put('caseExecution', 'evt_1', evt({ status: 'pass' }))], withEvent())).toBe('execution_append_only');
+    expect(run('editor', [], withEvent(), [{ kind: 'caseExecution', id: 'evt_1' }])).toBe('tester_cannot_delete');
+    expect(run('admin', [], withEvent(), [{ kind: 'caseExecution', id: 'evt_1' }])).toBe('execution_append_only');
+    expect(run('admin', [], withEvent(), [{ kind: 'caseExecution', id: 'evt_1' }, { kind: 'project', id: 'proj-1' }])).toBeNull();
+    expect(run('admin', [], world({ 'caseExecution:evt_1': J(evt()), 'testCase:tc_1': undefined as unknown as string }), [{ kind: 'caseExecution', id: 'evt_1' }])).toBeNull();
+  });
+
+  it('a case with history cannot be deleted on its own', () => {
+    const records = world({ 'caseExecution:evt_1': J(evt()) });
+    expect(run('admin', [], records, [{ kind: 'testCase', id: 'tc_1' }])).toBe('testcase_has_history');
+  });
+
+  it('malformed events are refused with a reason: unknown source, foreign reference keys, bad ids and lengths', () => {
+    expect(run('admin', [put('caseExecution', 'evt_1', evt({ source: 'excel' }))])).toBe('execution_invalid_source');
+    expect(run('admin', [put('caseExecution', 'evt_1', evt({ status: 'done' }))])).toBe('execution_invalid_status');
+    expect(run('admin', [put('caseExecution', 'evt_1', evt({ executedAt: 'yesterday' }))])).toBe('execution_invalid_executedAt');
+    expect(run('admin', [put('caseExecution', 'evt_1', evt({ memo: 'x'.repeat(501) }))])).toBe('execution_invalid_memo');
+    expect(run('admin', [put('caseExecution', 'evt_1', evt({ sourceRef: { provider: 'testrail', url: 'https://x' } }))])).toBe('execution_invalid_sourceRef');
+    expect(run('admin', [put('caseExecution', 'evt_1', evt({ sourceRef: { provider: 'testrail', resultId: -3 } }))])).toBe('execution_invalid_sourceRef');
+    expect(run('admin', [put('caseExecution', 'evt_other', evt())])).toBe('execution_id_mismatch');
+  });
+});

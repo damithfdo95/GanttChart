@@ -11,7 +11,7 @@ import { generateId } from '../id';
 import { nextProjectId } from '../../domain/projects/lifecycle';
 import { isDailyReportGuard, isProjectRecordGuard } from '../storage/reports';
 import { normalizeQaInputs } from '../storage/storage';
-import { caseResultId, checkCaseResult, checkScope, checkTestCase } from '../../../shared/testManagement';
+import { caseResultId, checkCaseExecution, checkCaseResult, checkScope, checkTestCase, type CaseExecutionEvent } from '../../../shared/testManagement';
 import { checkDailyPlan, dailyPlanId } from '../../../shared/meeting';
 
 /**
@@ -37,6 +37,8 @@ export interface ProjectTestManagementData {
   scopes: TestScope[];
   testCases: TestCase[];
   caseResults: CaseResult[];
+  /** Append-only execution history of this project's cases (absent in files made before Phase 4). */
+  caseExecutions?: CaseExecutionEvent[];
 }
 
 export interface ProjectBackupData {
@@ -65,6 +67,7 @@ export interface ProjectImportExisting {
   scopes?: readonly TestScope[];
   testCases?: readonly TestCase[];
   caseResults?: readonly CaseResult[];
+  caseExecutions?: readonly CaseExecutionEvent[];
 }
 
 export interface ProjectImportOptions {
@@ -107,6 +110,7 @@ export function createProjectBackupPayload(
     scopes?: readonly TestScope[];
     testCases?: readonly TestCase[];
     caseResults?: readonly CaseResult[];
+    caseExecutions?: readonly CaseExecutionEvent[];
   },
   dailyPlans?: readonly DailyTeamPlan[],
 ): ProjectBackupPayload {
@@ -114,6 +118,7 @@ export function createProjectBackupPayload(
   const scopes = (tm?.scopes ?? []).filter((s) => s.projectId === projectId).map((s) => ({ ...s }));
   const testCases = (tm?.testCases ?? []).filter((c) => c.projectId === projectId).map((c) => ({ ...c }));
   const caseResults = (tm?.caseResults ?? []).filter((r) => r.projectId === projectId).map((r) => ({ ...r }));
+  const caseExecutions = (tm?.caseExecutions ?? []).filter((e) => e.projectId === projectId).map((e) => ({ ...e }));
   const plans = (dailyPlans ?? []).filter((p) => p.projectId === projectId).map((p) => ({ ...p }));
   const data: ProjectBackupData = {
     project: JSON.parse(JSON.stringify(project)) as ProjectRecord,
@@ -121,8 +126,8 @@ export function createProjectBackupPayload(
       .filter((report) => report.projectId === projectId)
       .map((report) => ({ ...report })),
   };
-  if (scopes.length > 0 || testCases.length > 0 || caseResults.length > 0) {
-    data.testManagement = { scopes, testCases, caseResults };
+  if (scopes.length > 0 || testCases.length > 0 || caseResults.length > 0 || caseExecutions.length > 0) {
+    data.testManagement = { scopes, testCases, caseResults, ...(caseExecutions.length > 0 ? { caseExecutions } : {}) };
   }
   if (plans.length > 0) data.dailyPlans = plans;
   return {
@@ -189,8 +194,15 @@ function migrateProjectBackupData(parsed: Record<string, unknown>): ProjectBacku
         ? [checked.value]
         : [];
     });
-    if (scopes.length > 0 || testCases.length > 0 || caseResults.length > 0) {
-      out.testManagement = { scopes, testCases, caseResults };
+    // History events must point at a case of the file (and its own project): anything else is dropped, never guessed.
+    const caseExecutions = asArray(tm.caseExecutions).flatMap((raw) => {
+      const checked = checkCaseExecution(raw);
+      return checked.ok && checked.value.projectId === projectId && caseIds.has(checked.value.testCaseId) && scopeIds.has(checked.value.scopeId)
+        ? [checked.value]
+        : [];
+    });
+    if (scopes.length > 0 || testCases.length > 0 || caseResults.length > 0 || caseExecutions.length > 0) {
+      out.testManagement = { scopes, testCases, caseResults, ...(caseExecutions.length > 0 ? { caseExecutions } : {}) };
     }
   }
   if (Array.isArray(d.dailyPlans)) {
@@ -315,10 +327,28 @@ export function importProjectIntoRegistry(
   // ---- Test management: re-identified together, relationships preserved ----
   const targetProjectId = project.projectId;
   const actor = typeof options?.actor === 'string' && options.actor !== '' ? options.actor : null;
+  // An event id that is already taken in the destination (the same file imported twice, a TestRail result seen in two projects) is replaced.
+  const takenEventIds = new Set((options?.existing?.caseExecutions ?? []).map((e) => e.id));
   const testManagement: ProjectTestManagementData =
     fileTm === undefined
       ? { scopes: [], testCases: [], caseResults: [] }
       : {
+          caseExecutions: (fileTm.caseExecutions ?? []).map((e) => {
+            const id = takenEventIds.has(e.id) ? `evt_${generateId()}` : e.id;
+            const rebuilt: CaseExecutionEvent = {
+              ...e,
+              id,
+              testCaseId: caseIdMap.get(e.testCaseId) ?? e.testCaseId,
+              scopeId: scopeIdMap.get(e.scopeId) ?? e.scopeId,
+              projectId: targetProjectId,
+            };
+            if (actor !== null && e.source === 'manual') {
+              // A shared workspace attributes restored manual events to the person restoring them (the server checks the actor).
+              rebuilt.executedByUserId = actor;
+              delete rebuilt.executedByMemberId;
+            }
+            return rebuilt;
+          }),
           scopes: fileTm.scopes.map((s) => ({
             ...s,
             id: scopeIdMap.get(s.id) ?? s.id,

@@ -25,6 +25,11 @@ export function recordLabel(kind: string, id: string, state: ReportsState, lang:
       const key = (state.testCases ?? []).find((x) => `res_${x.id}` === id)?.key;
       return key ?? gone;
     }
+    case 'caseExecution': {
+      const event = (state.caseExecutions ?? []).find((x) => x.id === id);
+      const key = event === undefined ? undefined : (state.testCases ?? []).find((x) => x.id === event.testCaseId)?.key;
+      return key ?? gone;
+    }
     case 'member':
       return safe((state.rcsMembers ?? []).find((x) => x.id === id)?.name) ?? gone;
     case 'cycle':

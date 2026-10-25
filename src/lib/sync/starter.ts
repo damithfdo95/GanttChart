@@ -52,6 +52,7 @@ export function emptySharedState(local: ReportsState): ReportsState {
     scopes: [],
     testCases: [],
     caseResults: [],
+    caseExecutions: [],
     dailyPlans: [],
     meetingNotes: [],
     notifications: [],

@@ -7,7 +7,7 @@ export type Language = 'en' | 'ja';
  * either language (see resolveBilingualName).
  */
 import type { CycleRecord, CycleStatus } from '../../shared/qaRules';
-import type { CaseResult, TestCase, TestScope } from '../../shared/testManagement';
+import type { CaseExecutionEvent, CaseResult, TestCase, TestScope } from '../../shared/testManagement';
 import type { DailyTeamPlan, MeetingNote } from '../../shared/meeting';
 import type { NotificationAck, NotificationDef } from '../../shared/notifications';
 import type { BrandingRecord } from '../../shared/branding';
@@ -17,7 +17,7 @@ import type { TestRailConnection } from '../../shared/testrail';
 /** A QA test cycle / release grouping test executions (projects). See shared/qaRules.ts. */
 export type Cycle = CycleRecord;
 export type { CycleStatus };
-export type { CaseResult, TestCase, TestScope };
+export type { CaseExecutionEvent, CaseResult, TestCase, TestScope };
 export type { DailyTeamPlan, MeetingNote, NotificationAck, NotificationDef, BrandingRecord };
 
 export interface BilingualName {
@@ -808,6 +808,8 @@ export interface ReportsState {
   scopes?: TestScope[];
   testCases?: TestCase[];
   caseResults?: CaseResult[];
+  /** Append-only execution history of the cases (Phase 4); `caseResults` stays the current projection. */
+  caseExecutions?: CaseExecutionEvent[];
   /** Team meeting (Stage 8D): the SV's plan per day, project and optional scope, and the day's meeting notes. Optional: older data has none. */
   dailyPlans?: DailyTeamPlan[];
   meetingNotes?: MeetingNote[];

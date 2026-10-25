@@ -1,4 +1,6 @@
-import type { CaseResult, CaseStatus, TestCase } from '../../../shared/testManagement';
+import type { CaseExecutionEvent, CaseResult, CaseStatus, TestCase } from '../../../shared/testManagement';
+import { caseExecutionTestRailId } from '../../../shared/testManagement';
+import { testRailExecutionEvent } from './executionHistory';
 import type { TestRailResultRow, TestRailTestRow } from '../../../shared/testrail';
 
 /**
@@ -71,6 +73,19 @@ export interface TestRailSyncPlan {
   customStatusCount: number;
   /** Per-status counts of the patches, for the preview. */
   statusCounts: Record<CaseStatus, number>;
+  /**
+   * History events for the LATEST result of each matched test that is not in the case history yet (matched by its TestRail result id,
+   * so syncing twice adds nothing the second time). Only the latest result per test is recorded: earlier results between two syncs
+   * stay in TestRail. Each event carries the result's own `created_on`.
+   */
+  events: CaseExecutionEvent[];
+}
+
+export interface TestRailSyncOptions {
+  /** Ids of events already in the case history (the idempotency check). */
+  knownEventIds?: ReadonlySet<string>;
+  /** TestRail user id -> Team Member id, from the SV's explicit external-identity links. */
+  memberByTestRailUserId?: ReadonlyMap<number, string>;
 }
 
 /** The memo/ticket of the LATEST result of a test (highest createdOn; ties → last in fetch order). */
@@ -95,7 +110,10 @@ export function planTestRailResultSync(
   results: readonly TestRailResultRow[],
   cases: readonly TestCase[],
   byCase: ReadonlyMap<string, CaseResult>,
+  options: TestRailSyncOptions = {},
 ): TestRailSyncPlan {
+  const known = options.knownEventIds ?? new Set<string>();
+  const events: CaseExecutionEvent[] = [];
   const caseByTestRailId = new Map<number, TestCase>();
   for (const c of cases) {
     if (c.testrailCaseId !== undefined) caseByTestRailId.set(c.testrailCaseId, c);
@@ -117,11 +135,15 @@ export function planTestRailResultSync(
     if (test === undefined) continue; // the run has no test for this case
     const status = caseStatusFromTestRail(test.statusId);
     const current = byCase.get(c.id)?.status ?? 'notStarted';
+    const latest = latestResult(results, test.testId);
+    if (latest !== null && !known.has(caseExecutionTestRailId(latest.runId, latest.id))) {
+      // The event states what the result says; when the current status changes too, both agree on the test's status.
+      events.push(testRailExecutionEvent(c, latest, status === current ? caseStatusFromTestRail(latest.statusId) : status, options.memberByTestRailUserId?.get(latest.createdBy)));
+    }
     if (status === current) {
       unchangedCount += 1;
       continue;
     }
-    const latest = latestResult(results, test.testId);
     const memo = latest?.comment !== undefined && latest.comment.trim() !== '' ? latest.comment.trim().slice(0, MEMO_MAX) : undefined;
     const ticketRef = latest?.defects !== undefined && latest.defects.trim() !== '' ? latest.defects.trim().slice(0, 200) : undefined;
     const custom = test.statusId !== null && test.statusId >= 6;
@@ -141,5 +163,5 @@ export function planTestRailResultSync(
     if (!caseByTestRailId.has(t.caseId)) unmatchedCaseIds.push(t.caseId);
   }
 
-  return { patches, unmatchedCaseIds, unchangedCount, customStatusCount, statusCounts };
+  return { patches, unmatchedCaseIds, unchangedCount, customStatusCount, statusCounts, events };
 }

@@ -193,6 +193,7 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
         scopes: (prev.scopes ?? []).filter(gone),
         testCases: (prev.testCases ?? []).filter(gone),
         caseResults: (prev.caseResults ?? []).filter(gone),
+        caseExecutions: (prev.caseExecutions ?? []).filter(gone),
         dailyPlans: (prev.dailyPlans ?? []).filter(gone),
         projects: removal.projects,
         reports: removal.reports,
@@ -232,10 +233,10 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
 
   const updateTestManagementAction = useCallback((fn: (tm: TestManagementState) => TestManagementState): void => {
     setState((prev) => {
-      const before: TestManagementState = { scopes: prev.scopes ?? [], testCases: prev.testCases ?? [], caseResults: prev.caseResults ?? [] };
+      const before: TestManagementState = { scopes: prev.scopes ?? [], testCases: prev.testCases ?? [], caseResults: prev.caseResults ?? [], caseExecutions: prev.caseExecutions ?? [] };
       const after = fn(before);
-      if (after.scopes === before.scopes && after.testCases === before.testCases && after.caseResults === before.caseResults) return prev;
-      return { ...prev, scopes: after.scopes, testCases: after.testCases, caseResults: after.caseResults };
+      if (after.scopes === before.scopes && after.testCases === before.testCases && after.caseResults === before.caseResults && after.caseExecutions === before.caseExecutions) return prev;
+      return { ...prev, scopes: after.scopes, testCases: after.testCases, caseResults: after.caseResults, caseExecutions: after.caseExecutions };
     });
   }, []);
 

@@ -25,6 +25,7 @@ export const RECORD_KINDS = [
   'scope',
   'testCase',
   'caseResult',
+  'caseExecution',
   'dailyPlan',
   'meetingNote',
   'notification',

@@ -12,6 +12,7 @@ import type {
   AttendanceRecord,
   Cycle,
   CaseResult,
+  CaseExecutionEvent,
   TestCase,
   TestScope,
   DailyTeamPlan,
@@ -67,6 +68,7 @@ export interface WorkspaceCollections {
   scopes: TestScope[];
   testCases: TestCase[];
   caseResults: CaseResult[];
+  caseExecutions: CaseExecutionEvent[];
   dailyPlans: DailyTeamPlan[];
   meetingNotes: MeetingNote[];
   notifications: NotificationDef[];
@@ -127,6 +129,7 @@ export function splitWorkspace(appState: unknown, reports: ReportsState): { appS
         scopes: reports.scopes ?? [],
         testCases: reports.testCases ?? [],
         caseResults: reports.caseResults ?? [],
+        caseExecutions: reports.caseExecutions ?? [],
         dailyPlans: reports.dailyPlans ?? [],
         meetingNotes: reports.meetingNotes ?? [],
         notifications: reports.notifications ?? [],
@@ -167,6 +170,7 @@ export function assembleReportsState(parts: WorkspaceParts): ReportsState {
     scopes: parts.collections.scopes,
     testCases: parts.collections.testCases,
     caseResults: parts.collections.caseResults,
+    caseExecutions: parts.collections.caseExecutions,
     dailyPlans: parts.collections.dailyPlans,
     meetingNotes: parts.collections.meetingNotes,
     notifications: parts.collections.notifications,

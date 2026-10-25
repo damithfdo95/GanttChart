@@ -61,7 +61,7 @@ export interface TestRailScopeLink {
   runId: number;
 }
 
-const isPositiveInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v > 0;
+const isPositiveInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v > 0 && v <= 2_000_000_000;
 
 /** True exactly for a whole `TestRailScopeLink` (planId + runId, positive integers). */
 export const testrailLinkOk = (v: unknown): v is TestRailScopeLink => isObj(v) && isPositiveInt(v.planId) && isPositiveInt(v.runId);
@@ -244,6 +244,63 @@ export function checkCaseResult(raw: unknown): Check<CaseResult> {
   return { ok: true, value: raw as unknown as CaseResult };
 }
 
+/**
+ * One execution FACT of a test case, appended every time a status is set (by hand or by the TestRail sync). `CaseResult` stays the
+ * mutable current/latest projection; these events are never edited and never deleted by the app - a correction is a newer event.
+ * No event is invented for results that existed before this record kind: history starts empty and grows from the first new execution.
+ */
+export const CASE_EXECUTION_SOURCES = ['manual', 'testrail'] as const;
+export type CaseExecutionSource = (typeof CASE_EXECUTION_SOURCES)[number];
+/** The only keys an event's source reference may carry: TestRail ids, never a URL or credential. */
+export const CASE_EXECUTION_REF_KEYS = ['provider', 'runId', 'resultId'] as const;
+
+export interface CaseExecutionEvent {
+  /** Unique and stable. Manual events: `evt_<uuid>`. TestRail events: `evt_tr_<runId>_<resultId>` so a repeated sync is idempotent. */
+  id: string;
+  projectId: string;
+  scopeId: string;
+  testCaseId: string;
+  status: CaseStatus;
+  /** ISO time of the execution itself (TestRail: the result's own `created_on`, never the fetch time). */
+  executedAt: string;
+  /** The signed-in account that did it (manual); null/absent for TestRail events and plain local use. */
+  executedByUserId?: string | null;
+  /** The Team Member (stable identity); never a display name. */
+  executedByMemberId?: string;
+  source: CaseExecutionSource;
+  retest?: boolean;
+  question?: boolean;
+  memo?: string;
+  device?: string;
+  os?: string;
+  ticketRef?: string;
+  sourceRef?: { provider: 'testrail'; runId?: number; resultId?: number };
+}
+
+export const caseExecutionTestRailId = (runId: number, resultId: number): string => `evt_tr_${runId}_${resultId}`;
+
+export function checkCaseExecution(raw: unknown): Check<CaseExecutionEvent> {
+  if (!isObj(raw)) return { ok: false, error: 'execution_not_an_object' };
+  if (!idOk(raw.id)) return { ok: false, error: 'execution_invalid_id' };
+  if (!idOk(raw.projectId) || !idOk(raw.scopeId) || !idOk(raw.testCaseId)) return { ok: false, error: 'execution_invalid_reference' };
+  if (typeof raw.status !== 'string' || !(CASE_STATUSES as readonly string[]).includes(raw.status)) return { ok: false, error: 'execution_invalid_status' };
+  if (!stamp(raw.executedAt)) return { ok: false, error: 'execution_invalid_executedAt' };
+  if (typeof raw.source !== 'string' || !(CASE_EXECUTION_SOURCES as readonly string[]).includes(raw.source)) return { ok: false, error: 'execution_invalid_source' };
+  if (raw.executedByUserId !== undefined && raw.executedByUserId !== null && !idOk(raw.executedByUserId)) return { ok: false, error: 'execution_invalid_executedByUserId' };
+  if (raw.executedByMemberId !== undefined && !idOk(raw.executedByMemberId)) return { ok: false, error: 'execution_invalid_executedByMemberId' };
+  for (const f of ['retest', 'question']) if (raw[f] !== undefined && typeof raw[f] !== 'boolean') return { ok: false, error: 'execution_invalid_flag' };
+  for (const [f, max] of [['memo', TM_LIMITS.memo], ['device', TM_LIMITS.device], ['os', TM_LIMITS.os], ['ticketRef', TM_LIMITS.ticketRef]] as Array<[string, number]>) {
+    if (raw[f] !== undefined && !text(raw[f], max)) return { ok: false, error: `execution_invalid_${f}` };
+  }
+  if (raw.sourceRef !== undefined) {
+    const ref = raw.sourceRef;
+    if (!isObj(ref) || ref.provider !== 'testrail' || Object.keys(ref).some((k) => !(CASE_EXECUTION_REF_KEYS as readonly string[]).includes(k))) return { ok: false, error: 'execution_invalid_sourceRef' };
+    if (ref.runId !== undefined && !isPositiveInt(ref.runId)) return { ok: false, error: 'execution_invalid_sourceRef' };
+    if (ref.resultId !== undefined && !isPositiveInt(ref.resultId)) return { ok: false, error: 'execution_invalid_sourceRef' };
+  }
+  return { ok: true, value: raw as unknown as CaseExecutionEvent };
+}
+
 // ---- commit rules -----------------------------------------------------------------
 
 export interface TmView {
@@ -291,7 +348,8 @@ export function isAssignedToScope(assignments: ReadonlyArray<Obj>, userId: strin
  */
 export function testManagementCommitError(input: TmCommitInput): string | null {
   const { puts, deletes, view, isSv, userId, today } = input;
-  const touches = puts.some((p) => p.kind === 'scope' || p.kind === 'testCase' || p.kind === 'caseResult') || deletes.some((d) => d.kind === 'scope' || d.kind === 'testCase' || d.kind === 'caseResult');
+  const isTm = (k: string): boolean => k === 'scope' || k === 'testCase' || k === 'caseResult' || k === 'caseExecution';
+  const touches = puts.some((p) => isTm(p.kind)) || deletes.some((d) => isTm(d.kind));
   if (!touches) return null;
 
   const inCommit = (kind: string): Map<string, Obj> => {
@@ -369,6 +427,38 @@ export function testManagementCommitError(input: TmCommitInput): string | null {
       }
     }
 
+    if (p.kind === 'caseExecution') {
+      const check = checkCaseExecution(parse(p.json));
+      if (!check.ok) return check.error;
+      const next = check.value;
+      if (next.id !== p.id) return 'execution_id_mismatch';
+      const prev = parse(view.get('caseExecution', p.id));
+      if (prev !== null) {
+        // The same event arriving again (a repeated sync) is a no-op; a DIFFERENT event under an existing id is an edit.
+        if (JSON.stringify(prev) === JSON.stringify(parse(p.json))) continue;
+        return 'execution_append_only';
+      }
+      const tc = caseOf(next.testCaseId);
+      if (tc === null) return 'execution_case_not_found';
+      if (tc.projectId !== next.projectId || tc.scopeId !== next.scopeId) return 'execution_case_mismatch';
+      const scope = scopeOf(next.scopeId);
+      if (scope === null || scope.projectId !== next.projectId) return 'execution_scope_mismatch';
+      if (scope.status === 'archived') return 'execution_scope_archived';
+      if (tc.status === 'archived') return 'execution_case_archived';
+      // Who did it is whoever the server knows, whatever the message says; a TestRail event names no account at all.
+      if (next.source === 'manual' && userId !== undefined && next.executedByUserId !== userId) return 'execution_actor_mismatch';
+      if (next.source === 'testrail' && next.executedByUserId !== undefined && next.executedByUserId !== null) return 'execution_actor_mismatch';
+      if (next.executedByMemberId !== undefined && userId !== undefined && next.source === 'manual') {
+        const own = (list?.('member') ?? []).map((r) => parse(r.json)).find((o) => o !== null && o.userId === userId);
+        if (own === undefined || own === null || own.id !== next.executedByMemberId) return 'execution_member_mismatch';
+      }
+      if (!isSv) {
+        if (userId === undefined) return 'tester_rules_unavailable';
+        const assignments = (list?.('assignment') ?? []).map((r) => parse(r.json)).filter((o): o is Obj => o !== null);
+        if (!isAssignedToScope(assignments, userId, next.projectId, next.scopeId, today)) return 'tester_result_not_assigned';
+      }
+    }
+
     if (p.kind === 'caseResult') {
       const check = checkCaseResult(parse(p.json));
       if (!check.ok) return check.error;
@@ -398,6 +488,16 @@ export function testManagementCommitError(input: TmCommitInput): string | null {
   }
 
   for (const d of deletes) {
+    if (d.kind === 'caseExecution') {
+      // Append-only: an event goes only with its project (or after its case is gone), never on its own, and never by a Tester.
+      if (!isSv) return 'tester_cannot_delete';
+      const prev = parse(view.get('caseExecution', d.id));
+      if (prev === null) continue;
+      if (typeof prev.projectId === 'string' && deletedProjects.has(prev.projectId)) continue;
+      if (typeof prev.projectId === 'string' && list !== undefined && !list('project').some((r) => parse(r.json)?.projectId === prev.projectId)) continue;
+      if (typeof prev.testCaseId === 'string' && view.get('testCase', prev.testCaseId) === null) continue;
+      return 'execution_append_only';
+    }
     if (d.kind === 'caseResult') {
       if (!isSv) return 'tester_cannot_delete';
       continue;
@@ -411,6 +511,11 @@ export function testManagementCommitError(input: TmCommitInput): string | null {
     if (typeof prev.projectId === 'string' && list !== undefined && !list('project').some((r) => parse(r.json)?.projectId === prev.projectId)) continue;
     if (d.kind === 'testCase') {
       if (view.get('caseResult', caseResultId(d.id)) !== null && !deletes.some((x) => x.kind === 'caseResult' && x.id === caseResultId(d.id))) return 'testcase_has_results';
+      if (list !== undefined) {
+        for (const r of list('caseExecution')) {
+          if (parse(r.json)?.testCaseId === d.id && !deletes.some((x) => x.kind === 'caseExecution' && x.id === r.id)) return 'testcase_has_history';
+        }
+      }
     } else if (list !== undefined) {
       for (const r of list('testCase')) {
         const o = parse(r.json);

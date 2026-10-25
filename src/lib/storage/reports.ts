@@ -18,7 +18,7 @@ import type {
 } from '../../types';
 import { ATTENDANCE_STATUSES, REVIEW_PERIOD_TYPES, REVIEW_STATUSES } from '../../types';
 import { checkCycle } from '../../../shared/qaRules';
-import { checkCaseResult, checkScope, checkTestCase } from '../../../shared/testManagement';
+import { checkCaseExecution, checkCaseResult, checkScope, checkTestCase } from '../../../shared/testManagement';
 import { checkDailyPlan, checkMeetingNote } from '../../../shared/meeting';
 import { checkNotification, checkNotificationAck } from '../../../shared/notifications';
 import { usableBranding } from '../../../shared/branding';
@@ -84,6 +84,7 @@ export function defaultReportsState(): ReportsState {
     scopes: [],
     testCases: [],
     caseResults: [],
+    caseExecutions: [],
     dailyPlans: [],
     meetingNotes: [],
     notifications: [],
@@ -574,6 +575,7 @@ export function isReportsState(v: unknown): v is ReportsState {
     (s.scopes === undefined || (Array.isArray(s.scopes) && s.scopes.every((c) => checkScope(c).ok))) &&
     (s.testCases === undefined || (Array.isArray(s.testCases) && s.testCases.every((c) => checkTestCase(c).ok))) &&
     (s.caseResults === undefined || (Array.isArray(s.caseResults) && s.caseResults.every((c) => checkCaseResult(c).ok))) &&
+    (s.caseExecutions === undefined || (Array.isArray(s.caseExecutions) && s.caseExecutions.every((c) => checkCaseExecution(c).ok))) &&
     // Stage 8D meeting plans and notes are optional too.
     (s.dailyPlans === undefined || (Array.isArray(s.dailyPlans) && s.dailyPlans.every((c) => checkDailyPlan(c).ok))) &&
     (s.meetingNotes === undefined || (Array.isArray(s.meetingNotes) && s.meetingNotes.every((c) => checkMeetingNote(c).ok))) &&
@@ -642,6 +644,7 @@ export function normalizeReportsState(state: ReportsState): ReportsState {
     scopes: (state.scopes ?? []).filter((c) => checkScope(c).ok),
     testCases: (state.testCases ?? []).filter((c) => checkTestCase(c).ok),
     caseResults: (state.caseResults ?? []).filter((c) => checkCaseResult(c).ok),
+    caseExecutions: (state.caseExecutions ?? []).filter((c) => checkCaseExecution(c).ok),
     // Stage 8D: malformed plans and notes are filtered (never repaired).
     dailyPlans: (state.dailyPlans ?? []).filter((c) => checkDailyPlan(c).ok),
     meetingNotes: (state.meetingNotes ?? []).filter((c) => checkMeetingNote(c).ok),

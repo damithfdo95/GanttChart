@@ -3,7 +3,9 @@ import { useReportsStateCtx } from '../../app/state-contexts';
 import { useTenant } from '../../app/tenant-context';
 import { businessDate } from '../../../shared/businessTime';
 import type { PeopleDirectory } from '../../domain/people';
-import { applyResultPatch, resultsByCase, upsertResult, type CaseResult, type ResultPatch, type TestCase, type TestManagementState } from '../../domain/testManagement';
+import { resultsByCase, type CaseExecutionEvent, type ResultPatch, type TestCase, type TestManagementState } from '../../domain/testManagement';
+import { applyManualResult, applyTestRailSyncToState, type TestRailResultWrite } from '../../domain/testManagement/executionRecord';
+import { generateId } from '../../lib/id';
 import type { TesterDto } from '../../../shared/tenancy';
 
 /** Scopes, cases and results of the workspace, the index of results by case, and the actions that change them. */
@@ -14,22 +16,36 @@ export function useTestManagement() {
   const testCases = reports.state.testCases ?? [];
   const caseResults = reports.state.caseResults ?? [];
   const byCase = useMemo(() => resultsByCase(caseResults), [caseResults]);
-  const state: TestManagementState = useMemo(() => ({ scopes, testCases, caseResults }), [scopes, testCases, caseResults]);
+  const caseExecutions = reports.state.caseExecutions ?? [];
+  const state: TestManagementState = useMemo(() => ({ scopes, testCases, caseResults, caseExecutions }), [scopes, testCases, caseResults, caseExecutions]);
   const actor = principal?.userId ?? null;
+  // The actor's Team Member (stable identity) when the account is linked to one; never guessed from a name.
+  const members = reports.state.rcsMembers ?? [];
+  const actorMemberId = actor === null ? undefined : members.find((m) => m.userId === actor)?.id;
 
-  /** Change one case's current result. Nothing is written when nothing changes. */
+  /**
+   * Change one case's current result. Nothing is written when nothing changes. The same action appends ONE manual execution event
+   * (a status change, or a newly raised Retest) so the history and the current result always agree.
+   */
   const patchResult = useCallback(
     (tc: Pick<TestCase, 'id' | 'projectId' | 'scopeId'>, patch: ResultPatch): void => {
-      reports.updateTestManagement((tm) => {
-        const prev = tm.caseResults.find((r) => r.testCaseId === tc.id);
-        const next: CaseResult | null = applyResultPatch(prev, tc, patch, actor, new Date().toISOString());
-        return next === null ? tm : { ...tm, caseResults: upsertResult(tm.caseResults, next) };
-      });
+      reports.updateTestManagement((tm) => applyManualResult(tm, tc, patch, { actor, ...(actorMemberId === undefined ? {} : { memberId: actorMemberId }), now: new Date().toISOString(), newId: () => `evt_${generateId()}` }));
+    },
+    [reports, actor, actorMemberId],
+  );
+
+  /**
+   * Confirmed TestRail sync: update the current results and append the TestRail events in ONE write (the events carry their own
+   * TestRail result ids, so a repeat adds nothing). Does not go through patchResult: those results are not manual executions.
+   */
+  const applyTestRailSync = useCallback(
+    (patches: readonly TestRailResultWrite[], events: readonly CaseExecutionEvent[]): void => {
+      reports.updateTestManagement((tm) => applyTestRailSyncToState(tm, patches, events, actor, new Date().toISOString()));
     },
     [reports, actor],
   );
 
-  return { reports, state, scopes, testCases, caseResults, byCase, patchResult, actor, update: reports.updateTestManagement };
+  return { reports, state, scopes, testCases, caseResults, caseExecutions, byCase, patchResult, applyTestRailSync, actor, update: reports.updateTestManagement };
 }
 
 /**

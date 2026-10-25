@@ -14,6 +14,7 @@ import {
   capacitySheet,
   dailyProgressSheet,
   executionHistorySheet,
+  caseExecutionHistorySheet,
   executionLogsSheet,
   filterAttendanceRecords,
   filterReports,
@@ -148,6 +149,14 @@ export function ReportsExport() {
           const snapshots = app.state.dailyActuals ?? [];
           const sheet = executionHistorySheet(lang, snapshots, app.state.totalCases, app.state.dailyExecuted ?? []);
           return { sheet, json: snapshots };
+        },
+      },
+      {
+        id: 'caseExecutionHistory',
+        labelKey: 'tm.history.exportSheet',
+        build: () => {
+          const events = (reportsApi.state.caseExecutions ?? []).filter((e) => (filters.dateFrom === null || e.executedAt.slice(0, 10) >= filters.dateFrom) && (filters.dateTo === null || e.executedAt.slice(0, 10) <= filters.dateTo));
+          return { sheet: caseExecutionHistorySheet(lang, events, reportsApi.state.scopes ?? [], reportsApi.state.testCases ?? [], reportsApi.state.rcsMembers ?? []), json: events };
         },
       },
       {

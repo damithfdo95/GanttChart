@@ -16,6 +16,7 @@ import { sortScopes, summarize } from '../../domain/testManagement';
 import { planTestRailResultSync, type TestRailSyncPlan } from '../../domain/testManagement/testrailResults';
 import { createTestRailClient } from '../../lib/testrail/client';
 import { TestRailErrorHint } from '../../components/TestRailErrorHint';
+import { eventActorLabel } from '../../domain/testManagement';
 import { ExecutionTable } from './ExecutionTable';
 import { SummaryBlock } from './SummaryParts';
 import { useTestManagement } from './useTestManagement';
@@ -44,6 +45,11 @@ export function ExecutionTab({ lang, project }: { lang: Language; project: Proje
   const [syncPlan, setSyncPlan] = useState<TestRailSyncPlan | null>(null);
   const [syncNote, setSyncNote] = useState<string | null>(null);
   const linkedScopes = chosen.filter((s) => s.testrail !== undefined);
+  // Events already in the history (idempotency) and the SV's explicit TestRail-user -> Team Member links (rule 1 of the day import).
+  const knownEventIds = new Set(tm.caseExecutions.map((e) => e.id));
+  const memberByTestRailUserId = new Map<number, string>(
+    (reports.state.externalIdentities ?? []).filter((e) => e.active && e.provider === 'testrail' && /^\d+$/.test(e.externalId)).map((e) => [Number(e.externalId), e.memberId] as const),
+  );
 
   const runSync = async (): Promise<void> => {
     if (conn === undefined) {
@@ -61,20 +67,21 @@ export function ExecutionTab({ lang, project }: { lang: Language; project: Proje
     try {
       const client = createTestRailClient(conn);
       const patches: TestRailSyncPlan['patches'] = [];
-      const merged: TestRailSyncPlan = { patches, unmatchedCaseIds: [], unchangedCount: 0, customStatusCount: 0, statusCounts: { notStarted: 0, inProgress: 0, pass: 0, fail: 0, na: 0, blocked: 0, spo: 0 } };
+      const merged: TestRailSyncPlan = { patches, unmatchedCaseIds: [], unchangedCount: 0, customStatusCount: 0, statusCounts: { notStarted: 0, inProgress: 0, pass: 0, fail: 0, na: 0, blocked: 0, spo: 0 }, events: [] };
       for (const scope of linkedScopes) {
         const runId = scope.testrail?.runId;
         if (runId === undefined) continue;
         const [tests, results] = await Promise.all([client.getTestsForRun(runId), client.getResultsForRun(runId)]);
         const scopeCases = cases.filter((c) => c.scopeId === scope.id);
-        const plan = planTestRailResultSync(tests, results, scopeCases, tm.byCase);
+        const plan = planTestRailResultSync(tests, results, scopeCases, tm.byCase, { knownEventIds, memberByTestRailUserId });
         merged.patches.push(...plan.patches);
+        merged.events.push(...plan.events);
         merged.unmatchedCaseIds.push(...plan.unmatchedCaseIds);
         merged.unchangedCount += plan.unchangedCount;
         merged.customStatusCount += plan.customStatusCount;
         for (const [k, v] of Object.entries(plan.statusCounts)) merged.statusCounts[k as keyof typeof merged.statusCounts] += v;
       }
-      if (merged.patches.length === 0) {
+      if (merged.patches.length === 0 && merged.events.length === 0) {
         setSyncNote(t(lang, 'tm.execSync.noChanges'));
         return;
       }
@@ -90,9 +97,8 @@ export function ExecutionTab({ lang, project }: { lang: Language; project: Proje
 
   const confirmSync = (): void => {
     if (syncPlan === null) return;
-    for (const patch of syncPlan.patches) {
-      tm.patchResult(patch.testCase, { status: patch.status, ...(patch.memo === undefined ? {} : { memo: patch.memo }), ...(patch.ticketRef === undefined ? {} : { ticketRef: patch.ticketRef }) });
-    }
+    // Current results and the TestRail history events go in together; this lane is separate from the Dashboard's daily aggregate.
+    tm.applyTestRailSync(syncPlan.patches, syncPlan.events);
     setSyncNote(t(lang, 'tm.execSync.done', { count: syncPlan.patches.length }));
     setSyncPlan(null);
   };
@@ -139,6 +145,7 @@ export function ExecutionTab({ lang, project }: { lang: Language; project: Proje
           <h3>{t(lang, 'tm.execSync.title')}</h3>
           <p className="link-help">{t(lang, 'tm.execSync.help')}</p>
           <p role="status">{t(lang, 'tm.execSync.found', { count: syncPlan.patches.length })}</p>
+          {syncPlan.events.length > 0 ? <p className="link-help">{t(lang, 'tm.execSync.historyFound', { count: syncPlan.events.length })}</p> : null}
           <p className="link-help">
             {t(lang, 'tm.execSync.statusLine', {
               pass: syncPlan.statusCounts.pass,
@@ -178,6 +185,7 @@ export function ExecutionTab({ lang, project }: { lang: Language; project: Proje
         onPatch={(tc, patch) => tm.patchResult(tc, patch)}
         nameOf={(id) => userLabel(lang, id, directory)}
         updaters={updaterIds.map((id) => ({ id, label: userLabel(lang, id, directory) }))}
+        history={{ events: tm.caseExecutions, actorLabel: (e) => eventActorLabel(e, reports.state.rcsMembers ?? [], (id) => userLabel(lang, id, directory)) }}
       />
     </section>
   );

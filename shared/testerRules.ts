@@ -135,7 +135,7 @@ export function testerCommitError(input: TesterCommitInput): string | null {
   const { userId, puts, deletes, view, today } = input;
   if (deletes.length > 0) return 'tester_cannot_delete';
   // A Tester changes projects (their own inputs) and the results of cases assigned to them; the case rules live in testManagement.ts.
-  for (const p of puts) if (p.kind !== 'project' && p.kind !== 'caseResult') return 'tester_cannot_change_kind';
+  for (const p of puts) if (p.kind !== 'project' && p.kind !== 'caseResult' && p.kind !== 'caseExecution') return 'tester_cannot_change_kind';
 
   const memberId = ownMemberId(view, userId);
 

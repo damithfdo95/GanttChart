@@ -11,6 +11,7 @@ import {
   normalizeCaseKey,
   normalizeScopeCode,
   testrailLinkOk,
+  type CaseExecutionEvent,
   type CasePriority,
   type CaseResult,
   type CaseStatus,
@@ -22,6 +23,7 @@ import type { TesterProjectAssignment } from '../../types';
 import { cleanTotal } from './totals';
 
 export * from '../../../shared/testManagement';
+export * from './executionHistory';
 export { parseBulkCases, type BulkParse, type BulkRow, type BulkRowError } from './bulk';
 export * from './jiraImport';
 export * from './testrailScopeImport';
@@ -40,6 +42,8 @@ export interface TestManagementState {
   scopes: TestScope[];
   testCases: TestCase[];
   caseResults: CaseResult[];
+  /** Append-only execution history; `caseResults` is its current projection. */
+  caseExecutions?: CaseExecutionEvent[];
 }
 
 // ---- summary formulas -----------------------------------------------------------

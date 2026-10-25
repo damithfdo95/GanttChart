@@ -51,6 +51,7 @@ export const META_KEY_COLLECTION = {
   scopes: 'scopes',
   testCases: 'testCases',
   caseResults: 'caseResults',
+  caseExecutions: 'caseExecutions',
   dailyPlans: 'dailyPlans',
   meetingNotes: 'meetingNotes',
   notifications: 'notifications',

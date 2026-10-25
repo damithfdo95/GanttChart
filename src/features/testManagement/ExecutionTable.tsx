@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { t, type TranslationKey } from '../../i18n';
 import { CASE_PRIORITIES, CASE_STATUSES, filterCases, sortCases, type CasePriority, type CaseResult, type CaseSort, type CaseStatus, type ResultPatch, type TestCase, type TestScope } from '../../domain/testManagement';
+import { eventsForCase, type CaseExecutionEvent } from '../../domain/testManagement';
+import { CaseHistoryList } from './CaseHistory';
 import type { Language } from '../../types';
 
 const PAGE = 200;
@@ -51,13 +53,16 @@ export interface ExecutionTableProps {
   showScope?: boolean;
   /** Names of the people who may be filtered on ("last updated by"), SV screens only. */
   updaters?: ReadonlyArray<{ id: string; label: string }>;
+  /** The append-only execution history (read-only): a per-case "History" toggle shows it, newest first. */
+  history?: { events: readonly CaseExecutionEvent[]; actorLabel: (e: CaseExecutionEvent) => string };
 }
 
 /**
  * The execution grid: compact, one row per case, status/flags/memo/device edited in place, no dialog per click. Filters and sorting are
  * client-side and the table renders in pages of 200 rows ("Show more"), so a scope with thousands of cases stays responsive.
  */
-export function ExecutionTable({ lang, cases, scopes, byCase, canEdit, onPatch, nameOf, showScope = false, updaters }: ExecutionTableProps) {
+export function ExecutionTable({ lang, cases, scopes, byCase, canEdit, onPatch, nameOf, showScope = false, updaters, history }: ExecutionTableProps) {
+  const [openHistory, setOpenHistory] = useState<string | null>(null);
   const [status, setStatus] = useState<CaseStatus | 'all'>('all');
   const [priority, setPriority] = useState<CasePriority | 'all'>('all');
   const [q, setQ] = useState('');
@@ -159,6 +164,7 @@ export function ExecutionTable({ lang, cases, scopes, byCase, canEdit, onPatch, 
                 <th scope="col">{t(lang, 'tm.col.device')}</th>
                 <th scope="col">{t(lang, 'tm.col.os')}</th>
                 <th scope="col">{t(lang, 'tm.col.updatedBy')}</th>
+                {history === undefined ? null : <th scope="col">{t(lang, 'tm.history.column')}</th>}
               </tr>
             </thead>
             <tbody>
@@ -166,7 +172,9 @@ export function ExecutionTable({ lang, cases, scopes, byCase, canEdit, onPatch, 
                 const r = byCase.get(tc.id);
                 const editable = canEdit(tc);
                 const label = `${tc.key} ${tc.title}`;
-                return (
+                const caseEvents = history === undefined ? [] : eventsForCase(history.events, tc.id);
+                const historyOpen = history !== undefined && openHistory === tc.id;
+                return [
                   <tr key={tc.id} className={`tm-row tm-status-${r?.status ?? 'notStarted'}`}>
                     <th scope="row" className="tm-key">
                       {tc.key}
@@ -209,8 +217,22 @@ export function ExecutionTable({ lang, cases, scopes, byCase, canEdit, onPatch, 
                     <td className="tm-updated">
                       {r === undefined ? '—' : `${nameOf(r.updatedByUserId)} · ${new Date(r.updatedAt).toLocaleString(lang === 'ja' ? 'ja-JP' : 'en-US', { dateStyle: 'short', timeStyle: 'short' })}`}
                     </td>
-                  </tr>
-                );
+                    {history === undefined ? null : (
+                      <td>
+                        <button type="button" className="btn btn-ghost" aria-expanded={historyOpen} aria-label={`${t(lang, 'tm.history.column')}: ${label}`} onClick={() => setOpenHistory(historyOpen ? null : tc.id)}>
+                          {t(lang, 'tm.history.show', { count: caseEvents.length })}
+                        </button>
+                      </td>
+                    )}
+                  </tr>,
+                  historyOpen && history !== undefined ? (
+                    <tr key={`${tc.id}-history`} className="tm-history-row">
+                      <td colSpan={20}>
+                        <CaseHistoryList lang={lang} events={caseEvents} actorLabel={history.actorLabel} />
+                      </td>
+                    </tr>
+                  ) : null,
+                ];
               })}
             </tbody>
           </table>

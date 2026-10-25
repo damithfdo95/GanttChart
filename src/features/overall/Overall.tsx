@@ -267,7 +267,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
   // ---- V6.3: project export / workspace export / import / delete ----
 
   const handleExportProject = (project: ProjectRecord): void => {
-    const payload = createProjectBackupPayload(project, reportsApi.state.reports, undefined, { scopes: reportsApi.state.scopes, testCases: reportsApi.state.testCases, caseResults: reportsApi.state.caseResults }, reportsApi.state.dailyPlans);
+    const payload = createProjectBackupPayload(project, reportsApi.state.reports, undefined, { scopes: reportsApi.state.scopes, testCases: reportsApi.state.testCases, caseResults: reportsApi.state.caseResults, caseExecutions: reportsApi.state.caseExecutions }, reportsApi.state.dailyPlans);
     downloadTextFile(
       `ganttchart-project-${project.projectId}-${today}.json`,
       'application/json',
@@ -313,15 +313,16 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
           return;
         }
         const merged = importProjectIntoRegistry(reportsApi.state.projects, reportsApi.state.reports, result.data, {
-          existing: { scopes: reportsApi.state.scopes, testCases: reportsApi.state.testCases },
+          existing: { scopes: reportsApi.state.scopes, testCases: reportsApi.state.testCases, caseExecutions: reportsApi.state.caseExecutions },
           members: reportsApi.state.rcsMembers ?? [],
           // In a shared workspace the restored results are attributed to the person restoring them; in plain local use they stay as exported.
           ...(access.userId === null ? {} : { actor: access.userId }),
         });
         reportsApi.setProjects(merged.projects);
         const added = merged.testManagement;
-        if (added.scopes.length + added.testCases.length + added.caseResults.length > 0) {
-          reportsApi.updateTestManagement((tm) => ({ scopes: [...tm.scopes, ...added.scopes], testCases: [...tm.testCases, ...added.testCases], caseResults: [...tm.caseResults, ...added.caseResults] }));
+        const addedEvents = added.caseExecutions ?? [];
+        if (added.scopes.length + added.testCases.length + added.caseResults.length + addedEvents.length > 0) {
+          reportsApi.updateTestManagement((tm) => ({ scopes: [...tm.scopes, ...added.scopes], testCases: [...tm.testCases, ...added.testCases], caseResults: [...tm.caseResults, ...added.caseResults], caseExecutions: [...(tm.caseExecutions ?? []), ...addedEvents] }));
         }
         if (merged.dailyPlans.length > 0) {
           const planned = merged.dailyPlans;

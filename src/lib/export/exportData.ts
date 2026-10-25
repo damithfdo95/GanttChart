@@ -37,6 +37,7 @@ import { isAttending } from '../reporting/sections';
 import { projectPlanningStatus, projectDisplayName } from '../../domain/projects';
 import type { TicketAnalysis } from '../../domain/jira';
 import type { XlsxCell, XlsxSheet } from './xlsx';
+import { eventActorLabel, sortEventsAscending, type CaseExecutionEvent, type TestCase, type TestScope } from '../../domain/testManagement';
 import { buildManagementReportRow, riskStatusLabel, type ManagementReportRow } from './management';
 /** Export filters (date range, team, attendance status). */
 
@@ -364,6 +365,61 @@ export function executionHistorySheet(
       // A day with an entry reads its source (older entries: Manual); a snapshot without an entry has no recorded source.
       entryOf(row.date) === undefined ? '—' : t(lang, executionSourceLabelKey(executionSourceOf(entryOf(row.date)))),
       entryOf(row.date)?.sourceUpdatedAt ?? '—',
+    ]),
+  };
+}
+
+/**
+ * Case Execution History: one row per execution event, oldest first (newest within a case is the current result). Text cells go
+ * through the same CSV/XLSX escaping as every other sheet. Never touches finalized Daily Reports.
+ */
+export function caseExecutionHistorySheet(
+  lang: Language,
+  events: readonly CaseExecutionEvent[],
+  scopes: readonly TestScope[],
+  cases: readonly TestCase[],
+  members: readonly RcsMember[],
+): XlsxSheet {
+  const scopeName = new Map(scopes.map((s) => [s.id, s.name] as const));
+  const caseOf = new Map(cases.map((c) => [c.id, c] as const));
+  const yes = (v: boolean | undefined): string => (v === true ? '✔' : '');
+  return {
+    name: t(lang, 'tm.history.exportSheet'),
+    headers: [
+      t(lang, 'tm.history.exportProjectId'),
+      t(lang, 'tm.col.scope'),
+      t(lang, 'tm.col.case'),
+      t(lang, 'tm.col.title'),
+      t(lang, 'tm.history.exportDateTime'),
+      t(lang, 'tm.col.status'),
+      t(lang, 'tm.col.retest'),
+      t(lang, 'tm.col.question'),
+      t(lang, 'tm.history.exportActor'),
+      t(lang, 'tm.history.exportSource'),
+      t(lang, 'tm.history.exportRunId'),
+      t(lang, 'tm.history.exportResultId'),
+      t(lang, 'tm.history.exportTicket'),
+      t(lang, 'tm.col.memo'),
+      t(lang, 'tm.col.device'),
+      t(lang, 'tm.col.os'),
+    ],
+    rows: sortEventsAscending(events).map((e) => [
+      e.projectId,
+      scopeName.get(e.scopeId) ?? '',
+      caseOf.get(e.testCaseId)?.key ?? '',
+      caseOf.get(e.testCaseId)?.title ?? '',
+      e.executedAt,
+      t(lang, `tm.status.${e.status}` as Parameters<typeof t>[1]),
+      yes(e.retest),
+      yes(e.question),
+      eventActorLabel(e, members, () => '—'),
+      t(lang, e.source === 'testrail' ? 'tm.history.sourceTestrail' : 'tm.history.sourceManual'),
+      e.sourceRef?.runId ?? '',
+      e.sourceRef?.resultId ?? '',
+      e.ticketRef ?? '',
+      e.memo ?? '',
+      e.device ?? '',
+      e.os ?? '',
     ]),
   };
 }

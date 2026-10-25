@@ -22,7 +22,7 @@ function parse(json: string | undefined): Obj | null {
   }
 }
 
-export const TM_KINDS: ReadonlySet<string> = new Set(['scope', 'testCase', 'caseResult']);
+export const TM_KINDS: ReadonlySet<string> = new Set(['scope', 'testCase', 'caseResult', 'caseExecution']);
 
 /** The ids of the scopes this account may read today. */
 export function authorizedScopeIds(assignmentJson: readonly string[], scopeJson: readonly string[], userId: string, today: string): Set<string> {
@@ -50,7 +50,7 @@ export function testerMaySee(item: { kind: string; id: string; json?: string }, 
   if (o === null) return false;
   if (item.kind === 'scope') return authorized.has(item.id);
   if (typeof o.scopeId !== 'string' || !authorized.has(o.scopeId)) return false;
-  return item.kind === 'caseResult' || o.status === 'active';
+  return item.kind === 'caseResult' || item.kind === 'caseExecution' || o.status === 'active';
 }
 
 export function filterForTester<T extends { kind: string; id: string; json?: string }>(items: readonly T[], authorized: ReadonlySet<string>, userId?: string): T[] {
