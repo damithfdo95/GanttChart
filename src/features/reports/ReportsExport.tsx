@@ -40,6 +40,7 @@ import { printHtml } from '../../lib/export/print';
 import { createBackupPayload, parseBackupPayload } from '../../lib/backup/backup';
 import { sanitizeRestoredAccountLinks } from '../../lib/backup/restoreLinks';
 import { useTenant } from '../../app/tenant-context';
+import { useReadiness } from '../readiness/useReadiness';
 import { persistWorkspaceAsync } from '../../lib/storage/db/persistenceBackend';
 import { XLSX_MIME } from '../../lib/statusKeys';
 
@@ -55,6 +56,7 @@ export function ReportsExport() {
   const guard = useSharedGuard();
   const { principal } = useTenant();
   const reportsApi = useReportsStateCtx();
+  const readiness = useReadiness(reportsApi.state.projects);
   const lang = app.state.language;
   const ask = useAskConfirm(lang);
   const settings = reportsApi.state.settings;
@@ -104,7 +106,7 @@ export function ReportsExport() {
             if (filters.dateTo !== null && date > filters.dateTo) return false;
             return true;
           });
-          return { sheet: projectsSheet(lang, projects), json: projects };
+          return { sheet: projectsSheet(lang, projects, readiness), json: projects };
         },
       },
       {

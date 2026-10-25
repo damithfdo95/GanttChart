@@ -38,6 +38,8 @@ import { isAttending } from '../reporting/sections';
 import { projectPlanningStatus, projectDisplayName } from '../../domain/projects';
 import type { TicketAnalysis } from '../../domain/jira';
 import type { XlsxCell, XlsxSheet } from './xlsx';
+import { readinessReasonTexts, readinessStateLabel } from '../../features/readiness/readinessText';
+import type { ReleaseReadiness } from '../../domain/readiness';
 import { assessDetailedCoverage, isCaseDerivedAggregateStale, reconcileDailyExecution } from '../../domain/executionReconciliation';
 import { compareDailyExecution, dailyDetailedSummary, eventActorLabel, eventBusinessDate, sortEventsAscending, type CaseExecutionEvent, type DailyDetailedSummary, type TestCase, type TestScope } from '../../domain/testManagement';
 import { buildManagementReportRow, riskStatusLabel, type ManagementReportRow } from './management';
@@ -97,7 +99,9 @@ const LIFECYCLE_STATUS_KEY: Record<
 };
 
 /** Project portfolio export: lifecycle + planning status + completion metadata. */
-export function projectsSheet(lang: Language, projects: ProjectRecord[]): XlsxSheet {
+export function projectsSheet(lang: Language, projects: ProjectRecord[], readiness?: ReadonlyMap<string, ReleaseReadiness>): XlsxSheet {
+  const withReadiness = readiness !== undefined;
+  const reasonsOf = (r: ReleaseReadiness | undefined, severity: 'blocking' | 'warning'): string => (r === undefined ? '' : readinessReasonTexts(lang, r, severity).join(' | '));
   return {
     name: t(lang, 'dataset.projects'),
     headers: [
@@ -124,8 +128,10 @@ export function projectsSheet(lang: Language, projects: ProjectRecord[]): XlsxSh
       t(lang, 'overall.capacity'),
       t(lang, 'overall.updated'),
       t(lang, 'overall.completedAt'),
+      ...(withReadiness ? [t(lang, 'readiness.export.state'), t(lang, 'readiness.export.blocking'), t(lang, 'readiness.export.warning'), t(lang, 'readiness.export.codes')] : []),
     ],
     rows: projects.map((project) => {
+      const ready = readiness?.get(project.id);
       const total = project.inputs.totalCases;
       const completed = project.inputs.casesCompleted;
       const spoAssigned = project.inputs.spoAssigned ?? 0;
@@ -156,6 +162,9 @@ export function projectsSheet(lang: Language, projects: ProjectRecord[]): XlsxSh
         Math.round(capacity * 100) / 100,
         project.updatedAt,
         project.completedAt ?? '',
+        ...(withReadiness
+          ? [ready === undefined ? '' : readinessStateLabel(lang, ready), reasonsOf(ready, 'blocking'), reasonsOf(ready, 'warning'), ready === undefined ? '' : ready.reasons.map((x) => x.code).join(';')]
+          : []),
       ];
     }),
   };

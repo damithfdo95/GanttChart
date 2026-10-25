@@ -25,6 +25,8 @@ import {
   type SortDirection,
 } from '../../domain/projects';
 import { OverallProjectTable, PortfolioToolbar } from './OverallTable';
+import { useReadiness } from '../readiness/useReadiness';
+import { canViewReadiness } from '../../domain/readiness';
 import {
   WORK_DAY_END,
   calculateWorkdayProjection,
@@ -75,6 +77,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
   // A Tester reads this screen; every change to projects is an SV's (the server enforces the same).
   const access = useAccess();
   const readOnly = !overallCapabilities(access.isTester).canChangeStatus;
+  const readiness = useReadiness(reportsApi.state.projects);
 
   const [filters, setFilters] = useState({ ...DEFAULT_PORTFOLIO_FILTERS });
   const [sortKey, setSortKey] = useState<ProjectSortKey>('default');
@@ -457,6 +460,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
 
       <OverallProjectTable
         lang={lang}
+        {...(canViewReadiness({ isTester: readOnly }) ? { readiness } : {})}
         readOnly={readOnly}
         visible={visible}
         planningStatuses={planningStatuses}

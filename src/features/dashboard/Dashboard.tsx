@@ -63,6 +63,9 @@ import { toolNameOf } from '../../domain/branding';
 import { ProjectControlCenter } from './ProjectControlCenter';
 import { TesterCapacityStrip } from './TesterCapacityStrip';
 import { DetailedExecutionCard } from './DetailedExecutionCard';
+import { ReadinessCard } from '../readiness/ReadinessCard';
+import { useReadiness } from '../readiness/useReadiness';
+import { canViewReadiness } from '../../domain/readiness';
 import { assessDetailedCoverage, dailyEntryFromDetailedSummary, detailedFingerprint, reconcileDailyExecution } from '../../domain/executionReconciliation';
 import { compareDailyExecution, dailyDetailedSummary } from '../../domain/testManagement';
 import { testerCapacitySummary } from '../../domain/testerCapacity';
@@ -152,6 +155,9 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
     [detailedSummary, detailedCoverage, executionDate, today, savedForDate, access.canManage, access.isTester],
   );
   const reconFingerprint = detailedSummary === null || detailedCoverage === null || activeProjectRecord === undefined ? '' : detailedFingerprint({ date: executionDate, coverage: detailedCoverage.state, summary: detailedSummary, events: detailedEvents ?? [], projectId: activeProjectRecord.projectId });
+  // Release readiness: derived, read-only, current-state (not tied to the selected date); management only.
+  const readinessMap = useReadiness(activeProjectRecord === undefined ? [] : [activeProjectRecord]);
+  const readiness = activeProjectRecord === undefined ? undefined : readinessMap.get(activeProjectRecord.id);
   const blockedReason = access.canRecordFor(activeProjectRecord?.projectId, businessDate()) ? undefined : t(lang, 'exec.notAssigned');
 
   const projectName = resolveBilingualName(lang, { nameEn: state.projectNameEn, nameJa: state.projectNameJa });
@@ -586,6 +592,7 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
       ) : null}
 
       {onOpenOverall !== undefined && !tester ? <ManagerPanel lang={lang} /> : null}
+      {canViewReadiness(access) && readiness !== undefined ? <ReadinessCard lang={lang} readiness={readiness} /> : null}
       {!tester && activeProjectRecord !== undefined ? (
         <TesterCapacityStrip
           lang={lang}

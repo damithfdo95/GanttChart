@@ -1,5 +1,5 @@
 import type { ProjectRecord } from '../../types';
-import { calculateMultiDayProjection } from '../../lib/calculations/planning';
+import { calculateMultiDayProjection, type MultiDayProjectionResult } from '../../lib/calculations/planning';
 import { derivePlanStatus } from '../../lib/calculations/explanations';
 import type { PlanStatus } from '../../lib/calculations/explanations';
 import { WORK_DAY_END, WORK_LUNCH, workdayProductiveHours } from '../../lib/calculations/workday';
@@ -35,17 +35,7 @@ export function projectPlanningStatus(project: ProjectRecord): ProjectPlanningSt
   const casesRemaining = Math.max(0, inputs.totalCases - inputs.casesCompleted);
   const targetTimeMinutes =
     inputs.targetCompletionTime === null ? null : parseTimeToMinutes(inputs.targetCompletionTime);
-  const projection = calculateMultiDayProjection({
-    casesRemaining,
-    planningRows: inputs.planningRows,
-    perHourPerTester: inputs.perHourPerTester,
-    workStartTime: inputs.startTime,
-    workEndTime: WORK_DAY_END,
-    lunch: WORK_LUNCH,
-    targetCompletionDate: inputs.targetCompletionDate,
-    targetCompletionTime: targetTimeMinutes,
-    dailyOvertimeMinutes: inputs.dailyOvertimeMinutes,
-  });
+  const projection = projectProjection(project);
   const status: PlanStatus = derivePlanStatus(projection, {
     totalCases: inputs.totalCases,
     casesRemaining,
@@ -57,6 +47,25 @@ export function projectPlanningStatus(project: ProjectRecord): ProjectPlanningSt
   return status === 'onTrack' || status === 'atRisk' || status === 'capacityShortage' || status === 'completed'
     ? status
     : 'noTarget';
+}
+
+/** The multi-day projection the planning status is derived from (one place, so readiness and the status always agree). */
+export function projectProjection(project: ProjectRecord): MultiDayProjectionResult {
+  const { inputs } = project;
+  const casesRemaining = Math.max(0, inputs.totalCases - inputs.casesCompleted);
+  const targetTimeMinutes =
+    inputs.targetCompletionTime === null ? null : parseTimeToMinutes(inputs.targetCompletionTime);
+  return calculateMultiDayProjection({
+    casesRemaining,
+    planningRows: inputs.planningRows,
+    perHourPerTester: inputs.perHourPerTester,
+    workStartTime: inputs.startTime,
+    workEndTime: WORK_DAY_END,
+    lunch: WORK_LUNCH,
+    targetCompletionDate: inputs.targetCompletionDate,
+    targetCompletionTime: targetTimeMinutes,
+    dailyOvertimeMinutes: inputs.dailyOvertimeMinutes,
+  });
 }
 
 /** Deadline already passed (and not done/on hold — paused work is not chased). */

@@ -18,6 +18,8 @@ import {
 } from '../../domain/projects';
 import { formatInteger, formatNumber } from '../../lib/formatting/format';
 import { LIFECYCLE_KEY, PLANNING_KEY } from '../../lib/statusKeys';
+import { ReadinessBadge } from '../readiness/ReadinessCard';
+import type { ReleaseReadiness } from '../../domain/readiness';
 import type { Language } from '../../types';
 
 export interface PortfolioFilters {
@@ -175,6 +177,8 @@ export function PortfolioToolbar({
 
 export interface OverallProjectTableProps {
   lang: Language;
+  /** Release readiness per project id; omitted for a Tester (no readiness column). */
+  readiness?: ReadonlyMap<string, ReleaseReadiness>;
   readOnly: boolean;
   visible: ProjectRecord[];
   planningStatuses: Map<string, ProjectPlanningStatus>;
@@ -194,6 +198,7 @@ export interface OverallProjectTableProps {
 
 export function OverallProjectTable({
   lang,
+  readiness,
   readOnly,
   visible,
   planningStatuses,
@@ -252,13 +257,14 @@ export function OverallProjectTable({
               <th scope="col" className="num">{t(lang, 'overall.capacity')}</th>
               <th scope="col" className="num">{t(lang, 'overall.testers')}</th>
               <th scope="col">{t(lang, 'overall.planningStatus')}</th>
+              {readiness === undefined ? null : <th scope="col">{t(lang, 'readiness.column')}</th>}
               <th scope="col">{t(lang, 'overall.actions')}</th>
             </tr>
           </thead>
           <tbody>
             {visible.length === 0 ? (
               <tr>
-                <td colSpan={14} className="dr-empty">
+                <td colSpan={readiness === undefined ? 14 : 15} className="dr-empty">
                   {t(lang, 'overall.noProjects')}
                 </td>
               </tr>
@@ -344,6 +350,7 @@ export function OverallProjectTable({
                   <td>
                     <span className={`plan-status-tag tag-${planningTone}`}>{t(lang, PLANNING_KEY[planning])}</span>
                   </td>
+                  {readiness === undefined ? null : <td>{readiness.get(project.id) === undefined ? '—' : <ReadinessBadge lang={lang} readiness={readiness.get(project.id) as ReleaseReadiness} />}</td>}
                   <td className="dr-row-actions">
                     <button type="button" className="btn" onClick={() => onOpenGantt(project)}>
                       {t(lang, 'overall.openGantt')}

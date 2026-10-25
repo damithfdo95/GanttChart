@@ -14,6 +14,9 @@ import { SectionCard } from '../../components/SectionCard';
 import { MetricCard } from '../../components/MetricCard';
 import { MultiDayTimeline } from '../../components/MultiDayTimeline';
 import { GanttChartView } from '../../components/GanttChartView';
+import { ReadinessBadge } from '../readiness/ReadinessCard';
+import { useReadiness } from '../readiness/useReadiness';
+import type { ReleaseReadiness } from '../../domain/readiness';
 import { MeetingView, type MeetingSession } from '../meeting/MeetingView';
 import { ProjectReferenceEditor } from './ProjectReferenceEditor';
 import { LIFECYCLE_KEY, PLANNING_KEY } from '../../lib/statusKeys';
@@ -95,6 +98,7 @@ function GanttPlanning({ focusProjectId, onFocusHandled, viewSwitch, langToggle 
   const sub = otherLanguage(lang);
   // A Tester sees the plan; changing it is an SV's (the server enforces the same).
   const readOnly = useAccess().isTester;
+  const readiness = useReadiness(reportsApi.state.projects);
 
   const [statusFilter, setStatusFilter] = useState<GanttStatusFilter>('active');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -388,6 +392,14 @@ function GanttPlanning({ focusProjectId, onFocusHandled, viewSwitch, langToggle 
                       <span className="gantt-meta-label">{t(lang, 'fields.currentTesters')}</span>
                       <span className="gantt-meta-value">{formatInteger(project.inputs.currentTesters, lang)}</span>
                     </span>
+                    {readOnly || readiness.get(project.id) === undefined ? null : (
+                      <span className="gantt-meta-cell">
+                        <span className="gantt-meta-label">{t(lang, 'readiness.column')}</span>
+                        <span className="gantt-meta-value">
+                          <ReadinessBadge lang={lang} readiness={readiness.get(project.id) as ReleaseReadiness} />
+                        </span>
+                      </span>
+                    )}
                   </div>
                 </div>
                 {isCollapsed ? null : (
