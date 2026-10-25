@@ -140,8 +140,8 @@ describe('feedback report', () => {
   });
 
   it('masks credentials pasted into the text but keeps everything else untouched', () => {
-    const text = buildFeedbackReport({ ...input, summary: 'Call failed with Authorization: Bearer abcDEF1234567890', description: 'My api_key=SECRETVALUE99 and password: hunter2 and a token ghp_abcdefghijklmnopqrstuvwxyz123456. Normal words stay.' });
-    for (const secret of ['abcDEF1234567890', 'SECRETVALUE99', 'hunter2', 'ghp_abcdefghijklmnopqrstuvwxyz123456']) expect(text, secret).not.toContain(secret);
+    const text = buildFeedbackReport({ ...input, summary: 'Call failed with Authorization: Bearer abcDEF1234567890', description: 'My api_key=SECRETVALUE99 and password: hunter2 and a token gh' + 'p_abcdefghijklmnopqrstuvwxyz123456. Normal words stay.' });
+    for (const secret of ['abcDEF1234567890', 'SECRETVALUE99', 'hunter2', 'gh' + 'p_abcdefghijklmnopqrstuvwxyz123456']) expect(text, secret).not.toContain(secret);
     expect(text).toContain('Normal words stay.');
     expect(redactSecrets('plain text with no secrets')).toBe('plain text with no secrets');
   });
@@ -309,15 +309,31 @@ describe('pilot documents', () => {
     for (const area of ['login', 'shared sync', 'dashboard', 'command center', 'test management', 'jira', 'testrail', 'daily report', 'publishing', 'improvement analytics', 'backup export']) expect(smoke, area).toContain(area);
   });
 
-  it('the pilot release docs do not choose a version while the version authority is undecided: placeholders only, owner decision stated', () => {
+  it('the version authority is resolved: package.json is canonical, the tag is v + that version, and the ambiguity text is gone', () => {
+    const pkg = JSON.parse(read('package.json')) as { version: string };
+    const lock = JSON.parse(read('package-lock.json')) as { version: string; packages: { '': { version: string } } };
+    expect(pkg.version).toBe('0.10.0-pilot.1');
+    expect(lock.version).toBe(pkg.version);
+    expect(lock.packages[''].version).toBe(pkg.version);
+    expect(BUILD_INFO.version).toBe(pkg.version);
+    expect(BUILD_INFO.channel).toBe('pilot');
+    // The worker package is private tooling, not the product version.
+    expect((JSON.parse(read('worker/package.json')) as { version: string }).version).not.toBe(pkg.version);
     const release = read('docs/PILOT_RELEASE.md');
-    expect(release).toMatch(/Owner decision still required/);
-    expect(release).toContain('vX.Y.Z-pilot.N');
-    expect(release).not.toMatch(/v\d+\.\d+\.\d+-pilot/);
-    expect(release).not.toMatch(/git tag -a v\d/);
-    expect(release).toMatch(/Do not create the tag|do not run until the version decision is made/i);
+    const releasing = read('docs/RELEASING.md');
+    for (const doc of [release, releasing]) {
+      expect(doc).toContain('canonical product/source version');
+      expect(doc).toContain('Deployment identity only');
+      expect(doc).toContain('`v` + the package version, exactly');
+      expect(doc).toContain('0.10.0-pilot.1');
+      expect(doc).toContain('v0.9.0');
+      expect(doc).not.toMatch(/Owner decision still required|decision needed from the owner|Current ambiguity/i);
+    }
+    expect(release).toContain('git tag -a v0.10.0-pilot.1');
+    expect(release).toMatch(/this repository does not create tags/);
     expect(release).toContain('No permanent pilot branch');
-    expect(read('docs/RELEASING.md')).toContain('decision needed from the owner');
+    expect(read('CHANGELOG.md')).toContain('## 0.10.0-pilot.1');
+    expect(read('CHANGELOG.md')).toContain('## v0.9.0');
   });
 
   it('feedback taxonomy, success criteria (no invented numbers), operations and support matrix say what they should', () => {

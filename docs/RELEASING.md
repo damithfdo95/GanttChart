@@ -5,20 +5,24 @@ the bundle budget and the supported-browser assumptions.
 
 ## Version authority
 
-There are four different identifiers; they answer different questions and must not be confused:
-
-| Identifier | Answers | Where |
+| Identifier | Rule | Where it shows |
 |---|---|---|
-| **Git tag** (`vMAJOR.MINOR.PATCH`) | "which release is this?" - the release identifier | `git tag -a`; shown as `Release` in Settings |
-| `package.json` `version` | the product/source version number | root `package.json`; shown as `Version` in Settings |
-| Build commit + time | exactly which source was built | injected by `vite.config.ts`; shown in Settings |
-| Cloudflare **Version ID** | which *deployment* is live | Cloudflare dashboard / wrangler output - never the product version |
+| **`package.json` `version`** | The **canonical product/source version**. Changed only by a deliberate release commit. | Settings -> `Version`; diagnostics |
+| **Git tag** | For a formal release the tag is **`v` + the package version, exactly**. | Settings -> `Release` (git describe) |
+| **Git commit** | The exact source identity. | Settings -> `Commit` |
+| **Cloudflare Version ID** | **Deployment identity only** - which deployment is live. Never the product version. | Cloudflare dashboard / deploy output; written in the release notes |
+| **Build timestamp** | The build identity. | Settings -> `Build` |
 
-**Current ambiguity (decision needed from the owner, not guessed here; the pilot rules that depend on it are in [PILOT_RELEASE.md](PILOT_RELEASE.md)):** the only tag is `v0.9.0`
-("stable pre-SaaS production baseline", 2026-10-18) but `package.json` still says `1.0.0`. Settings therefore shows a release such as
-`v0.9.0-36-g…` next to version `1.0.0`. Pick ONE of: (a) set `package.json` to `0.9.0` and bump it together with each tag
-(recommended while pre-SaaS), or (b) declare `1.0.0` and tag `v1.0.0`. Until then, the tag is authoritative for "what was released".
-At release time: bump `package.json`, commit, tag that commit, then build - so `Release` and `Version` agree.
+The root `package.json` is the only product version. `worker/package.json` (`0.1.0`) is a private tooling package and is deliberately **not** the
+product version; the proxies have no package. The historical tag `v0.9.0` stays as it is (the pre-pilot production baseline); it is never
+moved, rewritten or deleted.
+
+**First pilot version: `0.10.0-pilot.1`** (tag `v0.10.0-pilot.1`, created later by the owner). Each further pilot release changes the
+package version first - `0.10.0-pilot.2`, `0.10.0-pilot.3`, ... - and the tag follows. A later non-pilot release simply drops the suffix
+(for example `0.10.0`). Release channel stays `pilot` for these builds.
+
+Release order: bump `package.json` (and the lockfile's own version) in the release commit, run the checks, tag **that** commit as `v<version>`,
+then build - so `Version` and `Release` agree in Settings.
 
 ## Release checklist
 
@@ -31,11 +35,11 @@ At release time: bump `package.json`, commit, tag that commit, then build - so `
 7. In `worker/`: `npm run validate` (production safety guard; changes nothing).
 8. Backup compatibility: the round-trip tests are part of step 4; also restore a previous real backup file into a scratch browser profile.
 9. Manual smoke on the built app (`npm run preview`): Dashboard, Command Center, a Daily Report finalize/publish, an export.
-10. Update `CHANGELOG.md` (Added / Changed / Fixed / Security) and the version (see above).
+10. Update `CHANGELOG.md` (Added / Changed / Fixed / Security) and the package version (see Version authority).
 11. **Push** (manual, by the owner).
 12. **Deploy** (manual, by the owner; see DEPLOYMENT_PLAN.md - frontend build first, then the Worker).
 13. **Production smoke** - the full checklist in [PRODUCTION_SMOKE.md](PRODUCTION_SMOKE.md) (login, sync, screens, integrations, report, publishing, analytics, backup export).
-14. Tag the released commit (pilot builds: `vX.Y.Z-pilot.N`, see [PILOT_RELEASE.md](PILOT_RELEASE.md)) and write the **pilot release notes** from its template.
+14. Tag the released commit as `v<package version>` (pilot builds, e.g. `v0.10.0-pilot.1`; see [PILOT_RELEASE.md](PILOT_RELEASE.md)) and write the **pilot release notes** from its template.
 15. Post-release monitoring checklist for the first day ([PILOT_OPERATIONS.md](PILOT_OPERATIONS.md)).
 
 Flow: release checklist -> push -> deploy -> production smoke -> tag -> pilot notes -> monitoring. Prefer **fixing forward** for small issues; roll back only for severe regressions.

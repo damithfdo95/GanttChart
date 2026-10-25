@@ -1,9 +1,9 @@
 # Changelog
 
 Meaningful user-facing and security changes only, newest first. Categories: Added, Changed, Fixed, Security.
-Version numbers follow the rules in [docs/RELEASING.md](docs/RELEASING.md).
+The product version is `package.json`; formal releases are tagged `v` + that version (see [docs/RELEASING.md](docs/RELEASING.md)).
 
-## Pilot baseline (unreleased; tag pending the version decision in docs/PILOT_RELEASE.md)
+## 0.10.0-pilot.1 - pilot baseline (tag `v0.10.0-pilot.1` to be created by the owner at release)
 
 Summary of what the pilot contains, by product area (not every commit):
 

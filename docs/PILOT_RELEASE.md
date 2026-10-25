@@ -9,22 +9,31 @@ learning** phase, not a feature phase: only fixes, support improvements and docu
 |---|---|
 | Release channel | `pilot` - shown in Settings -> Support & Pilot and in the diagnostics text. It is context for support, not a warning. |
 | Branching | **No permanent pilot branch.** `main` plus an annotated tag per pilot release. A branch is added only if a fix must ship while `main` holds unreleased work. |
-| Source version | One number, in `package.json`. **Owner decision still required** (see below); this baseline does not pick one. |
-| Tag | `v<source-version>-pilot.<n>` (annotated, on the released commit). `n` counts pilot releases of that source version, starting at 1. |
+| Source version | One number, in `package.json`: the canonical product version. The first pilot is `0.10.0-pilot.1`. |
+| Tag | `v` + the package version, exactly (annotated, on the released commit): `v0.10.0-pilot.1` for the first pilot. |
 | Deployment reference | The Cloudflare **Version ID** printed by the deploy, written in the release notes next to the tag. It identifies a deployment, never the product. |
 | Release notes | One record per pilot release, from the template below, kept in `CHANGELOG.md` (summary) and in the GitHub release (full). |
 
-### Version authority - decision needed from the owner
+### Version authority
 
-The only existing tag is `v0.9.0` (2026-10-18, "stable pre-SaaS production baseline") while `package.json` says `1.0.0`. Until the owner
-chooses, **no pilot tag is created and this repository does not choose for them.** The two sensible options:
+| Identifier | Rule | Where it shows |
+|---|---|---|
+| **`package.json` `version`** | The **canonical product/source version**. Changed only by a deliberate release commit. | Settings -> `Version`; diagnostics |
+| **Git tag** | For a formal release the tag is **`v` + the package version, exactly**. | Settings -> `Release` (git describe) |
+| **Git commit** | The exact source identity. | Settings -> `Commit` |
+| **Cloudflare Version ID** | **Deployment identity only** - which deployment is live. Never the product version. | Cloudflare dashboard / deploy output; written in the release notes |
+| **Build timestamp** | The build identity. | Settings -> `Build` |
 
-1. **Source version `0.9.x`** - set `package.json` to `0.9.0` (matching the existing tag), then pilot tags are `v` + that number + `-pilot.1`, `-pilot.2`, ... and the next
-   product release is a patch/minor bump. Keeps `1.0.0` for the first paid release.
-2. **Source version `1.0.0`** - keep `package.json`, retire the meaning of `v0.9.0`, and use `-pilot.1`, `-pilot.2`, ... tags on that number
+The root `package.json` is the only product version. `worker/package.json` (`0.1.0`) is a private tooling package and is deliberately **not** the
+product version; the proxies have no package. The historical tag `v0.9.0` stays as it is (the pre-pilot production baseline); it is never
+moved, rewritten or deleted.
 
-Whichever is chosen, bump `package.json` first, commit, then tag that commit, then build, so Settings shows the same version in
-`Version` and `Release`.
+**First pilot version: `0.10.0-pilot.1`** (tag `v0.10.0-pilot.1`, created later by the owner). Each further pilot release changes the
+package version first - `0.10.0-pilot.2`, `0.10.0-pilot.3`, ... - and the tag follows. A later non-pilot release simply drops the suffix
+(for example `0.10.0`). Release channel stays `pilot` for these builds.
+
+Release order: bump `package.json` (and the lockfile's own version) in the release commit, run the checks, tag **that** commit as `v<version>`,
+then build - so `Version` and `Release` agree in Settings.
 
 ## Release metadata
 
@@ -32,15 +41,15 @@ Whichever is chosen, bump `package.json` first, commit, then tag that commit, th
 (`vite.config.ts` -> `src/lib/buildInfo.ts`) and shown in Settings and the diagnostics text. No file path or machine name is included.
 Set `RELEASE_CHANNEL` at build time only when another channel exists.
 
-## Tagging commands (do not run until the version decision is made)
+## Tagging commands (run by the owner when releasing; this repository does not create tags)
 
 ```bash
-# 1. on main, clean tree, all checks green; package.json already at the chosen source version
-git tag -a vX.Y.Z-pilot.N -m "Pilot release N of vX.Y.Z: <one-line summary>"
-git push origin vX.Y.Z-pilot.N        # manual, by the owner
+# On main, clean tree, all checks green, package.json already at the release version
+git tag -a v0.10.0-pilot.1 -m "Pilot release 1: <one-line summary>"
+git push origin v0.10.0-pilot.1        # manual, by the owner
 ```
 
-Replace `X.Y.Z` / `N` with the decided values. Never move or delete a pushed tag; fix forward with `pilot.N+1`.
+For a later pilot release use its own version (`v0.10.0-pilot.2`, ...). Never move or delete a pushed tag; fix forward with the next number.
 
 ## Roll forward first
 
@@ -51,8 +60,8 @@ Use **rollback** (see [PILOT_OPERATIONS.md](PILOT_OPERATIONS.md)) only for a sev
 
 ```
 Pilot Release
-Version:                 (source version)
-Tag:                     vX.Y.Z-pilot.N
+Version:                 (package.json version)
+Tag:                     v + that version
 Commit:
 Deployed (Version ID):
 Date:
