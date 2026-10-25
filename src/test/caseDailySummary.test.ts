@@ -148,13 +148,13 @@ describe('comparison with the saved daily aggregate', () => {
     expect(noSaved).toMatchObject({ hasSaved: false, hasDetailed: true, relation: 'unknown' });
   });
 
-  it('nothing in the derivation or the cards writes the saved aggregate or its source', () => {
-    const writes = /saveDailyExecutionEntry|applyDailyExecutionEntry|upsertDailyExecutionEntry|updateField\(|withExecutionProvenance|'caseExecution'/;
+  it('the derivation never writes; the card can only hand a confirmed entry to onAdopt (Phase 6)', () => {
+    const writes = /saveDailyExecutionEntry|applyDailyExecutionEntry|upsertDailyExecutionEntry|updateField\(|withExecutionProvenance/;
     expect(src('domain/testManagement/executionHistory.ts')).not.toMatch(/saveDailyExecutionEntry|applyDailyExecutionEntry|upsertDailyExecutionEntry/);
     expect(src('features/dashboard/DetailedExecutionCard.tsx')).not.toMatch(writes);
     const dash = src('features/dashboard/Dashboard.tsx');
     const block = dash.slice(dash.indexOf('const detailedEvents'), dash.indexOf('const blockedReason'));
-    expect(block).not.toMatch(writes);
+    expect(block).not.toMatch(/updateField\(|applyDailyExecutionEntry/);
   });
 });
 
@@ -207,15 +207,16 @@ describe('export', () => {
   for (const lang of ['en', 'ja'] as const) {
     it(`[${lang}] one project row with the saved aggregate and one row per scope`, () => {
       const sheet = detailedDailyExecutionSheet(lang, [project], [scope('scp_a', 420)], [tcase('a'), tcase('b'), tcase('c')], events);
-      expect(sheet.headers).toHaveLength(17);
+      expect(sheet.headers).toHaveLength(21);
       expect(sheet.headers[6]).toBe(dict(lang)['exec.detail.exportUnique']);
       expect(sheet.headers[7]).toBe(dict(lang)['exec.detail.exportEvents']);
       expect(sheet.rows).toHaveLength(2);
       const row = sheet.rows[0] as (string | number | { kind: string; value: string })[];
       expect(row.slice(1, 2)).toEqual([P]);
       expect(row.slice(4, 17)).toEqual([420, 3, 3, 4, 2, 0, 1, 0, 3, 1, 4, dict(lang)['exec.source.testrail'], 1]);
+      expect(row.slice(17, 19)).toEqual([dict(lang)['exec.rec.coverage.partial'], dict(lang)['exec.rec.state.difference']]);
       expect((sheet.rows[1] as unknown[])[3]).toBe('scp_a');
-      expect((sheet.rows[1] as unknown[]).slice(14)).toEqual(['', '', '']);
+      expect((sheet.rows[1] as unknown[]).slice(14, 17)).toEqual(['', '', '']);
     });
   }
 });

@@ -5,6 +5,7 @@ import type {
   AttendanceStatus,
   BugTicket,
   DailyActualSnapshot,
+  CaseResult,
   DailyExecutionEntry,
   DailyReport,
   IdentityAuditEntry,
@@ -37,6 +38,7 @@ import { isAttending } from '../reporting/sections';
 import { projectPlanningStatus, projectDisplayName } from '../../domain/projects';
 import type { TicketAnalysis } from '../../domain/jira';
 import type { XlsxCell, XlsxSheet } from './xlsx';
+import { assessDetailedCoverage, isCaseDerivedAggregateStale, reconcileDailyExecution } from '../../domain/executionReconciliation';
 import { compareDailyExecution, dailyDetailedSummary, eventActorLabel, eventBusinessDate, sortEventsAscending, type CaseExecutionEvent, type DailyDetailedSummary, type TestCase, type TestScope } from '../../domain/testManagement';
 import { buildManagementReportRow, riskStatusLabel, type ManagementReportRow } from './management';
 /** Export filters (date range, team, attendance status). */
@@ -435,9 +437,11 @@ export function detailedDailyExecutionSheet(
   scopes: readonly TestScope[],
   cases: readonly TestCase[],
   events: readonly CaseExecutionEvent[],
+  results: readonly Pick<CaseResult, 'testCaseId' | 'status'>[] = [],
 ): XlsxSheet {
   const rows: XlsxCell[][] = [];
-  const row = (date: string, p: ProjectRecord, scopeName: string, sm: DailyDetailedSummary, saved: [string | number, string, string | number]): XlsxCell[] => [
+  const yesNo = (v: boolean): string => t(lang, v ? 'exec.rec.yes' : 'exec.rec.no');
+  const row = (date: string, p: ProjectRecord, scopeName: string, sm: DailyDetailedSummary, saved: [string | number, string, string | number], rec: [string, string, string, string]): XlsxCell[] => [
     { kind: 'date', value: date },
     p.projectId,
     projectDisplayName(p, lang),
@@ -455,6 +459,10 @@ export function detailedDailyExecutionSheet(
     saved[0],
     saved[1],
     saved[2],
+    rec[0],
+    rec[1],
+    rec[2],
+    rec[3],
   ];
   for (const p of projects) {
     const mine = events.filter((e) => e.projectId === p.projectId);
@@ -464,10 +472,12 @@ export function detailedDailyExecutionSheet(
       const project = dailyDetailedSummary(input);
       const entry = (p.inputs.dailyExecuted ?? []).find((e) => e.date === date) ?? null;
       const cmp = compareDailyExecution({ savedDaily: entry, caseDerived: project });
-      rows.push(row(date, p, '', project, [cmp.executed.saved ?? '—', entry === null ? '—' : t(lang, executionSourceLabelKey(executionSourceOf(entry))), cmp.executed.difference ?? '—']));
+      const coverage = assessDetailedCoverage({ date, projectId: p.projectId, scopes, cases, events: mine, results });
+      const rec = reconcileDailyExecution({ date, today: '9999-12-31', savedDaily: entry, summary: project, coverage, isSv: true });
+      rows.push(row(date, p, '', project, [cmp.executed.saved ?? '—', entry === null ? '—' : t(lang, executionSourceLabelKey(executionSourceOf(entry))), cmp.executed.difference ?? '—'], [t(lang, `exec.rec.coverage.${coverage.state}` as Parameters<typeof t>[1]), t(lang, `exec.rec.state.${rec.state}` as Parameters<typeof t>[1]), yesNo(rec.canAdopt), yesNo(isCaseDerivedAggregateStale(entry, project))]));
       for (const sc of scopes.filter((s) => s.projectId === p.projectId)) {
         const sm = dailyDetailedSummary({ ...input, scopeId: sc.id });
-        if (sm.eventCount > 0) rows.push(row(date, p, sc.name, sm, ['', '', '']));
+        if (sm.eventCount > 0) rows.push(row(date, p, sc.name, sm, ['', '', ''], [t(lang, `exec.rec.coverage.${assessDetailedCoverage({ date, projectId: p.projectId, scopeId: sc.id, scopes, cases, events: mine, results }).state}` as Parameters<typeof t>[1]), '', '', '']));
       }
     }
   }
@@ -491,6 +501,10 @@ export function detailedDailyExecutionSheet(
       t(lang, 'exec.detail.exportSaved'),
       t(lang, 'exec.detail.exportSavedSource'),
       t(lang, 'exec.detail.exportDifference'),
+      t(lang, 'exec.rec.exportCoverage'),
+      t(lang, 'exec.rec.exportState'),
+      t(lang, 'exec.rec.exportEligible'),
+      t(lang, 'exec.rec.exportStale'),
     ],
     rows,
   };

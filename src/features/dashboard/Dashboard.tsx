@@ -63,6 +63,7 @@ import { toolNameOf } from '../../domain/branding';
 import { ProjectControlCenter } from './ProjectControlCenter';
 import { TesterCapacityStrip } from './TesterCapacityStrip';
 import { DetailedExecutionCard } from './DetailedExecutionCard';
+import { assessDetailedCoverage, dailyEntryFromDetailedSummary, detailedFingerprint, reconcileDailyExecution } from '../../domain/executionReconciliation';
 import { compareDailyExecution, dailyDetailedSummary } from '../../domain/testManagement';
 import { testerCapacitySummary } from '../../domain/testerCapacity';
 import { hasAuthoritativeScopeTotals } from '../../domain/testManagement/totals';
@@ -97,7 +98,7 @@ const STATUS_KEY: Record<ScheduleStatus, TranslationKey> = {
  */
 export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (focus: OverallFocus) => void; onOpenMeeting?: (session: 'morning' | 'evening') => void }) {
   const app = useAppStateCtx();
-  const { state, updateField, changeStartDate, deleteDailyExecutionEntry } = app;
+  const { state, updateField, changeStartDate, deleteDailyExecutionEntry, saveDailyExecutionEntry } = app;
   const { principal } = useTenant();
   const access = useAccess();
   // A Tester sees the Operator section (and enters Today's Execution) only; the manager panels are the SV's.
@@ -137,6 +138,20 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
   );
   const savedForDate = entryForDate(state.dailyExecuted ?? [], executionDate);
   const detailedComparison = useMemo(() => compareDailyExecution({ savedDaily: savedForDate, caseDerived: detailedSummary }), [savedForDate, detailedSummary]);
+  // Reconciliation (Phase 6): comparison always; adoption only on demonstrably complete coverage, by an SV, with confirmation.
+  const detailedResults = reportsApi.state.caseResults;
+  const detailedCoverage = useMemo(
+    () =>
+      activeProjectRecord === undefined
+        ? null
+        : assessDetailedCoverage({ date: executionDate, projectId: activeProjectRecord.projectId, scopes: detailedScopes ?? [], cases: detailedCases ?? [], events: detailedEvents ?? [], results: detailedResults ?? [] }),
+    [activeProjectRecord, executionDate, detailedScopes, detailedCases, detailedEvents, detailedResults],
+  );
+  const reconciliation = useMemo(
+    () => (detailedSummary === null || detailedCoverage === null ? null : reconcileDailyExecution({ date: executionDate, today, savedDaily: savedForDate, summary: detailedSummary, coverage: detailedCoverage, isSv: access.canManage && !access.isTester })),
+    [detailedSummary, detailedCoverage, executionDate, today, savedForDate, access.canManage, access.isTester],
+  );
+  const reconFingerprint = detailedSummary === null || detailedCoverage === null || activeProjectRecord === undefined ? '' : detailedFingerprint({ date: executionDate, coverage: detailedCoverage.state, summary: detailedSummary, events: detailedEvents ?? [], projectId: activeProjectRecord.projectId });
   const blockedReason = access.canRecordFor(activeProjectRecord?.projectId, businessDate()) ? undefined : t(lang, 'exec.notAssigned');
 
   const projectName = resolveBilingualName(lang, { nameEn: state.projectNameEn, nameJa: state.projectNameJa });
@@ -631,7 +646,7 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
             variance={variance}
             varianceTone={varianceTone}
             testrail={testrail}
-            detailedSlot={!tester && detailedSummary !== null ? <DetailedExecutionCard lang={lang} summary={detailedSummary} saved={savedForDate} comparison={detailedComparison} /> : undefined}
+            detailedSlot={!tester && detailedSummary !== null ? <DetailedExecutionCard lang={lang} summary={detailedSummary} saved={savedForDate} comparison={detailedComparison} recon={reconciliation === null ? undefined : { reconciliation, fingerprint: reconFingerprint, date: executionDate, buildEntry: () => (savedForDate === null ? null : dailyEntryFromDetailedSummary(savedForDate, detailedSummary, new Date().toISOString())), onAdopt: saveDailyExecutionEntry }} /> : undefined}
           />
 
         <SectionCard title={t(lang, 'timeline.title')} subtitle={t(sub, 'timeline.title')} span={12}>

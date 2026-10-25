@@ -169,6 +169,8 @@ export function testerCommitError(input: TesterCommitInput): string | null {
     const touched = [...exec.added, ...exec.changed.flatMap((c) => [c.prev, c.next]), ...exec.removed];
     if (touched.length > 0) {
       for (const e of touched) if (!isToday(e.date, today)) return 'tester_execution_not_today';
+      // A day adopted from the detailed case history is an SV's reconciliation: a Tester neither writes nor overwrites one.
+      for (const e of touched) if (e.source === 'caseExecution') return 'tester_execution_case_derived';
       if (!isAssignedNow(view, userId, stableId, today)) return 'tester_execution_not_assigned';
     }
     // The derived totals and snapshots follow the entries; they may not be edited on their own.

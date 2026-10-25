@@ -266,3 +266,23 @@ describe('through the full commit rules', () => {
     expect(run('editor', settings('QA Board'))).toBe('tester_cannot_change_kind');
   });
 });
+
+describe('days adopted from the detailed case history', () => {
+  const adopted = (over: Record<string, unknown> = {}) => entry({ source: 'caseExecution', sourceUpdatedAt: '2026-10-07T01:00:00.000Z', ...over });
+
+  it('a Tester may not write, change or remove a case-derived day (that is an SV reconciliation)', () => {
+    expect(change(world(), project({ dailyExecuted: [adopted()] }))).toBe('tester_execution_case_derived');
+    const w = world({ 'project:proj-1': project({ dailyExecuted: [adopted()] }) });
+    expect(change(w, project({ dailyExecuted: [adopted({ pass: 9, source: 'manual' })] }))).toBe('tester_execution_case_derived');
+    expect(change(w, project({ dailyExecuted: [] }))).toBe('tester_execution_case_derived');
+  });
+
+  it('an ordinary manual day by the same Tester is still accepted', () => {
+    expect(change(world(), project({ dailyExecuted: [entry({ source: 'manual', sourceUpdatedAt: '2026-10-07T01:00:00.000Z' })] }))).toBeNull();
+  });
+
+  it('an SV writes a case-derived day through the normal rules', () => {
+    const next = project({ dailyExecuted: [adopted()] });
+    expect(qaCommitError({ role: 'admin', userId: 'usr_sv', today: TODAY, puts: [{ kind: 'project', id: 'proj-1', json: next }], deletes: [], view: view(world()) })).toBeNull();
+  });
+});

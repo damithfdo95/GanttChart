@@ -165,7 +165,7 @@ export function ReportsExport() {
         labelKey: 'exec.detail.exportSheet',
         build: () => {
           const events = (reportsApi.state.caseExecutions ?? []).filter((e) => (filters.dateFrom === null || e.executedAt.slice(0, 10) >= filters.dateFrom) && (filters.dateTo === null || e.executedAt.slice(0, 10) <= filters.dateTo));
-          const sheet = detailedDailyExecutionSheet(lang, reportsApi.state.projects, reportsApi.state.scopes ?? [], reportsApi.state.testCases ?? [], events);
+          const sheet = detailedDailyExecutionSheet(lang, reportsApi.state.projects, reportsApi.state.scopes ?? [], reportsApi.state.testCases ?? [], events, reportsApi.state.caseResults ?? []);
           return { sheet, json: sheet.rows };
         },
       },
