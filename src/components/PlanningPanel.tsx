@@ -215,8 +215,12 @@ export function PlanningPanel({
               step={1}
               value={inputs.currentTesters}
               aria-label={t(lang, 'fields.currentTesters')}
+              aria-describedby="plan-planned-testers-hint"
               onChange={(e) => onSetCurrentTesters(Math.max(0, Number(e.target.value) || 0))}
             />
+            <span id="plan-planned-testers-hint" className="link-help">
+              {t(lang, 'hint.plannedTesters')}
+            </span>
           </Field>
           <Field label={t(lang, 'fields.perHourPerTester')}>
             <input

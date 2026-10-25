@@ -82,8 +82,12 @@ export function InputSection({
               min={1}
               step={1}
               value={state.currentTesters}
+              aria-describedby="planned-testers-hint"
               onChange={(e) => onNumberChange('currentTesters', e.target.value)}
             />
+            <span id="planned-testers-hint" className="link-help">
+              {t(lang, 'hint.plannedTesters')}
+            </span>
           </Field>
           <Field label={t(lang, 'fields.startDate')}>
             <input

@@ -28,8 +28,8 @@ export interface AppStateApi {
   /**
    * Save one day's ACTUAL execution (V7): upserts the entry (one per date),
    * recomputes the canonical cumulative fields as Σ entries, regenerates the
-   * end-of-day snapshots, and — when saving TODAY's entry with a positive
-   * tester count — syncs currentTesters (still directly editable afterwards).
+   * end-of-day snapshots. The entry's tester count is the ACTUAL testers of
+   * that date only: it never touches the planned capacity (currentTesters).
    */
   saveDailyExecutionEntry: (entry: DailyExecutionEntry) => void;
   /**
@@ -199,15 +199,7 @@ export function useAppState(initial?: AppState): AppStateApi {
   );
 
   const saveDailyExecutionEntry = useCallback((entry: DailyExecutionEntry): void => {
-    setState((prev) => {
-      const synced = applyDailyExecutionEntry(prev, entry);
-      // Saving today's entry syncs the tester count (still editable).
-      const today = formatDate(todayEpochDays());
-      if (entry.date === today && entry.testers > 0) {
-        return { ...synced, currentTesters: entry.testers };
-      }
-      return synced;
-    });
+    setState((prev) => applyDailyExecutionEntry(prev, entry));
   }, []);
 
   const deleteDailyExecutionEntry = useCallback((date: string): void => {

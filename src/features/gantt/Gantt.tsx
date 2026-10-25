@@ -265,7 +265,7 @@ function GanttPlanning({ focusProjectId, onFocusHandled, viewSwitch, langToggle 
                 value={activeProgress === null ? '—' : `${formatInteger(activeProgress.remaining, lang)} ${t(lang, 'units.cases')}`}
               />
               <MetricCard
-                label={t(lang, 'overall.testers')}
+                label={t(lang, 'fields.currentTesters')}
                 value={`${formatInteger(activeProject.inputs.currentTesters, lang)} ${t(lang, 'units.testers')}`}
               />
             </div>
@@ -385,7 +385,7 @@ function GanttPlanning({ focusProjectId, onFocusHandled, viewSwitch, langToggle 
                       <span className="gantt-meta-value">{formatInteger(progress.remaining, lang)}</span>
                     </span>
                     <span className="gantt-meta-cell">
-                      <span className="gantt-meta-label">{t(lang, 'overall.testers')}</span>
+                      <span className="gantt-meta-label">{t(lang, 'fields.currentTesters')}</span>
                       <span className="gantt-meta-value">{formatInteger(project.inputs.currentTesters, lang)}</span>
                     </span>
                   </div>

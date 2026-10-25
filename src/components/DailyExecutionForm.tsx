@@ -337,8 +337,12 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
             min={0}
             step={1}
             value={form.testers}
+            aria-describedby="actual-testers-hint"
             onChange={(e) => set({ testers: Math.max(0, Number(e.target.value) || 0) })}
           />
+          <span id="actual-testers-hint" className="link-help">
+            {t(lang, 'exec.actualTestersHint')}
+          </span>
         </Field>
         {/* Interval Taken: an inline checkbox on the INPUT row (bottom-aligned
             with the neighbouring inputs — not a label-above-tiny-box field). */}

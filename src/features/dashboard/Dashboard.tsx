@@ -61,6 +61,8 @@ import { WorkspaceEmptyNotice } from './WorkspaceEmptyNotice';
 import { ManagerPanel } from './ManagerPanel';
 import { toolNameOf } from '../../domain/branding';
 import { ProjectControlCenter } from './ProjectControlCenter';
+import { TesterCapacityStrip } from './TesterCapacityStrip';
+import { testerCapacitySummary } from '../../domain/testerCapacity';
 import { hasAuthoritativeScopeTotals } from '../../domain/testManagement/totals';
 import { MultiDayTimeline } from '../../components/MultiDayTimeline';
 import { CapacityProjectionSections, ExecutionSection, InputSection } from './DashboardSections';
@@ -554,6 +556,19 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
       ) : null}
 
       {onOpenOverall !== undefined && !tester ? <ManagerPanel lang={lang} /> : null}
+      {!tester && activeProjectRecord !== undefined ? (
+        <TesterCapacityStrip
+          lang={lang}
+          summary={testerCapacitySummary({
+            planned: state.currentTesters,
+            projectId: activeProjectRecord.projectId,
+            date: today,
+            assignments: reportsApi.state.testerAssignments ?? [],
+            members: reportsApi.state.rcsMembers ?? [],
+            entries: state.dailyExecuted ?? [],
+          })}
+        />
+      ) : null}
       {onOpenOverall !== undefined && !tester ? <ProjectControlCenter lang={lang} /> : null}
 
       {view === 'operator' ? (
