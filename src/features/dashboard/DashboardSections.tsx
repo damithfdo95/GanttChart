@@ -4,6 +4,7 @@
  * the screen file holds state wiring and derivation only.
  */
 
+import type { ReactNode } from 'react';
 import { t, type TranslationKey } from '../../i18n';
 import { Field } from '../../components/Field';
 import { MetricCard } from '../../components/MetricCard';
@@ -167,6 +168,8 @@ export interface ExecutionSectionProps {
   varianceTone: 'good' | 'bad' | 'default';
   /** Live TestRail progress of the project's linked scopes (refresh control). */
   testrail: TestRailExecutionStatus;
+  /** The derived Detailed Case Execution card (SV only); read-only, shown beside the saved daily aggregate. */
+  detailedSlot?: ReactNode;
 }
 
 export function ExecutionSection({
@@ -185,6 +188,7 @@ export function ExecutionSection({
   variance,
   varianceTone,
   testrail,
+  detailedSlot,
 }: ExecutionSectionProps) {
   // The refresh control appears only when the project has at least one
   // active scope linked to a TestRail run (Test Management → Scopes).
@@ -218,6 +222,7 @@ export function ExecutionSection({
           previous V6.4 composition, one level up. */}
       <h3 className="exec-subsection-title" id="todays-execution">{t(lang, 'exec.todayTitle')}</h3>
       <DailyExecutionForm lang={lang} date={executionDate} onDateChange={onExecutionDateChange} todayOnly={tester} blockedReason={blockedReason} />
+      {detailedSlot}
       <h3 className="exec-subsection-title exec-subsection-derived">{t(lang, 'exec.liveStatus')}</h3>
       {/* Live TestRail progress of the linked scopes (device-local fetch;
           counts never persist — same rule as Test Management → Scopes). */}

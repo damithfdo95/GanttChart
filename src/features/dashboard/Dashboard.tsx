@@ -62,6 +62,8 @@ import { ManagerPanel } from './ManagerPanel';
 import { toolNameOf } from '../../domain/branding';
 import { ProjectControlCenter } from './ProjectControlCenter';
 import { TesterCapacityStrip } from './TesterCapacityStrip';
+import { DetailedExecutionCard } from './DetailedExecutionCard';
+import { compareDailyExecution, dailyDetailedSummary } from '../../domain/testManagement';
 import { testerCapacitySummary } from '../../domain/testerCapacity';
 import { hasAuthoritativeScopeTotals } from '../../domain/testManagement/totals';
 import { MultiDayTimeline } from '../../components/MultiDayTimeline';
@@ -122,6 +124,19 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
   const today = formatDate(todayEpoch);
   // A Tester records today's results on the executions they are assigned to; say so instead of letting the server refuse it.
   const activeProjectRecord = reportsApi.state.projects.find((p) => p.id === reportsApi.state.activeProjectId);
+  // Detailed Case Execution of the selected date, rebuilt from the immutable case history (read-only; never writes the saved aggregate).
+  const detailedEvents = reportsApi.state.caseExecutions;
+  const detailedScopes = reportsApi.state.scopes;
+  const detailedCases = reportsApi.state.testCases;
+  const detailedSummary = useMemo(
+    () =>
+      activeProjectRecord === undefined
+        ? null
+        : dailyDetailedSummary({ date: executionDate, projectId: activeProjectRecord.projectId, scopes: detailedScopes ?? [], cases: detailedCases ?? [], events: detailedEvents ?? [], fallbackTotal: state.totalCases }),
+    [activeProjectRecord, executionDate, detailedScopes, detailedCases, detailedEvents, state.totalCases],
+  );
+  const savedForDate = entryForDate(state.dailyExecuted ?? [], executionDate);
+  const detailedComparison = useMemo(() => compareDailyExecution({ savedDaily: savedForDate, caseDerived: detailedSummary }), [savedForDate, detailedSummary]);
   const blockedReason = access.canRecordFor(activeProjectRecord?.projectId, businessDate()) ? undefined : t(lang, 'exec.notAssigned');
 
   const projectName = resolveBilingualName(lang, { nameEn: state.projectNameEn, nameJa: state.projectNameJa });
@@ -616,6 +631,7 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
             variance={variance}
             varianceTone={varianceTone}
             testrail={testrail}
+            detailedSlot={!tester && detailedSummary !== null ? <DetailedExecutionCard lang={lang} summary={detailedSummary} saved={savedForDate} comparison={detailedComparison} /> : undefined}
           />
 
         <SectionCard title={t(lang, 'timeline.title')} subtitle={t(sub, 'timeline.title')} span={12}>

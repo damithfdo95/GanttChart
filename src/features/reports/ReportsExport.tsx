@@ -15,6 +15,7 @@ import {
   dailyProgressSheet,
   executionHistorySheet,
   caseExecutionHistorySheet,
+  detailedDailyExecutionSheet,
   executionLogsSheet,
   filterAttendanceRecords,
   filterReports,
@@ -157,6 +158,15 @@ export function ReportsExport() {
         build: () => {
           const events = (reportsApi.state.caseExecutions ?? []).filter((e) => (filters.dateFrom === null || e.executedAt.slice(0, 10) >= filters.dateFrom) && (filters.dateTo === null || e.executedAt.slice(0, 10) <= filters.dateTo));
           return { sheet: caseExecutionHistorySheet(lang, events, reportsApi.state.scopes ?? [], reportsApi.state.testCases ?? [], reportsApi.state.rcsMembers ?? []), json: events };
+        },
+      },
+      {
+        id: 'detailedDailyExecution',
+        labelKey: 'exec.detail.exportSheet',
+        build: () => {
+          const events = (reportsApi.state.caseExecutions ?? []).filter((e) => (filters.dateFrom === null || e.executedAt.slice(0, 10) >= filters.dateFrom) && (filters.dateTo === null || e.executedAt.slice(0, 10) <= filters.dateTo));
+          const sheet = detailedDailyExecutionSheet(lang, reportsApi.state.projects, reportsApi.state.scopes ?? [], reportsApi.state.testCases ?? [], events);
+          return { sheet, json: sheet.rows };
         },
       },
       {

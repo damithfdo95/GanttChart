@@ -16,7 +16,9 @@ import { sortScopes, summarize } from '../../domain/testManagement';
 import { planTestRailResultSync, type TestRailSyncPlan } from '../../domain/testManagement/testrailResults';
 import { createTestRailClient } from '../../lib/testrail/client';
 import { TestRailErrorHint } from '../../components/TestRailErrorHint';
-import { eventActorLabel } from '../../domain/testManagement';
+import { dailyDetailedSummary, eventActorLabel } from '../../domain/testManagement';
+import { DetailedExecutionCard } from '../dashboard/DetailedExecutionCard';
+import { businessDate } from '../../../shared/businessTime';
 import { ExecutionTable } from './ExecutionTable';
 import { SummaryBlock } from './SummaryParts';
 import { useTestManagement } from './useTestManagement';
@@ -31,6 +33,8 @@ export function ExecutionTab({ lang, project }: { lang: Language; project: Proje
   const { directory } = useDirectory();
   const scopes = useMemo(() => sortScopes(tm.scopes.filter((s) => s.projectId === project.projectId)), [tm.scopes, project.projectId]);
   const [scopeId, setScopeId] = useState('all');
+  // The day the derived summary below describes (any day with case history can be rebuilt from the immutable events).
+  const [summaryDate, setSummaryDate] = useState(businessDate());
   const active = scopes.filter((s) => s.status === 'active');
   const chosen = scopeId === 'all' ? active : scopes.filter((s) => s.id === scopeId);
   const ids = new Set(chosen.map((s) => s.id));
@@ -175,6 +179,17 @@ export function ExecutionTab({ lang, project }: { lang: Language; project: Proje
         </div>
       )}
       <SummaryBlock lang={lang} summary={summary} />
+      <div className="dr-button-row">
+        <label className="dr-toolbar-field">
+          {t(lang, 'exec.detail.date')}
+          <input className="input" type="date" value={summaryDate} onChange={(e) => e.target.value !== '' && setSummaryDate(e.target.value)} />
+        </label>
+      </div>
+      <DetailedExecutionCard
+        lang={lang}
+        title={scopeId === 'all' ? t(lang, 'exec.detail.title') : `${scopeById.get(scopeId)?.name ?? ''} — ${summaryDate}`}
+        summary={dailyDetailedSummary({ date: summaryDate, projectId: project.projectId, scopeId: scopeId === 'all' ? null : scopeId, scopes: tm.scopes, cases: tm.testCases, events: tm.caseExecutions, fallbackTotal: project.inputs.totalCases })}
+      />
       <ExecutionTable
         lang={lang}
         cases={cases}

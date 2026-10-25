@@ -1,5 +1,6 @@
 import { businessDate } from '../../../shared/businessTime';
-import { caseExecutionTestRailId, type CaseExecutionEvent, type CaseResult, type CaseStatus, type TestCase } from '../../../shared/testManagement';
+import { caseExecutionTestRailId, type CaseExecutionEvent, type CaseResult, type CaseStatus, type TestCase, type TestScope } from '../../../shared/testManagement';
+import type { DailyExecutionEntry } from '../../types';
 
 /**
  * Append-only execution history of test cases (Phase 4).
@@ -103,12 +104,24 @@ export function latestStatusFromHistory(events: readonly CaseExecutionEvent[], t
   return eventsForCase(events, testCaseId)[0]?.status ?? null;
 }
 
-export interface DailyCaseExecution {
-  date: string;
-  /** Every event of the date (a case run three times counts three). */
-  events: number;
-  /** Distinct cases with at least one execution event that day. */
-  uniqueCasesExecuted: number;
+/** The business date (Asia/Tokyo) an event belongs to - the ONE date rule every daily derivation uses. */
+export function eventBusinessDate(e: Pick<CaseExecutionEvent, 'executedAt'>): string {
+  return businessDate(new Date(e.executedAt));
+}
+
+/** The events of one business date, oldest first. */
+function eventsOfDate(events: readonly CaseExecutionEvent[], date: string): CaseExecutionEvent[] {
+  return sortEventsAscending(events.filter((e) => eventBusinessDate(e) === date));
+}
+
+/** Each case's FINAL status of the day: its latest event of that date wins. Built from the events only, never from the current result. */
+function finalStatusByCase(dayEvents: readonly CaseExecutionEvent[]): Map<string, CaseStatus> {
+  const finalByCase = new Map<string, CaseStatus>();
+  for (const e of dayEvents) finalByCase.set(e.testCaseId, e.status);
+  return finalByCase;
+}
+
+export interface StatusCounts {
   passed: number;
   failed: number;
   blocked: number;
@@ -117,27 +130,184 @@ export interface DailyCaseExecution {
   spo: number;
 }
 
+const emptyCounts = (): StatusCounts => ({ passed: 0, failed: 0, blocked: 0, inProgress: 0, na: 0, spo: 0 });
+
+/** Count final statuses. A case that ended the day as Not Started (reset) is not an executed case and is left out. */
+function countFinals(finals: ReadonlyMap<string, CaseStatus>, include: (caseId: string) => boolean = () => true): { unique: number; counts: StatusCounts } {
+  const counts = emptyCounts();
+  let unique = 0;
+  for (const [caseId, status] of finals) {
+    if (status === 'notStarted' || !include(caseId)) continue;
+    unique += 1;
+    if (status === 'pass') counts.passed += 1;
+    else if (status === 'fail') counts.failed += 1;
+    else if (status === 'blocked') counts.blocked += 1;
+    else if (status === 'inProgress') counts.inProgress += 1;
+    else if (status === 'na') counts.na += 1;
+    else if (status === 'spo') counts.spo += 1;
+  }
+  return { unique, counts };
+}
+
+export interface DailyCaseExecution extends StatusCounts {
+  date: string;
+  /** Every event of the date (a case run three times counts three). */
+  events: number;
+  /** Distinct cases with at least one execution event that day (final status other than Not Started). */
+  uniqueCasesExecuted: number;
+}
+
 /**
  * What the detailed case history says about ONE business date (Asia/Tokyo), read-only - it never writes the daily aggregate.
  * Rule: events are grouped by case, and the LATEST event of the date is that case's final status for the day. A case that ends
  * the day as Not Started (reset) is not counted as executed. Event count and unique-case count are different numbers on purpose.
  */
 export function dailyCaseExecution(events: readonly CaseExecutionEvent[], projectId: string, date: string): DailyCaseExecution {
-  const ofDay = sortEventsAscending(events.filter((e) => e.projectId === projectId && businessDate(new Date(e.executedAt)) === date));
-  const finalByCase = new Map<string, CaseStatus>();
-  for (const e of ofDay) finalByCase.set(e.testCaseId, e.status);
-  const out: DailyCaseExecution = { date, events: ofDay.length, uniqueCasesExecuted: 0, passed: 0, failed: 0, blocked: 0, inProgress: 0, na: 0, spo: 0 };
-  for (const status of finalByCase.values()) {
-    if (status === 'notStarted') continue;
-    out.uniqueCasesExecuted += 1;
-    if (status === 'pass') out.passed += 1;
-    else if (status === 'fail') out.failed += 1;
-    else if (status === 'blocked') out.blocked += 1;
-    else if (status === 'inProgress') out.inProgress += 1;
-    else if (status === 'na') out.na += 1;
-    else if (status === 'spo') out.spo += 1;
-  }
-  return out;
+  const ofDay = eventsOfDate(events.filter((e) => e.projectId === projectId), date);
+  const { unique, counts } = countFinals(finalStatusByCase(ofDay));
+  return { date, events: ofDay.length, uniqueCasesExecuted: unique, ...counts };
+}
+
+export interface DailyDetailedSummary extends StatusCounts {
+  date: string;
+  /** The scope this summary is limited to, or null for the whole project. */
+  scopeId: string | null;
+  /** Execution Events: every event of the date. NOT a number of cases. */
+  eventCount: number;
+  /** Unique Cases Executed: cases whose final state of the day is not Not Started. The status counts add up to THIS, never to eventCount. */
+  uniqueCasesExecuted: number;
+  /** Event-based source breakdown (a case with both sources the same day is not forced into one bucket). */
+  manualEvents: number;
+  testrailEvents: number;
+  /** Registered detailed cases (active cases of active scopes) - optional detail, NOT the scope total. */
+  registeredCases: number;
+  /** The authoritative total (scope: its own; project: the sum of the scope totals, else the fallback); null when not set. */
+  scopeTotalCases: number | null;
+  /** Registered cases with any execution event, ever. */
+  casesWithHistory: number;
+  /** Registered cases whose final status on the date counts as executed (the numerator of executedVsRegistered). */
+  executedRegisteredCases: number;
+  coverage: {
+    /** registered / scope total (null without a total) */
+    registeredVsScope: number | null;
+    /** unique registered cases executed on the date / registered (null without registered cases) */
+    executedVsRegistered: number | null;
+  };
+  /** The business date of the first recorded event of this scope set (history before it is not recorded), or null. */
+  firstEventDate: string | null;
+}
+
+export interface DailySummaryInput {
+  date: string;
+  projectId: string;
+  /** Limit to one scope; omit (or null) for the whole project. */
+  scopeId?: string | null;
+  scopes: readonly Pick<TestScope, 'id' | 'projectId' | 'status' | 'totalTestCases'>[];
+  cases: readonly Pick<TestCase, 'id' | 'projectId' | 'scopeId' | 'status'>[];
+  events: readonly CaseExecutionEvent[];
+  /** Only these scopes are looked at (what a Tester may read). Omit for everything the caller holds. */
+  visibleScopeIds?: ReadonlySet<string>;
+  /** The project's own Total, used only when no scope carries one. */
+  fallbackTotal?: number | null;
+}
+
+/**
+ * The complete detailed-execution summary of one date for a project or one scope, rebuilt ENTIRELY from `caseExecution` events
+ * (the current CaseResult is never read: it may be newer than the date). Aggregation is by stable case id, so a case is never counted
+ * twice across scopes. Read-only: nothing here writes the saved Daily Execution.
+ */
+export function dailyDetailedSummary(input: DailySummaryInput): DailyDetailedSummary {
+  const scopeId = input.scopeId ?? null;
+  const scopes = input.scopes.filter((sc) => sc.projectId === input.projectId && (scopeId === null || sc.id === scopeId) && (input.visibleScopeIds === undefined || input.visibleScopeIds.has(sc.id)));
+  const scopeIds = new Set(scopes.map((sc) => sc.id));
+  const activeScopeIds = new Set(scopes.filter((sc) => sc.status === 'active').map((sc) => sc.id));
+  const registered = new Set(input.cases.filter((c) => c.projectId === input.projectId && c.status === 'active' && activeScopeIds.has(c.scopeId)).map((c) => c.id));
+  const mine = input.events.filter((e) => e.projectId === input.projectId && scopeIds.has(e.scopeId));
+  const ofDay = eventsOfDate(mine, input.date);
+  const { unique, counts } = countFinals(finalStatusByCase(ofDay));
+  const executedRegistered = countFinals(finalStatusByCase(ofDay), (id) => registered.has(id)).unique;
+
+  const totals = scopes.filter((sc) => sc.status === 'active').map((sc) => sc.totalTestCases).filter((v): v is number => typeof v === 'number');
+  const scopeTotalCases = totals.length > 0 ? totals.reduce((a, b) => a + b, 0) : scopeId === null ? (input.fallbackTotal ?? null) : null;
+  const first = mine.length === 0 ? null : eventBusinessDate(sortEventsAscending(mine)[0] as CaseExecutionEvent);
+
+  return {
+    date: input.date,
+    scopeId,
+    eventCount: ofDay.length,
+    uniqueCasesExecuted: unique,
+    ...counts,
+    manualEvents: ofDay.filter((e) => e.source === 'manual').length,
+    testrailEvents: ofDay.filter((e) => e.source === 'testrail').length,
+    registeredCases: registered.size,
+    scopeTotalCases,
+    executedRegisteredCases: executedRegistered,
+    casesWithHistory: new Set(mine.filter((e) => registered.has(e.testCaseId)).map((e) => e.testCaseId)).size,
+    coverage: {
+      registeredVsScope: scopeTotalCases !== null && scopeTotalCases > 0 ? registered.size / scopeTotalCases : null,
+      executedVsRegistered: registered.size > 0 ? executedRegistered / registered.size : null,
+    },
+    firstEventDate: first,
+  };
+}
+
+export interface ComparedMetric {
+  comparable: boolean;
+  saved: number | null;
+  detailed: number | null;
+  /** saved - detailed (positive: the saved aggregate is higher); null when not comparable or either side is missing. */
+  difference: number | null;
+}
+
+export interface DailyExecutionComparison {
+  hasSaved: boolean;
+  hasDetailed: boolean;
+  /** Saved executed (Pass + Fail + N/A + SPO + uncategorized) vs Unique Cases Executed (any final status except Not Started). */
+  executed: ComparedMetric;
+  /** Saved executed vs the detailed cases that reached a completed status (Pass + Fail + N/A + SPO): the stricter like-for-like. */
+  completed: ComparedMetric;
+  passed: ComparedMetric;
+  failed: ComparedMetric;
+  blocked: ComparedMetric;
+  /** In Progress exists only in the detailed history (the saved aggregate has no such count); never mapped onto anything. */
+  inProgress: ComparedMetric;
+  /** The saved day figures the detailed history cannot reproduce. */
+  notComparable: readonly ('inProgress' | 'retest' | 'questioned')[];
+  relation: 'savedHigher' | 'detailedHigher' | 'equal' | 'unknown';
+}
+
+const metric = (saved: number | null, detailed: number | null, comparable = true): ComparedMetric => ({
+  comparable,
+  saved,
+  detailed,
+  difference: comparable && saved !== null && detailed !== null ? saved - detailed : null,
+});
+
+/**
+ * Pure, informational comparison of the SAVED daily aggregate with the case-history summary. It explains nothing and reconciles
+ * nothing: a difference is not corruption (the detailed cases may cover only part of the scope, some work may be tracked only in
+ * aggregate, TestRail's day figure may include cases not registered here, repeated runs are events but not extra cases).
+ */
+export function compareDailyExecution(input: {
+  savedDaily: Pick<DailyExecutionEntry, 'pass' | 'fail' | 'notApplicable' | 'spo' | 'blocked' | 'uncategorizedCompleted'> | null;
+  caseDerived: Pick<DailyDetailedSummary, 'uniqueCasesExecuted' | 'passed' | 'failed' | 'blocked' | 'inProgress' | 'na' | 'spo' | 'eventCount'> | null;
+}): DailyExecutionComparison {
+  const saved = input.savedDaily;
+  const d = input.caseDerived !== null && input.caseDerived.eventCount > 0 ? input.caseDerived : null;
+  const savedExecuted = saved === null ? null : saved.pass + saved.fail + saved.notApplicable + saved.spo + (saved.uncategorizedCompleted ?? 0);
+  const executed = metric(savedExecuted, d === null ? null : d.uniqueCasesExecuted);
+  return {
+    hasSaved: saved !== null,
+    hasDetailed: d !== null,
+    executed,
+    completed: metric(savedExecuted, d === null ? null : d.passed + d.failed + d.na + d.spo),
+    passed: metric(saved === null ? null : saved.pass, d === null ? null : d.passed),
+    failed: metric(saved === null ? null : saved.fail, d === null ? null : d.failed),
+    blocked: metric(saved === null ? null : saved.blocked, d === null ? null : d.blocked),
+    inProgress: metric(null, d === null ? null : d.inProgress, false),
+    notComparable: ['inProgress', 'retest', 'questioned'],
+    relation: executed.difference === null ? 'unknown' : executed.difference > 0 ? 'savedHigher' : executed.difference < 0 ? 'detailedHigher' : 'equal',
+  };
 }
 
 export interface ExecutionCoverage {

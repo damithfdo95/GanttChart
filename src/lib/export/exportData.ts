@@ -37,7 +37,7 @@ import { isAttending } from '../reporting/sections';
 import { projectPlanningStatus, projectDisplayName } from '../../domain/projects';
 import type { TicketAnalysis } from '../../domain/jira';
 import type { XlsxCell, XlsxSheet } from './xlsx';
-import { eventActorLabel, sortEventsAscending, type CaseExecutionEvent, type TestCase, type TestScope } from '../../domain/testManagement';
+import { compareDailyExecution, dailyDetailedSummary, eventActorLabel, eventBusinessDate, sortEventsAscending, type CaseExecutionEvent, type DailyDetailedSummary, type TestCase, type TestScope } from '../../domain/testManagement';
 import { buildManagementReportRow, riskStatusLabel, type ManagementReportRow } from './management';
 /** Export filters (date range, team, attendance status). */
 
@@ -421,6 +421,78 @@ export function caseExecutionHistorySheet(
       e.device ?? '',
       e.os ?? '',
     ]),
+  };
+}
+
+/**
+ * Detailed Daily Execution: for every project and every date that has case-history events, one project row (with the saved daily
+ * aggregate beside it) and one row per scope. Derived from the immutable events only; the saved figures are read, never written.
+ * Event columns count events, case columns count unique cases - they are never the same column.
+ */
+export function detailedDailyExecutionSheet(
+  lang: Language,
+  projects: readonly ProjectRecord[],
+  scopes: readonly TestScope[],
+  cases: readonly TestCase[],
+  events: readonly CaseExecutionEvent[],
+): XlsxSheet {
+  const rows: XlsxCell[][] = [];
+  const row = (date: string, p: ProjectRecord, scopeName: string, sm: DailyDetailedSummary, saved: [string | number, string, string | number]): XlsxCell[] => [
+    { kind: 'date', value: date },
+    p.projectId,
+    projectDisplayName(p, lang),
+    scopeName,
+    sm.scopeTotalCases ?? '—',
+    sm.registeredCases,
+    sm.uniqueCasesExecuted,
+    sm.eventCount,
+    sm.passed,
+    sm.failed,
+    sm.blocked,
+    sm.inProgress,
+    sm.manualEvents,
+    sm.testrailEvents,
+    saved[0],
+    saved[1],
+    saved[2],
+  ];
+  for (const p of projects) {
+    const mine = events.filter((e) => e.projectId === p.projectId);
+    const dates = [...new Set(mine.map(eventBusinessDate))].sort();
+    for (const date of dates) {
+      const input = { date, projectId: p.projectId, scopes, cases, events: mine, fallbackTotal: p.inputs.totalCases };
+      const project = dailyDetailedSummary(input);
+      const entry = (p.inputs.dailyExecuted ?? []).find((e) => e.date === date) ?? null;
+      const cmp = compareDailyExecution({ savedDaily: entry, caseDerived: project });
+      rows.push(row(date, p, '', project, [cmp.executed.saved ?? '—', entry === null ? '—' : t(lang, executionSourceLabelKey(executionSourceOf(entry))), cmp.executed.difference ?? '—']));
+      for (const sc of scopes.filter((s) => s.projectId === p.projectId)) {
+        const sm = dailyDetailedSummary({ ...input, scopeId: sc.id });
+        if (sm.eventCount > 0) rows.push(row(date, p, sc.name, sm, ['', '', '']));
+      }
+    }
+  }
+  return {
+    name: t(lang, 'exec.detail.exportSheet'),
+    headers: [
+      t(lang, 'columns.date'),
+      t(lang, 'tm.history.exportProjectId'),
+      t(lang, 'columns.name'),
+      t(lang, 'tm.col.scope'),
+      t(lang, 'exec.detail.exportScopeTotal'),
+      t(lang, 'exec.detail.exportRegistered'),
+      t(lang, 'exec.detail.exportUnique'),
+      t(lang, 'exec.detail.exportEvents'),
+      t(lang, 'tm.status.pass'),
+      t(lang, 'tm.status.fail'),
+      t(lang, 'tm.status.blocked'),
+      t(lang, 'tm.status.inProgress'),
+      t(lang, 'exec.detail.exportManual'),
+      t(lang, 'exec.detail.exportTestrail'),
+      t(lang, 'exec.detail.exportSaved'),
+      t(lang, 'exec.detail.exportSavedSource'),
+      t(lang, 'exec.detail.exportDifference'),
+    ],
+    rows,
   };
 }
 
