@@ -231,7 +231,15 @@ export interface QaCommitInput {
  *  - Daily execution entries obey `projectExecutionError`.
  */
 export function qaCommitError(input: QaCommitInput): string | null {
-  const { role, puts, deletes, view } = input;
+  const { role, puts, deletes } = input;
+  // The server answers list() with a table scan, and every row scanned counts against the Durable Object's daily read limit: each kind is
+  // listed at most once per commit, however many rules (or puts) ask for it.
+  const rawList = input.view.list;
+  const listCache = new Map<string, Array<{ id: string; json: string }>>();
+  const view: typeof input.view = {
+    ...input.view,
+    ...(rawList === undefined ? {} : { list: (kind: string) => listCache.get(kind) ?? (listCache.set(kind, rawList(kind)), listCache.get(kind) as Array<{ id: string; json: string }>) }),
+  };
   const isAdmin = role === 'admin';
 
   // A Tester (anyone who is not an SV) may change only their own tickets, performance and today's execution.

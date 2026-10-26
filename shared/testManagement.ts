@@ -377,7 +377,75 @@ export function testManagementCommitError(input: TmCommitInput): string | null {
     if (typeof p?.projectId === 'string') deletedProjects.add(p.projectId);
   }
 
-  const list = view.list;
+  // READ COST. The server answers list() with a table scan (every row read is billed and counts against the Durable Object's daily
+  // limit). A commit can carry hundreds of puts, so each kind is listed AT MOST ONCE per commit, every row is parsed at most once, and
+  // the lookups the rules need (does this project / scope code / case key exist, which cases belong to a scope, which cases have
+  // history) are indexes built lazily from those single reads - never a scan per put.
+  const rawList = view.list;
+  const listCache = new Map<string, Array<{ id: string; json: string }>>();
+  const list: ((kind: string) => Array<{ id: string; json: string }>) | undefined =
+    rawList === undefined
+      ? undefined
+      : (kind) => {
+          let rows = listCache.get(kind);
+          if (rows === undefined) {
+            rows = rawList(kind);
+            listCache.set(kind, rows);
+          }
+          return rows;
+        };
+  const parsedRows = new WeakMap<object, Obj | null>();
+  const rowObj = (r: { id: string; json: string }): Obj | null => {
+    let o = parsedRows.get(r);
+    if (o === undefined) {
+      o = parse(r.json);
+      parsedRows.set(r, o);
+    }
+    return o;
+  };
+  const lazy = <T,>(build: () => T): (() => T) => {
+    let value: T | undefined;
+    return () => (value === undefined ? (value = build()) : value);
+  };
+  const storedProjectIds = lazy(() => new Set((list?.('project') ?? []).map((r) => rowObj(r)?.projectId).filter((v): v is string => typeof v === 'string')));
+  /** `${projectId}\u0000${value}` -> ids of the scopes / cases using it (a record changed in this commit counts with its NEW value). */
+  const fieldIndex = (kind: 'scope' | 'testCase', field: 'code' | 'key', news: Map<string, Obj>) =>
+    lazy(() => {
+      const index = new Map<string, Set<string>>();
+      for (const r of list?.(kind) ?? []) {
+        const o = news.get(r.id) ?? rowObj(r);
+        if (o !== null && typeof o.projectId === 'string' && typeof o[field] === 'string') {
+          const k = `${o.projectId}\u0000${String(o[field])}`;
+          (index.get(k) ?? index.set(k, new Set()).get(k)!).add(r.id);
+        }
+      }
+      return index;
+    });
+  const scopeCodes = fieldIndex('scope', 'code', newScopes);
+  const caseKeys = fieldIndex('testCase', 'key', newCases);
+  const takenBy = (index: Map<string, Set<string>>, projectId: unknown, value: unknown, selfId: string): boolean => {
+    for (const id of index.get(`${String(projectId)}\u0000${String(value)}`) ?? []) if (id !== selfId) return true;
+    return false;
+  };
+  const deletedIds = (kind: string): Set<string> => new Set(deletes.filter((x) => x.kind === kind).map((x) => x.id));
+  const historyByCase = lazy(() => {
+    const m = new Map<string, string[]>();
+    for (const r of list?.('caseExecution') ?? []) {
+      const id = rowObj(r)?.testCaseId;
+      if (typeof id === 'string') (m.get(id) ?? m.set(id, []).get(id)!).push(r.id);
+    }
+    return m;
+  });
+  const casesByScope = lazy(() => {
+    const m = new Map<string, string[]>();
+    for (const r of list?.('testCase') ?? []) {
+      const id = rowObj(r)?.scopeId;
+      if (typeof id === 'string') (m.get(id) ?? m.set(id, []).get(id)!).push(r.id);
+    }
+    return m;
+  });
+  const deletedExecutions = lazy(() => deletedIds('caseExecution'));
+  const deletedCases = lazy(() => deletedIds('testCase'));
 
   for (const p of puts) {
     if (p.kind === 'scope') {
@@ -389,16 +457,11 @@ export function testManagementCommitError(input: TmCommitInput): string | null {
       const prev = parse(view.get('scope', p.id));
       if (prev === null) {
         // A new scope belongs to a project of THIS workspace.
-        const projects = list?.('project') ?? [];
-        const known = projects.some((r) => parse(r.json)?.projectId === next.projectId) || puts.some((q) => q.kind === 'project' && parse(q.json)?.projectId === next.projectId);
+        const known = storedProjectIds().has(next.projectId) || puts.some((q) => q.kind === 'project' && parse(q.json)?.projectId === next.projectId);
         if (!known) return 'scope_project_not_found';
       } else if (prev.projectId !== next.projectId) return 'scope_project_immutable';
       if (next.code !== undefined && list !== undefined) {
-        for (const r of list('scope')) {
-          if (r.id === p.id) continue;
-          const o = newScopes.get(r.id) ?? parse(r.json);
-          if (o !== null && o.projectId === next.projectId && o.code === next.code) return 'scope_code_taken';
-        }
+        if (takenBy(scopeCodes(), next.projectId, next.code, p.id)) return 'scope_code_taken';
         for (const [id, o] of newScopes) if (id !== p.id && o.projectId === next.projectId && o.code === next.code) return 'scope_code_taken';
       }
     }
@@ -421,11 +484,7 @@ export function testManagementCommitError(input: TmCommitInput): string | null {
       }
       if (prev === null || prev.key !== next.key) {
         if (list !== undefined) {
-          for (const r of list('testCase')) {
-            if (r.id === p.id) continue;
-            const o = newCases.get(r.id) ?? parse(r.json);
-            if (o !== null && o.projectId === next.projectId && o.key === next.key) return 'testcase_key_taken';
-          }
+          if (takenBy(caseKeys(), next.projectId, next.key, p.id)) return 'testcase_key_taken';
         }
         for (const [id, o] of newCases) if (id !== p.id && o.projectId === next.projectId && o.key === next.key) return 'testcase_key_taken';
       }
@@ -498,7 +557,7 @@ export function testManagementCommitError(input: TmCommitInput): string | null {
       const prev = parse(view.get('caseExecution', d.id));
       if (prev === null) continue;
       if (typeof prev.projectId === 'string' && deletedProjects.has(prev.projectId)) continue;
-      if (typeof prev.projectId === 'string' && list !== undefined && !list('project').some((r) => parse(r.json)?.projectId === prev.projectId)) continue;
+      if (typeof prev.projectId === 'string' && list !== undefined && !storedProjectIds().has(prev.projectId)) continue;
       if (typeof prev.testCaseId === 'string' && view.get('testCase', prev.testCaseId) === null) continue;
       return 'execution_append_only';
     }
@@ -512,19 +571,14 @@ export function testManagementCommitError(input: TmCommitInput): string | null {
     if (prev === null) continue;
     if (typeof prev.projectId === 'string' && deletedProjects.has(prev.projectId)) continue; // the whole project goes
     // ... or already went (a large clean-up is sent in several commits): nothing is left for these records to belong to.
-    if (typeof prev.projectId === 'string' && list !== undefined && !list('project').some((r) => parse(r.json)?.projectId === prev.projectId)) continue;
+    if (typeof prev.projectId === 'string' && list !== undefined && !storedProjectIds().has(prev.projectId)) continue;
     if (d.kind === 'testCase') {
       if (view.get('caseResult', caseResultId(d.id)) !== null && !deletes.some((x) => x.kind === 'caseResult' && x.id === caseResultId(d.id))) return 'testcase_has_results';
       if (list !== undefined) {
-        for (const r of list('caseExecution')) {
-          if (parse(r.json)?.testCaseId === d.id && !deletes.some((x) => x.kind === 'caseExecution' && x.id === r.id)) return 'testcase_has_history';
-        }
+        for (const id of historyByCase().get(d.id) ?? []) if (!deletedExecutions().has(id)) return 'testcase_has_history';
       }
     } else if (list !== undefined) {
-      for (const r of list('testCase')) {
-        const o = parse(r.json);
-        if (o?.scopeId === d.id && !deletes.some((x) => x.kind === 'testCase' && x.id === r.id)) return 'scope_has_cases';
-      }
+      for (const id of casesByScope().get(d.id) ?? []) if (!deletedCases().has(id)) return 'scope_has_cases';
     }
   }
   return null;

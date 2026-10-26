@@ -269,7 +269,7 @@ describe('an integration outage stays inside the integration action', () => {
 
   it('the Command Center and analytics are derived from saved data: they run with the network down and import no integration client', () => {
     vi.stubGlobal('fetch', failFetch);
-    const inputs = normalizeQaInputs({ ...(DEMO_STATE as QaInputs), dailyExecuted: [] });
+    const inputs = normalizeQaInputs({ ...(DEMO_STATE as QaInputs), dailyExecuted: [], startDate: '2026-10-01' });
     const project = { ...newProjectRecord(inputs, { nameEn: 'P', nameJa: 'P', status: 'ongoing' }, '2026-10-01T00:00:00.000Z', []), id: 'rec_1', projectId: 'PRJ-1' };
     const ops = buildSupervisorDailyOperations({ projects: [project], scopes: [], cases: [], selectedDate: '2026-10-25', today: '2026-10-25', nowIso: '2026-10-25T00:00:00.000Z' });
     expect(ops.projects.length).toBe(1);
