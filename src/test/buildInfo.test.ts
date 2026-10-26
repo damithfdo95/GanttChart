@@ -7,7 +7,7 @@ import { businessStamp } from '../../shared/businessTime';
  * from vite's `define` at compile time; only the pure helper is unit-tested.
  */
 
-const info = (release: string): BuildInfo => ({ version: '0.10.0-pilot.1', commit: 'abc123def456', release, builtAt: '2026-10-21T09:30:00.000Z', channel: 'pilot' });
+const info = (release: string): BuildInfo => ({ version: '0.10.0-pilot.2', commit: 'abc123def456', release, builtAt: '2026-10-21T09:30:00.000Z', channel: 'pilot' });
 
 describe('buildInfo', () => {
   it('recognizes a tagged release (v-prefixed or plain semver)', () => {

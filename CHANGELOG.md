@@ -3,6 +3,16 @@
 Meaningful user-facing and security changes only, newest first. Categories: Added, Changed, Fixed, Security.
 The product version is `package.json`; formal releases are tagged `v` + that version (see [docs/RELEASING.md](docs/RELEASING.md)).
 
+## 0.10.0-pilot.2 - Durable Object read-cost fix (tag `v0.10.0-pilot.2` to be created by the owner at release)
+
+### Fixed
+- Optimized WorkspaceRoom commit validation: the scopes, test cases and case-execution history tables are now read once per commit
+  instead of once per record, and rows are parsed once. This stops large TestRail imports and bulk commits from generating excessive
+  Durable Object SQLite row reads (which count against the free plan's daily limit). No business-rule behavior change.
+
+### Maintenance
+- A test fixture that depended on the current date now pins its dates.
+
 ## 0.10.0-pilot.1 - pilot baseline (tag `v0.10.0-pilot.1` to be created by the owner at release)
 
 Summary of what the pilot contains, by product area (not every commit):
