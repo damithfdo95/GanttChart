@@ -3,6 +3,13 @@
 Meaningful user-facing and security changes only, newest first. Categories: Added, Changed, Fixed, Security.
 The product version is `package.json`; formal releases are tagged `v` + that version (see [docs/RELEASING.md](docs/RELEASING.md)).
 
+## 0.10.0-pilot.3 - TestRail scope import (tag `v0.10.0-pilot.3` to be created by the owner at release)
+
+### Changed
+- TestRail scope import now assigns matched testers automatically, without the extra confirmation click.
+- By-tester names are resolved through the linked Team Member first.
+- Existing import behavior and permissions are unchanged.
+
 ## 0.10.0-pilot.2 - Durable Object read-cost fix (tag `v0.10.0-pilot.2` to be created by the owner at release)
 
 ### Fixed
