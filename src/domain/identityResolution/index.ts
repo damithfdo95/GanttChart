@@ -12,6 +12,8 @@ import { generateId } from '../../lib/id';
 import {
   resolveMemberIdentityDetailed,
   resolveMemberIdentity,
+  reporterIdentityKey,
+  testerIdentityKey,
   type IdentityDateMatch,
   type MemberIdentityCandidate,
 } from '../members';
@@ -500,4 +502,98 @@ export function memberReferenceScope(input: {
     performance: input.projects.flatMap((project) => project.inputs.testerDailyPerformance ?? []),
     reviews: input.reviews ?? [],
   };
+}
+
+// ---- V6.10: unlinked-tester merge preview ------------------------------------------
+
+/** One recorded tester name that matches no Team Member, with its evidence. */
+export interface UnlinkedTesterEvidence {
+  /** The recorded display name (the unresolved identity key). */
+  name: string;
+  /** Distinct dates with a record. */
+  activeDays: number;
+  /** Total cases tested across all records. */
+  casesTested: number;
+  /** Bug tickets reported under this name. */
+  bugsFound: number;
+  /** Distinct projects the name appears in. */
+  projectIds: string[];
+  /** Distinct execution sources ('' when none). */
+  sources: string[];
+}
+
+/**
+ * Collect every recorded tester name that resolves to NO Team Member, with
+ * the evidence a supervisor needs to decide how to merge it. This is the
+ * data behind the Performance page's "Unlinked Testers" panel — the main
+ * table never shows these names; only this panel does.
+ *
+ * The scope (period / project) is honoured like the aggregation's, so the
+ * panel reflects exactly what the current view hides.
+ */
+export function collectUnlinkedTesters(
+  records: readonly TesterDailyPerformance[],
+  tickets: readonly BugTicket[],
+  members: readonly RcsMember[],
+  options: { range?: { start: string; end: string } | null; projectIds?: readonly string[] | null } = {},
+): UnlinkedTesterEvidence[] {
+  const memberIds = new Set(members.map((member) => member.id));
+  const inRange = (date: string): boolean =>
+    options.range === undefined || options.range === null || (date >= options.range.start && date <= options.range.end);
+  const inProject = (projectId: string): boolean =>
+    options.projectIds === undefined || options.projectIds === null || options.projectIds.includes(projectId);
+
+  const byName = new Map<string, UnlinkedTesterEvidence>();
+  const touch = (name: string): UnlinkedTesterEvidence => {
+    let entry = byName.get(name);
+    if (entry === undefined) {
+      entry = { name, activeDays: 0, casesTested: 0, bugsFound: 0, projectIds: [], sources: [] };
+      byName.set(name, entry);
+    }
+    return entry;
+  };
+  const addProject = (entry: UnlinkedTesterEvidence, projectId: string): void => {
+    if (!entry.projectIds.includes(projectId)) entry.projectIds.push(projectId);
+  };
+  const addSource = (entry: UnlinkedTesterEvidence, source: string): void => {
+    if (source !== '' && !entry.sources.includes(source)) entry.sources.push(source);
+  };
+
+  for (const record of records) {
+    if (!inRange(record.date) || !inProject(record.projectId)) continue;
+    const key = testerIdentityKey(record, members);
+    if (key === '' || memberIds.has(key)) continue;
+    const entry = touch(key);
+    entry.activeDays += 1;
+    entry.casesTested += Math.max(0, record.casesTested);
+    addProject(entry, record.projectId);
+    if (record.source !== undefined) addSource(entry, record.source);
+  }
+  for (const ticket of tickets) {
+    if (!inRange(ticket.createdAt) || !inProject(ticket.projectId)) continue;
+    const key = reporterIdentityKey(ticket, members);
+    if (key === '' || memberIds.has(key)) continue;
+    const entry = touch(key);
+    entry.bugsFound += 1;
+    addProject(entry, ticket.projectId);
+  }
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Build the name-history entry that merges a recorded name into a member:
+ * the recorded name becomes a historical name so every legacy record under
+ * it resolves to the stable member id (non-destructive — the original
+ * records are never rewritten). Returns null when the name is already the
+ * member's current name or already in its history.
+ */
+export function buildMergeNameHistoryEntry(
+  recordedName: string,
+  member: RcsMember,
+): { name: string } | null {
+  const trimmed = recordedName.trim();
+  if (trimmed === '') return null;
+  if (member.name.trim() === trimmed) return null;
+  if ((member.nameHistory ?? []).some((entry) => entry.name.trim() === trimmed)) return null;
+  return { name: trimmed };
 }

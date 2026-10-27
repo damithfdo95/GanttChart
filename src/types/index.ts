@@ -8,6 +8,7 @@ export type Language = 'en' | 'ja';
  */
 import type { CycleRecord, CycleStatus } from '../../shared/qaRules';
 import type { QaPolicy } from '../../shared/qaPolicy';
+import type { ScreenId } from '../app/access';
 import type { ReportPublication } from '../../shared/reportPublication';
 import type { CaseExecutionEvent, CaseResult, TestCase, TestScope } from '../../shared/testManagement';
 import type { DailyTeamPlan, MeetingNote } from '../../shared/meeting';
@@ -779,6 +780,11 @@ export interface ReportSettings {
    * the UI warns about that). Never part of the shared workspace.
    */
   testrail?: TestRailConnection;
+  /**
+   * Left-menu items the SV has hidden. Absent or empty = every screen the role allows is shown. Only screens the SV can see are
+   * ever listed here; a Tester's own menu is never affected.
+   */
+  hiddenNavItems?: ScreenId[];
 }
 
 export interface ReportsState {

@@ -51,8 +51,7 @@ export function DataBackup() {
   };
 
   return (
-    <section className="dr-section" aria-labelledby="data-backup-title">
-      <h2 id="data-backup-title">{t(lang, 'settings.dataBackup.title')}</h2>
+    <>
       <p className="dr-summary">{t(lang, 'settings.dataBackup.help')}</p>
       <DataControls
         labels={{ export: t(lang, 'buttons.export'), import: t(lang, 'buttons.import'), reset: t(lang, 'buttons.reset') }}
@@ -61,6 +60,6 @@ export function DataBackup() {
         onImportFile={handleImportFile}
         onReset={handleReset}
       />
-    </section>
+    </>
   );
 }

@@ -1667,6 +1667,19 @@ input[type='checkbox'] {
   }
 }
 
+.menu-visibility-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 6px 16px;
+  margin-top: 8px;
+}
+
+.menu-visibility-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .ia-chart {
   margin: 12px 0;
 }

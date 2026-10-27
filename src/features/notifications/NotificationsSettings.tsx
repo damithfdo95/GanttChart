@@ -109,12 +109,9 @@ export function NotificationsSettings() {
 
   if (api === null || principal === null || !principal.sharedWorkspace || principal.role !== 'admin') {
     return (
-      <section className="dr-section" aria-labelledby="nt-title">
-        <h2 id="nt-title">{t(lang, 'nt.title')}</h2>
-        <p className="tenancy-empty" role="note">
-          {t(lang, 'nt.needsWeb')}
-        </p>
-      </section>
+      <p className="tenancy-empty" role="note">
+        {t(lang, 'nt.needsWeb')}
+      </p>
     );
   }
 
@@ -171,9 +168,8 @@ export function NotificationsSettings() {
   const sorted = [...defs].sort((a, b) => a.title.localeCompare(b.title));
 
   return (
-    <section className="dr-section" aria-labelledby="nt-title">
+    <>
       <div className="dr-button-row">
-        <h2 id="nt-title">{t(lang, 'nt.title')}</h2>
         <button type="button" className="btn btn-primary" onClick={() => { setDraft({ ...EMPTY }); setMessage(null); }}>
           {t(lang, 'nt.add')}
         </button>
@@ -356,6 +352,6 @@ export function NotificationsSettings() {
           </table>
         </div>
       )}
-    </section>
+    </>
   );
 }

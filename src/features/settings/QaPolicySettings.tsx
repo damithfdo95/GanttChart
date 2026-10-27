@@ -49,8 +49,7 @@ export function QaPolicySettings() {
   );
 
   return (
-    <section className="dr-section" aria-labelledby="qapolicy-title">
-      <h2 id="qapolicy-title">{t(lang, 'settings.qaPolicy.title')}</h2>
+    <>
       <p className="dr-summary">{t(lang, 'settings.qaPolicy.help')}</p>
       <p className="link-help">
         {t(lang, 'settings.qaPolicy.current')}: {t(lang, custom ? 'readiness.policy.custom' : 'readiness.policy.default')}
@@ -104,6 +103,6 @@ export function QaPolicySettings() {
           </span>
         )}
       </div>
-    </section>
+    </>
   );
 }

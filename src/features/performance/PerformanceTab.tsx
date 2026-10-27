@@ -2,20 +2,15 @@ import { useAskConfirm } from '../../components/ConfirmDialog';
 import { selectableMembers } from '../../domain/teamMembers';
 import { businessDate } from '../../../shared/businessTime';
 import { useMemo, useState } from 'react';
-import type { PerformanceRecordSource, ProjectRecord, TesterDailyPerformance } from '../../types';
+import type { PerformanceRecordSource, ProjectRecord, RcsMember, TesterDailyPerformance } from '../../types';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
-import { t } from '../../i18n';
+import { t, type TranslationKey } from '../../i18n';
 import { formatDate, todayEpochDays } from '../../lib/dates/dates';
 import { formatInteger } from '../../lib/formatting/format';
 import { resolveBilingualName } from '../../i18n';
 import { projectDisplayName } from '../../domain/projects';
 import {
-  aggregateTesterPerformance,
   getPeriodRange,
-  getTesterMonthlyTrend,
-  getTesterProjectBreakdown,
-  performanceSummary,
-  unlinkedTesterNames,
   type PeriodHalf,
   type PeriodSelector,
 } from '../../lib/calculations/testerPerformance';
@@ -24,21 +19,26 @@ import {
   upsertTesterDailyPerformance,
 } from '../../domain/performance';
 import { dailyAttributionMismatches } from '../../lib/calculations/testerAttribution';
-import { PerformanceSummaryCards } from './PerformanceSummary';
-import { TesterPerformanceTable, sourceLabel } from './TesterPerformanceTable';
-import { TesterDetail, type TesterDetailSummary } from './TesterDetail';
+import { nextMemberId, normalizeMemberNameHistory } from '../../domain/members';
+import { sourceLabel } from './TesterPerformanceTable';
 import { TesterDayRecordForm, type ParsedDailyExecution } from './TesterDayRecordForm';
 import { SyncSection } from './SyncSection';
 import { useAccess } from '../../app/access';
 import { TesterProfileNotice } from '../tenancy/TesterProfileNotice';
 import { TablePager } from '../../components/TablePager';
 import { usePagedRows } from '../../lib/pagination/usePagedRows';
+import { PerformanceOverviewTab } from './PerformanceOverviewTab';
+import { PerTesterTab } from './PerTesterTab';
+import { UnlinkedTestersPanel } from './UnlinkedTestersPanel';
 
 type PeriodKind = PeriodSelector['kind'];
+type PerfTab = 'overview' | 'perTester' | 'unlinked' | 'data';
 
 const MONTH_LABELS: string[] = [
   '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12',
 ];
+
+const PERF_TABS: readonly PerfTab[] = ['overview', 'perTester', 'unlinked', 'data'];
 
 function availableYears(projects: readonly ProjectRecord[], fallback: number): number[] {
   const years = new Set<number>([fallback]);
@@ -56,10 +56,14 @@ function availableYears(projects: readonly ProjectRecord[], fallback: number): n
 }
 
 /**
- * Performance screen (V6.6): objective tester analytics over the existing
- * evidence chain. Reads every project's tester daily records and bug
- * tickets — including Done projects (§22) — aggregates them with the pure
- * calculation module, and never computes a bonus/salary/rating score.
+ * Performance screen (V6.6, V6.10): objective tester analytics over the
+ * existing evidence chain, organised into focused tabs:
+ *  - Overview: team summary + aggregated per-tester table
+ *  - Per-Tester: one tester's performance by day / week / month
+ *  - Unlinked Testers: confirm & merge recorded names that match no member
+ *  - Data Management: daily execution entry + sync (SV)
+ * Reads every project's tester daily records and bug tickets — including
+ * Done projects (§22) — and never computes a bonus/salary/rating score.
  */
 export function PerformanceTab() {
   const app = useAppStateCtx();
@@ -71,6 +75,7 @@ export function PerformanceTab() {
   const defaultYear = Number(today.slice(0, 4));
   const defaultMonth = Number(today.slice(5, 7));
 
+  const [tab, setTab] = useState<PerfTab>('overview');
   const [periodKind, setPeriodKind] = useState<PeriodKind>('month');
   const [year, setYear] = useState<number>(defaultYear);
   const [month, setMonth] = useState<number>(defaultMonth);
@@ -128,40 +133,6 @@ export function PerformanceTab() {
   const options = useMemo(
     () => ({ range, projectIds: scopeProjectIds, members, registeredOnly: true }),
     [range, scopeProjectIds, members],
-  );
-
-  const rows = useMemo(
-    () => aggregateTesterPerformance(allRecords, allTickets, options),
-    [allRecords, allTickets, options],
-  );
-  const summary = useMemo(
-    () => performanceSummary(allRecords, allTickets, options),
-    [allRecords, allTickets, options],
-  );
-  /** Recorded tester names that match no Team Member — hidden from the table, shown as a hint. */
-  const unlinkedTesters = useMemo(
-    () => unlinkedTesterNames(allRecords, allTickets, options),
-    [allRecords, allTickets, options],
-  );
-
-  const selectedRow =
-    selectedTester === null ? null : rows.find((row) => (row.memberId ?? row.testerName) === selectedTester) ?? null;
-  const detailSummary: TesterDetailSummary | null =
-    selectedRow === null
-      ? null
-      : {
-          casesTested: selectedRow.casesTested,
-          activeDays: selectedRow.activeDays,
-          projects: selectedRow.projectIds.length,
-          bugsFound: selectedRow.bugsFound,
-        };
-  const breakdown = useMemo(
-    () => (selectedTester === null ? [] : getTesterProjectBreakdown(allRecords, allTickets, selectedTester, options)),
-    [selectedTester, allRecords, allTickets, options],
-  );
-  const trend = useMemo(
-    () => (selectedTester === null ? [] : getTesterMonthlyTrend(allRecords, allTickets, selectedTester, options)),
-    [selectedTester, allRecords, allTickets, options],
   );
 
   const periodLabel =
@@ -299,12 +270,52 @@ export function PerformanceTab() {
 
   const years = useMemo(() => availableYears(projects, defaultYear), [projects, defaultYear]);
 
+  // ---- Unlinked-tester merge handlers (V6.10) ----
+  const handleMergeToMember = (memberId: string, recordedName: string): void => {
+    const member = members.find((m) => m.id === memberId);
+    if (member === undefined) return;
+    const history = normalizeMemberNameHistory([...(member.nameHistory ?? []), { name: recordedName }]);
+    reportsApi.upsertMember({ ...member, nameHistory: history });
+  };
+
+  const handleCreateMember = (recordedName: string): void => {
+    const member: RcsMember = {
+      id: nextMemberId(members),
+      name: recordedName.trim(),
+      team: 'RCS',
+      role: 'Tester',
+      startDate: today,
+      active: true,
+    };
+    reportsApi.upsertMember(member);
+  };
+
+  const tabLabel = (id: PerfTab): TranslationKey => {
+    switch (id) {
+      case 'overview':
+        return 'performance.tabOverview';
+      case 'perTester':
+        return 'performance.tabPerTester';
+      case 'unlinked':
+        return 'performance.tabUnlinked';
+      default:
+        return 'performance.tabData';
+    }
+  };
+
   return (
     <div className="app">
       <header className="app-header">
         <div className="app-title-group">
           <h1>{t(lang, 'performance.title')}</h1>
           <span className="app-subtitle">{t(lang, 'performance.period')}: {periodLabel}</span>
+        </div>
+        <div className="view-toggle" role="tablist" aria-label={t(lang, 'performance.title')}>
+          {PERF_TABS.map((id) => (
+            <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'active' : undefined} onClick={() => setTab(id)}>
+              {t(lang, tabLabel(id))}
+            </button>
+          ))}
         </div>
       </header>
 
@@ -402,39 +413,47 @@ export function PerformanceTab() {
         </div>
       </section>
 
-      <PerformanceSummaryCards lang={lang} summary={summary} />
-
-      <section className="dr-section">
-        <h2>{t(lang, 'performance.title')}</h2>
-        {unlinkedTesters.length > 0 ? (
-          <p className="dr-summary">
-            {t(lang, 'performance.unlinkedHidden', { count: unlinkedTesters.length, names: unlinkedTesters.join(' / ') })}
-          </p>
-        ) : null}
-        <TesterPerformanceTable
+      {tab === 'overview' ? (
+        <PerformanceOverviewTab
           lang={lang}
-          rows={rows}
           projects={projects}
+          members={members}
+          allRecords={allRecords}
+          allTickets={allTickets}
+          options={options}
+          range={range}
           selectedTester={selectedTester}
-          onSelect={(key) => setSelectedTester((prev) => (prev === key ? null : key))}
-        />
-      </section>
-
-      {selectedTester !== null && detailSummary !== null ? (
-        <TesterDetail
-          lang={lang}
-          testerName={selectedTester}
-          periodLabel={periodLabel}
-          summary={detailSummary}
-          breakdown={breakdown}
-          trend={trend}
-          projects={projects}
-          onClose={() => setSelectedTester(null)}
+          onToggleTester={(key) => setSelectedTester((prev) => (prev === key ? null : key))}
         />
       ) : null}
 
-      <section className="dr-section">
-        <h2>{t(lang, 'performance.dailyExecutionTitle')}</h2>
+      {tab === 'perTester' ? (
+        <PerTesterTab
+          lang={lang}
+          projects={projects}
+          allRecords={allRecords}
+          allTickets={allTickets}
+          options={options}
+          periodLabel={periodLabel}
+        />
+      ) : null}
+
+      {tab === 'unlinked' ? (
+        <UnlinkedTestersPanel
+          lang={lang}
+          members={members}
+          allRecords={allRecords}
+          allTickets={allTickets}
+          scope={{ range, projectIds: scopeProjectIds }}
+          onMergeToMember={handleMergeToMember}
+          onCreateMember={handleCreateMember}
+        />
+      ) : null}
+
+      {tab === 'data' ? (
+        <>
+          <section className="dr-section">
+            <h2>{t(lang, 'performance.dailyExecutionTitle')}</h2>
         <p className="exec-help">{t(lang, 'performance.attributionHint')}</p>
         {activeProjectId !== '' ? (
           <div className="dp-history-compare" role="status">
@@ -534,20 +553,22 @@ export function PerformanceTab() {
       </section>
 
       {tester ? null : (
-      <SyncSection
-        lang={lang}
-        activeProjectId={activeProjectId}
-        activeProjectName={activeProjectName}
-        projects={projects}
-        assignments={reportsApi.state.testerAssignments ?? []}
-        attendance={reportsApi.state.attendance}
-        members={members}
-        onProjectRecordsChange={handleProjectRecordsChange}
-        onApplyAllocation={handleApplyAllocation}
-        onUpsertAssignment={reportsApi.upsertTesterAssignment}
-        onRemoveAssignment={reportsApi.removeTesterAssignment}
-      />
+        <SyncSection
+          lang={lang}
+          activeProjectId={activeProjectId}
+          activeProjectName={activeProjectName}
+          projects={projects}
+          assignments={reportsApi.state.testerAssignments ?? []}
+          attendance={reportsApi.state.attendance}
+          members={members}
+          onProjectRecordsChange={handleProjectRecordsChange}
+          onApplyAllocation={handleApplyAllocation}
+          onUpsertAssignment={reportsApi.upsertTesterAssignment}
+          onRemoveAssignment={reportsApi.removeTesterAssignment}
+        />
       )}
+        </>
+      ) : null}
     </div>
   );
 }

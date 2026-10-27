@@ -7,7 +7,7 @@ import type { TesterProjectBreakdownRow } from '../../lib/calculations/testerPer
 interface ProjectBreakdownProps {
   lang: Language;
   rows: TesterProjectBreakdownRow[];
-  projects: ProjectRecord[];
+  projects: readonly ProjectRecord[];
 }
 
 /** Per-project breakdown for one tester (V6.6 §21) — traceable evidence. */

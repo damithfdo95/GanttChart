@@ -64,8 +64,7 @@ export function WorkspaceLogo() {
   };
 
   return (
-    <section className="dr-section" aria-labelledby="logo-title">
-      <h2 id="logo-title">{t(lang, 'branding.logo')}</h2>
+    <>
       <p className="dr-summary">{t(lang, 'branding.help')}</p>
       <div className="branding-preview">{hasLogo ? <BrandMark lang={lang} className="brand-logo brand-logo-large" /> : <span className="link-help">{t(lang, 'branding.none')}</span>}</div>
       <p className="link-help">{t(lang, 'branding.formats', { types: LOGO_MIME_TYPES.map((m) => m.replace('image/', '').toUpperCase()).join(', '), kb: Math.round(LOGO_LIMITS.maxBytes / 1024), side: LOGO_LIMITS.maxSide })}</p>
@@ -93,7 +92,7 @@ export function WorkspaceLogo() {
           {message.text}
         </p>
       )}
-    </section>
+    </>
   );
 }
 
@@ -102,8 +101,7 @@ export function DataRetention() {
   const reports = useReportsStateCtx();
   const current = reports.state.settings.planRetentionDays ?? DEFAULT_PLAN_RETENTION_DAYS;
   return (
-    <section className="dr-section" aria-labelledby="retention-title">
-      <h2 id="retention-title">{t(lang, 'retention.title')}</h2>
+    <>
       <p className="dr-summary">{t(lang, 'retention.help')}</p>
       <label className="settings-field">
         {t(lang, 'retention.plans')}
@@ -117,6 +115,6 @@ export function DataRetention() {
         </select>
       </label>
       <p className="link-help">{t(lang, 'retention.note')}</p>
-    </section>
+    </>
   );
 }

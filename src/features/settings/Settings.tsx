@@ -18,6 +18,8 @@ import { QaPolicySettings } from './QaPolicySettings';
 import { JiraIntegration } from './JiraIntegration';
 import { TestRailIntegration } from './TestRailIntegration';
 import { DataRetention, WorkspaceLogo } from './WorkspaceBranding';
+import { SettingsCollapsible } from './SettingsCollapsible';
+import { MenuVisibilitySettings } from './MenuVisibilitySettings';
 import { NotificationsSettings } from '../notifications/NotificationsSettings';
 import { useSharedSync } from '../../app/shared-sync';
 import { unlinkDevice } from '../../lib/sync/device';
@@ -317,16 +319,44 @@ export function Settings() {
         ) : null}
       </section>
 
-      <WorkspaceAppearance />
-      <QaPolicySettings />
-      <WorkspaceLogo />
-      <NotificationsSettings />
-      <DataRetention />
+      {/* Workspace branding: appearance (tool name) then logo. */}
+      <SettingsCollapsible lang={lang} title={t(lang, 'settings.appearance.title')}>
+        <WorkspaceAppearance />
+      </SettingsCollapsible>
+      <SettingsCollapsible lang={lang} title={t(lang, 'branding.logo')}>
+        <WorkspaceLogo />
+      </SettingsCollapsible>
+
+      {/* Left-menu visibility (SV only). */}
+      <SettingsCollapsible lang={lang} title={t(lang, 'settings.menuVisibility.title')}>
+        <MenuVisibilitySettings lang={lang} />
+      </SettingsCollapsible>
+
+      {/* Release-readiness policy. */}
+      <SettingsCollapsible lang={lang} title={t(lang, 'settings.qaPolicy.title')}>
+        <QaPolicySettings />
+      </SettingsCollapsible>
+
+      {/* External integrations. */}
       <JiraIntegration />
       <TestRailIntegration />
 
-      <DataBackup />
+      {/* Notifications. */}
+      <SettingsCollapsible lang={lang} title={t(lang, 'nt.title')}>
+        <NotificationsSettings />
+      </SettingsCollapsible>
 
+      {/* Data retention. */}
+      <SettingsCollapsible lang={lang} title={t(lang, 'retention.title')}>
+        <DataRetention />
+      </SettingsCollapsible>
+
+      {/* Backup & restore. */}
+      <SettingsCollapsible lang={lang} title={t(lang, 'settings.dataBackup.title')}>
+        <DataBackup />
+      </SettingsCollapsible>
+
+      {/* Workspace (storage mode, deletion). */}
       <WorkspacePanel />
 
       <p className="dr-summary">{t(lang, 'settings.historyMoved')}</p>

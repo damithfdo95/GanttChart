@@ -20,7 +20,7 @@ interface TesterDetailProps {
   summary: TesterDetailSummary;
   breakdown: TesterProjectBreakdownRow[];
   trend: TesterMonthlyTrendPoint[];
-  projects: ProjectRecord[];
+  projects: readonly ProjectRecord[];
   onClose: () => void;
 }
 

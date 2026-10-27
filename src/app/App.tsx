@@ -237,7 +237,10 @@ function Shell() {
   const jiraConfigured = reports.state.settings.jira !== undefined;
   // A screen the role has no access to (e.g. a Tester asking for the Command Center) is never rendered: the Dashboard stands in.
   const visibleNav = navItems(principal?.role ?? null);
-  const allowed = visibleNav.some((item) => item.id === screen);
+  // The SV can hide left-menu items in Settings; a hidden item is removed from the menu (and its screen falls back to the Dashboard if active).
+  const hiddenNav = new Set(reports.state.settings.hiddenNavItems ?? []);
+  const menuNav = visibleNav.filter((item) => !hiddenNav.has(item.id));
+  const allowed = menuNav.some((item) => item.id === screen);
   const activeScreen: Screen = (screen === 'jira' && !jiraConfigured) || !allowed ? 'dashboard' : screen;
 
   // Document language/title follow the UI language on every screen (not
@@ -279,7 +282,7 @@ function Shell() {
         <nav className="app-nav" aria-label={t(state.language, 'nav.mainNavigation')}>
           <BrandMark lang={state.language} />
           <div className="app-nav-tabs">
-            {visibleNav
+            {menuNav
               .filter((item) => item.id !== 'jira' || jiraConfigured)
               .map((item) => (
                 <button

@@ -31,7 +31,7 @@ export function sourcesLabel(lang: Language, sources: readonly PerformanceRecord
 interface TesterPerformanceTableProps {
   lang: Language;
   rows: TesterPerformanceRow[];
-  projects: ProjectRecord[];
+  projects: readonly ProjectRecord[];
   /** Selected tester name (row highlight); null when none. */
   selectedTester: string | null;
   onSelect: (testerName: string) => void;

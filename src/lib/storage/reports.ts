@@ -18,6 +18,7 @@ import type {
 } from '../../types';
 import { ATTENDANCE_STATUSES, REVIEW_PERIOD_TYPES, REVIEW_STATUSES } from '../../types';
 import { checkCycle } from '../../../shared/qaRules';
+import type { ScreenId } from '../../app/access';
 import { qaPolicyError } from '../../../shared/qaPolicy';
 import { checkCaseExecution, checkCaseResult, checkScope, checkTestCase } from '../../../shared/testManagement';
 import { checkDailyPlan, checkMeetingNote } from '../../../shared/meeting';
@@ -315,6 +316,7 @@ function isReportSettings(v: unknown): v is ReportSettings {
     // The TestRail connection follows the same rule as JIRA's: optional,
     // object-shaped pass-through; normalizeReportsState sanitizes it.
     (s.testrail === undefined || (typeof s.testrail === 'object' && s.testrail !== null)) &&
+    (s.hiddenNavItems === undefined || (Array.isArray(s.hiddenNavItems) && s.hiddenNavItems.every((x: unknown) => typeof x === 'string'))) &&
     typeof templates === 'object' &&
     templates !== null &&
     typeof templates.en === 'string' &&
@@ -324,6 +326,35 @@ function isReportSettings(v: unknown): v is ReportSettings {
     (rules.working === 'totalCases' || rules.working === 'workingEligibleCases') &&
     (rules.complete === 'totalCases' || rules.complete === 'workingEligibleCases')
   );
+}
+
+/** The screen ids an SV can hide from the left menu (mirrors SCREEN_ACCESS keys). */
+const HIDABLE_SCREEN_IDS: readonly string[] = [
+  'dashboard', 'commandCenter', 'improvement', 'testManagement', 'myTesting', 'cycles',
+  'overall', 'gantt', 'dailyReport', 'tickets', 'performance', 'review', 'reports',
+  'team', 'history', 'settings', 'jira',
+];
+
+/**
+ * Sanitize the optional hidden-nav-items list (self-healing): only valid screen ids are kept, duplicates are dropped and the result
+ * is sorted for stable display. A malformed value becomes an empty list (nothing hidden).
+ */
+function normalizeHiddenNavItems(v: unknown): ScreenId[] {
+  if (!Array.isArray(v)) return [];
+  const valid = new Set(HIDABLE_SCREEN_IDS);
+  const seen = new Set<string>();
+  const out: ScreenId[] = [];
+  for (const x of v) {
+    if (typeof x !== 'string' || !valid.has(x) || seen.has(x)) continue;
+    seen.add(x);
+    out.push(x as ScreenId);
+  }
+  return out.sort();
+}
+
+function withoutHiddenNav(settings: ReportSettings): Omit<ReportSettings, 'hiddenNavItems'> {
+  const { hiddenNavItems: _hidden, ...rest } = settings;
+  return rest;
 }
 
 /**
@@ -629,11 +660,15 @@ export function normalizeReportsState(state: ReportsState): ReportsState {
   return {
     ...state,
     settings: {
-      ...state.settings,
+      // hiddenNavItems is rebuilt below from its sanitised form (a malformed value must not survive the spread).
+      ...withoutHiddenNav(state.settings),
       autoBackup: normalizeAutoBackupSettings(state.settings.autoBackup),
       // Optional; stays absent/undefined when missing or unsalvageable.
       jira: normalizeJiraConnection(state.settings.jira),
       testrail: normalizeTestrailConnection(state.settings.testrail),
+      // Left-menu visibility: only valid screen ids are kept; the field is omitted entirely when nothing is hidden (keeps the settings
+      // shape stable for existing data).
+      ...(normalizeHiddenNavItems(state.settings.hiddenNavItems).length > 0 ? { hiddenNavItems: normalizeHiddenNavItems(state.settings.hiddenNavItems) } : {}),
       // Self-healing like the connections above: a damaged policy reads as the default instead of locking anything out.
       ...(state.settings.qaPolicy !== undefined && qaPolicyError(state.settings.qaPolicy) === null ? { qaPolicy: state.settings.qaPolicy } : { qaPolicy: undefined }),
     },

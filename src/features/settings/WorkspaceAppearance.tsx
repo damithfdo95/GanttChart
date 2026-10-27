@@ -32,8 +32,7 @@ export function WorkspaceAppearance() {
   };
 
   return (
-    <section className="dr-section" aria-labelledby="appearance-title">
-      <h2 id="appearance-title">{t(lang, 'settings.appearance.title')}</h2>
+    <>
       <p className="dr-summary">{t(lang, 'settings.appearance.help')}</p>
       <label className="settings-field">
         {t(lang, 'settings.appearance.toolName')}
@@ -52,6 +51,6 @@ export function WorkspaceAppearance() {
           {message.text}
         </p>
       )}
-    </section>
+    </>
   );
 }

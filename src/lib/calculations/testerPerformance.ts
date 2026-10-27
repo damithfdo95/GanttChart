@@ -1,5 +1,6 @@
 import type { BugTicket, PerformanceRecordSource, RcsMember, TesterDailyPerformance } from '../../types';
 import { parseDate } from '../dates/dates';
+import { isoWeekKey } from '../dates/weeks';
 import {
   identityDisplayName,
   reporterIdentityKey,
@@ -637,4 +638,151 @@ export function comparePeriods(
     const currentValue = value(current, key);
     return { key, previous: previousValue, current: currentValue, difference: currentValue - previousValue };
   });
+}
+
+// ---- V6.10: day / week granularity ---------------------------------------------
+
+/** One tester's figures for a single day (V6.10 §day). */
+export interface TesterDailyPoint {
+  date: string;
+  activeDays: number;
+  casesTested: number;
+  casesPassed: number;
+  casesFailed: number;
+  casesNotApplicable: number;
+  casesBlocked: number;
+  casesRetest: number;
+  casesQuestioned: number;
+  casesSpoAssigned: number;
+  bugsFound: number;
+}
+
+/**
+ * Per-day breakdown for one tester inside the scope (V6.10). Days are the
+ * calendar days between the range bounds (or the tester's own first → last
+ * record day when no range is given), so gaps appear as honest zeros.
+ * Sorted ascending; never ranked.
+ */
+export function getTesterDailyBreakdown(
+  records: readonly TesterDailyPerformance[],
+  tickets: readonly BugTicket[],
+  testerName: string,
+  options: AggregateOptions = {},
+): TesterDailyPoint[] {
+  const members = options.members ?? [];
+  const key = testerName.trim();
+  const byDay = new Map<string, TesterDailyPoint>();
+  const touch = (date: string): TesterDailyPoint => {
+    let point = byDay.get(date);
+    if (point === undefined) {
+      point = {
+        date,
+        activeDays: 0,
+        casesTested: 0,
+        casesPassed: 0,
+        casesFailed: 0,
+        casesNotApplicable: 0,
+        casesBlocked: 0,
+        casesRetest: 0,
+        casesQuestioned: 0,
+        casesSpoAssigned: 0,
+        bugsFound: 0,
+      };
+      byDay.set(date, point);
+    }
+    return point;
+  };
+  for (const record of records) {
+    if (testerIdentityKey(record, members) !== key || !recordInScope(record, options)) continue;
+    const point = touch(record.date);
+    point.activeDays = 1;
+    point.casesTested += Math.max(0, record.casesTested);
+    point.casesPassed += Math.max(0, record.casesPassed ?? 0);
+    point.casesFailed += Math.max(0, record.casesFailed ?? 0);
+    point.casesNotApplicable += Math.max(0, record.casesNotApplicable ?? 0);
+    point.casesBlocked += Math.max(0, record.casesBlocked ?? 0);
+    point.casesRetest += Math.max(0, record.casesRetest ?? 0);
+    point.casesQuestioned += Math.max(0, record.casesQuestioned ?? 0);
+    point.casesSpoAssigned += Math.max(0, record.casesSpoAssigned ?? 0);
+  }
+  for (const ticket of tickets) {
+    if (reporterIdentityKey(ticket, members) !== key || !ticketInScope(ticket, options)) continue;
+    touch(ticket.createdAt).bugsFound += 1;
+  }
+  return [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** One tester's figures for a single ISO week (V6.10 §week). */
+export interface TesterWeeklyPoint {
+  /** ISO week key "YYYY-Www". */
+  week: string;
+  activeDays: number;
+  casesTested: number;
+  casesPassed: number;
+  casesFailed: number;
+  casesNotApplicable: number;
+  casesBlocked: number;
+  casesRetest: number;
+  casesQuestioned: number;
+  casesSpoAssigned: number;
+  bugsFound: number;
+}
+
+/**
+ * Per-ISO-week breakdown for one tester inside the scope (V6.10). Weeks are
+ * the ISO weeks between the range bounds (or the tester's own first → last
+ * record week when no range is given), so gaps appear as honest zeros.
+ * Sorted ascending; never ranked.
+ */
+export function getTesterWeeklyBreakdown(
+  records: readonly TesterDailyPerformance[],
+  tickets: readonly BugTicket[],
+  testerName: string,
+  options: AggregateOptions = {},
+): TesterWeeklyPoint[] {
+  const members = options.members ?? [];
+  const key = testerName.trim();
+  const byWeek = new Map<string, TesterWeeklyPoint>();
+  const touch = (week: string): TesterWeeklyPoint => {
+    let point = byWeek.get(week);
+    if (point === undefined) {
+      point = {
+        week,
+        activeDays: 0,
+        casesTested: 0,
+        casesPassed: 0,
+        casesFailed: 0,
+        casesNotApplicable: 0,
+        casesBlocked: 0,
+        casesRetest: 0,
+        casesQuestioned: 0,
+        casesSpoAssigned: 0,
+        bugsFound: 0,
+      };
+      byWeek.set(week, point);
+    }
+    return point;
+  };
+  for (const record of records) {
+    if (testerIdentityKey(record, members) !== key || !recordInScope(record, options)) continue;
+    const week = isoWeekKey(record.date);
+    if (week === '') continue;
+    const point = touch(week);
+    point.activeDays += 1;
+    point.casesTested += Math.max(0, record.casesTested);
+    point.casesPassed += Math.max(0, record.casesPassed ?? 0);
+    point.casesFailed += Math.max(0, record.casesFailed ?? 0);
+    point.casesNotApplicable += Math.max(0, record.casesNotApplicable ?? 0);
+    point.casesBlocked += Math.max(0, record.casesBlocked ?? 0);
+    point.casesRetest += Math.max(0, record.casesRetest ?? 0);
+    point.casesQuestioned += Math.max(0, record.casesQuestioned ?? 0);
+    point.casesSpoAssigned += Math.max(0, record.casesSpoAssigned ?? 0);
+  }
+  for (const ticket of tickets) {
+    if (reporterIdentityKey(ticket, members) !== key || !ticketInScope(ticket, options)) continue;
+    const week = isoWeekKey(ticket.createdAt);
+    if (week === '') continue;
+    touch(week).bugsFound += 1;
+  }
+  return [...byWeek.values()].sort((a, b) => a.week.localeCompare(b.week));
 }
