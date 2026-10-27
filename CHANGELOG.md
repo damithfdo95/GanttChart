@@ -3,6 +3,21 @@
 Meaningful user-facing and security changes only, newest first. Categories: Added, Changed, Fixed, Security.
 The product version is `package.json`; formal releases are tagged `v` + that version (see [docs/RELEASING.md](docs/RELEASING.md)).
 
+## 0.10.0-pilot.5 - responsive left sidebar (tag `v0.10.0-pilot.5` to be created by the owner at release)
+
+### Changed
+- **Left sidebar navigation:** a persistent vertical sidebar replaces the top tab strip on desktop. Below 900px it becomes a top bar with a
+  Menu drawer (closes on selection or Escape).
+- Role-based navigation is unchanged: every destination still comes from the existing access model, and Left Menu Visibility filters the sidebar.
+- The sidebar shows the workspace brand (logo with name, or the name alone) and keeps the signed-in workspace, sync and save status visible.
+- The EN/JA switch is consolidated into the sidebar (one primary control; the meeting presentation view keeps its own while presenting).
+- Accessibility: the current screen is exposed with `aria-current` and marked by a bar as well as colour, with a visible keyboard focus outline;
+  long Japanese labels wrap.
+
+### Fixed
+- Settings can no longer be hidden from the menu, even if a stored value names it.
+- A long Daily Report suggestion no longer widens the page on narrow screens.
+
 ## 0.10.0-pilot.4 - Performance tabs, menu visibility, collapsible Settings (tag `v0.10.0-pilot.4` to be created by the owner at release)
 
 ### Added

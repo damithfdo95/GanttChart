@@ -312,7 +312,7 @@ describe('pilot documents', () => {
   it('the version authority is resolved: package.json is canonical, the tag is v + that version, and the ambiguity text is gone', () => {
     const pkg = JSON.parse(read('package.json')) as { version: string };
     const lock = JSON.parse(read('package-lock.json')) as { version: string; packages: { '': { version: string } } };
-    expect(pkg.version).toBe('0.10.0-pilot.4');
+    expect(pkg.version).toBe('0.10.0-pilot.5');
     expect(lock.version).toBe(pkg.version);
     expect(lock.packages[''].version).toBe(pkg.version);
     expect(BUILD_INFO.version).toBe(pkg.version);

@@ -1,7 +1,7 @@
 {
   "name": "ganttchart",
   "private": true,
-  "version": "0.10.0-pilot.4",
+  "version": "0.10.0-pilot.5",
   "type": "module",
   "description": "Local-first QA test execution schedule tracker (GanttChart). No server and no default network use; the opt-in JIRA integration and shared sync mode run only when an SV configures them.",
   "scripts": {
