@@ -3,6 +3,18 @@
 Meaningful user-facing and security changes only, newest first. Categories: Added, Changed, Fixed, Security.
 The product version is `package.json`; formal releases are tagged `v` + that version (see [docs/RELEASING.md](docs/RELEASING.md)).
 
+## 0.10.0-pilot.4 - Performance tabs, menu visibility, collapsible Settings (tag `v0.10.0-pilot.4` to be created by the owner at release)
+
+### Added
+- **Performance screen navigation:** the screen is split into Overview, Per-Tester, Unlinked Testers and Data Management tabs.
+  Per-Tester shows one tester's operational view by day, week or month.
+- **Unlinked Tester management:** recorded tester names that match no Team Member can be merged into an existing member or used to create one.
+- **Left Menu Visibility:** an SV can hide selected menu items for the workspace (`hiddenNavItems`); Settings itself can never be hidden.
+- **Collapsible Settings sections** for the rarely used groups; the Support & Pilot panel is kept.
+
+### Fixed
+- A malformed stored `hiddenNavItems` value is now sanitised on load instead of surviving as-is; only valid screen ids are kept.
+
 ## 0.10.0-pilot.3 - TestRail scope import (tag `v0.10.0-pilot.3` to be created by the owner at release)
 
 ### Changed
