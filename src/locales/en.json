@@ -3393,5 +3393,6 @@
   "firstUse.cc.body": "The Command Center summarizes today across your projects: readiness, execution, staffing and the daily report. Create your first project to see it here.",
   "firstUse.dr.body": "A Daily Report is prepared from your projects' execution and staffing. You can write one by hand now, or create a project first so it can be prepared for you.",
   "firstUse.ia.body": "Improvement Analytics shows trends from project execution history. Create a project and record execution to see throughput, retest and staffing trends.",
-  "firstUse.action": "Create a project"
+  "firstUse.action": "Create a project",
+  "nav.menu": "Menu"
 }

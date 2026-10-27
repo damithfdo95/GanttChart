@@ -328,12 +328,12 @@ function isReportSettings(v: unknown): v is ReportSettings {
   );
 }
 
-/** The screen ids an SV can hide from the left menu (mirrors SCREEN_ACCESS keys). */
+/** The screen ids an SV can hide from the left menu (the SCREEN_ACCESS keys except Settings). */
 const HIDABLE_SCREEN_IDS: readonly string[] = [
   'dashboard', 'commandCenter', 'improvement', 'testManagement', 'myTesting', 'cycles',
   'overall', 'gantt', 'dailyReport', 'tickets', 'performance', 'review', 'reports',
-  'team', 'history', 'settings', 'jira',
-];
+  'team', 'history', 'jira',
+]; // 'settings' is deliberately absent: the page you configure the menu from can never be hidden
 
 /**
  * Sanitize the optional hidden-nav-items list (self-healing): only valid screen ids are kept, duplicates are dropped and the result

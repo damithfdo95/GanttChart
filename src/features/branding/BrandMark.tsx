@@ -16,6 +16,23 @@ export function useLogo(): string | null {
   return null;
 }
 
+/**
+ * The sidebar brand: the logo (when one exists) with the workspace name beside it; without a logo the name stands alone. A long name
+ * wraps instead of overflowing. The picture is decorative because the name is always written out next to it.
+ */
+export function SidebarBrandMark({ lang }: { lang: Language }) {
+  const src = useLogo();
+  const reports = useReportsStateCtx();
+  const name = toolNameOf(reports.state.settings, lang);
+  if (src === null) return <span className="brand-mark brand-mark--textonly">{name}</span>;
+  return (
+    <span className="brand-mark">
+      <img className="brand-logo" src={src} alt="" />
+      <span className="brand-mark-name">{name}</span>
+    </span>
+  );
+}
+
 export function BrandMark({ lang, className = 'brand-logo' }: { lang: Language; className?: string }) {
   const src = useLogo();
   const reports = useReportsStateCtx();

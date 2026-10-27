@@ -34,9 +34,11 @@ describe('Left Menu Visibility (ported from the other PC)', () => {
 
   it('only changes the SV menu: the shell filters navItems by the setting, and a Tester menu has no hideable item beyond their own screens', () => {
     const app = read('app/App.tsx');
-    expect(app).toContain('const menuNav = visibleNav.filter((item) => !hiddenNav.has(item.id));');
+    expect(app).toContain("const menuNav = visibleNav.filter((item) => item.id === 'settings' || !hiddenNav.has(item.id));");
     expect(app).toContain('const allowed = menuNav.some((item) => item.id === screen);');
     expect(app).toContain('{menuNav\n');
+    // Settings is not hideable even if a stored value names it.
+    expect(normalizeReportsState(withHidden(['settings', 'cycles'])).settings.hiddenNavItems).toEqual(['cycles']);
     const settingsUi = read('features/settings/MenuVisibilitySettings.tsx');
     expect(settingsUi).toContain("navItems('admin').filter((item) => item.id !== 'settings')"); // Settings itself can never be hidden
     expect(navItems('user').map((i) => i.id)).not.toContain('settings');

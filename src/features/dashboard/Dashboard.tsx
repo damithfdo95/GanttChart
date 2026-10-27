@@ -41,7 +41,7 @@ import {
   formatSignedDuration,
   formatSignedMultiDayDuration,
 } from '../../lib/formatting/format';
-import { LANGUAGES, otherLanguage, resolveBilingualName, t, type TranslationKey } from '../../i18n';
+import { otherLanguage, resolveBilingualName, t, type TranslationKey } from '../../i18n';
 import { SectionCard } from '../../components/SectionCard';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
 import { StatusCard, FreeStatusCard, type StatusFact } from '../../components/StatusCard';
@@ -556,19 +556,6 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
             </button>
           </div>
           )}
-          <div className="lang-toggle" role="group" aria-label={t(lang, 'app.languageLabel')}>
-            {LANGUAGES.map((option) => (
-              <button
-                key={option.code}
-                type="button"
-                className={lang === option.code ? 'active' : undefined}
-                aria-pressed={lang === option.code}
-                onClick={() => updateField('language', option.code)}
-              >
-                {option.short}
-              </button>
-            ))}
-          </div>
         </div>
       </header>
 

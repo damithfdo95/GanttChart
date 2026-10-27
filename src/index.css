@@ -111,9 +111,13 @@ body {
 /* The Gantt tab's own EN/日本語 quick switch (Planning header and Meeting
    controls — reachable even while presenting, when the app shell is hidden). */
 .gantt-lang-slot {
-  display: inline-flex;
+  display: none;
   align-items: center;
   margin-left: 4px;
+}
+
+body.mt-presenting .gantt-lang-slot {
+  display: inline-flex;
 }
 
 .data-controls {
@@ -1062,50 +1066,109 @@ input[type='checkbox'] {
 
 /* ---- App navigation ---- */
 
-/* The application shell: navigation strip, then (separately) account and status. Same width and
-   side padding as the page content (.app), so the left edges line up. */
-.app-shell {
-  max-width: 1360px;
-  margin: 0 auto;
-  padding: 12px 24px 0;
+/* The application layout: a persistent left sidebar beside the main content column. Every screen renders inside .app-main; the
+   screens keep their own width (.app, max 1360px, centered in the column). Below 900px the sidebar becomes a top bar whose menu
+   opens as a drawer (see the media query below). */
+.app-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.app-main {
+  min-width: 0; /* the column may shrink: wide tables scroll inside their own wrapper, never the page */
+}
+
+.app-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-width: 0;
+  padding: 12px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  overflow-y: auto;
+}
+
+.app-sidebar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+.app-sidebar-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  gap: 12px;
+}
+
+/* The menu button exists only for the narrow layout. */
+.sidebar-menu-toggle {
+  display: none;
+}
+
+/* Workspace brand: logo and name side by side, or the name alone when there is no logo. A long name wraps. */
+.brand-mark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.brand-mark .brand-logo {
+  margin-right: 0;
+  flex: none;
+}
+
+.brand-mark-name {
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.brand-mark--textonly {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .app-nav {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
   min-width: 0;
 }
 
-/* One horizontal strip for EVERY screen. It never wraps; when the window is too narrow it scrolls
-   sideways (keyboard focus scrolls the focused tab into view). */
+/* One vertical list for EVERY screen. Long (Japanese) labels wrap onto a second line instead of being cut off. */
 .app-nav-tabs {
-  position: relative; /* containing block for absolutely positioned descendants */
   display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  gap: 3px;
-  padding: 3px 3px 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  border-bottom: 1px solid var(--border);
-  scrollbar-width: thin;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .app-nav button {
-  flex: none;
   box-sizing: border-box;
-  height: 38px;
-  margin-bottom: -1px;
-  border: 1px solid var(--border);
-  background: var(--surface);
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--text-muted);
-  padding: 0 10px;
+  padding: 7px 12px;
   font-size: 13px;
   font-family: inherit;
-  line-height: 1;
-  white-space: nowrap;
-  border-radius: var(--radius) var(--radius) 0 0;
+  line-height: 1.25;
+  text-align: left;
+  overflow-wrap: anywhere;
+  border-radius: var(--radius);
   cursor: pointer;
 }
 
@@ -1119,13 +1182,62 @@ input[type='checkbox'] {
   border-color: var(--accent);
   color: #fff;
   font-weight: 600;
-  /* A bar under the label as well, so the current screen is not shown by colour alone. */
-  box-shadow: inset 0 -3px 0 rgba(255, 255, 255, 0.7);
+  /* A bar on the left edge as well, so the current screen is not shown by colour alone. */
+  box-shadow: inset 4px 0 0 rgba(255, 255, 255, 0.75);
 }
 
-/* The strip clips its content, so the focus ring is drawn inside the tab. */
-.app-nav button:focus-visible {
-  outline-offset: -3px;
+.app-nav button:focus-visible,
+.sidebar-menu-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.app-nav button.active:focus-visible {
+  outline-color: var(--text);
+}
+
+/* The language switch and the account region sit at the bottom of the sidebar. */
+.sidebar-lang-toggle {
+  margin-top: auto;
+  align-self: flex-start;
+}
+
+@media (max-width: 900px) {
+  .app-layout {
+    display: block;
+    min-height: 0;
+  }
+
+  .app-sidebar {
+    position: static;
+    height: auto;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .app-sidebar-top {
+    margin-bottom: 0;
+  }
+
+  .sidebar-menu-toggle {
+    display: inline-flex;
+    flex: none;
+  }
+
+  /* Closed: only the brand and the Menu button show. Open: the navigation, language switch and account region drop down. */
+  .app-sidebar-panel {
+    display: none;
+    margin-top: 12px;
+  }
+
+  .app-layout.menu-open .app-sidebar-panel {
+    display: flex;
+  }
+
+  .sidebar-lang-toggle {
+    margin-top: 0;
+  }
 }
 
 /* ---- Daily Report / Reports / Settings screens ---- */
@@ -1655,11 +1767,14 @@ input[type='checkbox'] {
 }
 
 @media print {
-  .app-nav,
+  .app-sidebar,
   .no-print,
   .app-header select,
   .app-header .btn {
     display: none !important;
+  }
+  .app-layout {
+    display: block;
   }
   .dr-preview-readonly {
     max-height: none;
@@ -1784,6 +1899,13 @@ input[type='checkbox'] {
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
+}
+
+/* A suggestion carries a data-driven sentence: it must wrap on a narrow screen instead of widening the page. */
+.dr-suggestion-row .btn {
+  white-space: normal;
+  text-align: left;
+  max-width: 100%;
 }
 
 .dr-suggestion-label {
@@ -3924,11 +4046,11 @@ input[type='checkbox'] {
 }
 .account-area {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px 12px;
-  padding: 8px 0 4px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--border);
   min-width: 0;
 }
 .account-badge {
@@ -4090,12 +4212,6 @@ input[type='checkbox'] {
   text-align: left;
 }
 @media (max-width: 760px) {
-  .app-shell {
-    padding: 8px 12px 0;
-  }
-  .account-area {
-    justify-content: flex-start;
-  }
   .link-card.tenancy-wide,
   .link-card {
     padding: 16px 14px;
@@ -4220,7 +4336,8 @@ input[type='checkbox'] {
 .mt-gantt-facts { font-size: 0.9em; }
 @media (max-width: 900px) { .mt-gantt-row { grid-template-columns: 1fr; } }
 /* Presenting: the meeting fills the screen. The application navigation and the planning toggle step aside. */
-body.mt-presenting .app-shell, body.mt-presenting .gantt-mode, body.mt-presenting .app-banner { display: none; }
+body.mt-presenting .app-sidebar, body.mt-presenting .gantt-mode, body.mt-presenting .app-banner { display: none; }
+body.mt-presenting .app-layout { display: block; }
 .mt-present { font-size: 1.15em; }
 .mt-present .mt-summary dd { font-size: 2.2em; }
 .mt-present .mt-table { font-size: 1.1em; }

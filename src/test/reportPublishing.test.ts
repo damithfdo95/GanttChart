@@ -463,7 +463,7 @@ describe('print view and strings', () => {
   it('hides editing, navigation and publication controls when printing', () => {
     const css = src('index.css');
     const print = css.slice(css.indexOf('@media print'));
-    expect(print).toMatch(/\.app-nav/);
+    expect(print).toMatch(/\.app-sidebar/);
     expect(print).toMatch(/\.no-print/);
     const html = renderToStaticMarkup(createElement(ViewingReportBanner, { uiLang: 'en', viewingReport: finalized(), onClose: () => {}, onRevise: () => {}, delivery: { canPublish: true, publishedByLabel: '', fallbackText: null, onCopyPlain: () => {}, onCopyChat: () => {}, onExport: () => {}, onPrint: () => {}, onMarkPublished: () => {} } }));
     // Every button sits inside a no-print wrapper.

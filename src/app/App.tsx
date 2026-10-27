@@ -9,14 +9,14 @@ import { useSharedSync } from './shared-sync';
 import { SyncBanners, SyncStatusIndicator } from '../components/SyncStatus';
 import { Dashboard } from '../features/dashboard/Dashboard';
 import { MIGRATION_FAILURE_LABEL_KEY } from '../lib/storage/db/recovery';
-import { t, type TranslationKey } from '../i18n';
+import { t, LANGUAGES, type TranslationKey } from '../i18n';
 import type { OverallFocus } from '../domain/projects';
 import type { PersistenceBoot } from '../lib/storage/db/bootstrap';
 import { pad2 } from '../lib/formatting/format';
 
 import { NAV_ITEMS, navItems, type Screen } from './navigation';
 import { AccountBadge } from '../features/tenancy/AccountBadge';
-import { BrandMark } from '../features/branding/BrandMark';
+import { SidebarBrandMark } from '../features/branding/BrandMark';
 import { NotificationBanner } from '../features/notifications/NotificationBanner';
 import { ScreenErrorBoundary } from '../components/ErrorBoundary';
 
@@ -221,9 +221,12 @@ function ShellLogout() {
 }
 
 function Shell() {
-  const { state } = useAppStateCtx();
+  const { state, updateField } = useAppStateCtx();
   const reports = useReportsStateCtx();
   const { principal } = useTenant();
+  // Narrow windows: the sidebar's menu is a drawer that opens from a Menu button.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuToggleRef = useRef<HTMLButtonElement>(null);
   const [screen, setScreen] = useState<Screen>('dashboard');
   const [overallFocus, setOverallFocus] = useState<OverallFocus>({});
   const [ganttFocusProjectId, setGanttFocusProjectId] = useState<string | null>(null);
@@ -239,7 +242,8 @@ function Shell() {
   const visibleNav = navItems(principal?.role ?? null);
   // The SV can hide left-menu items in Settings; a hidden item is removed from the menu (and its screen falls back to the Dashboard if active).
   const hiddenNav = new Set(reports.state.settings.hiddenNavItems ?? []);
-  const menuNav = visibleNav.filter((item) => !hiddenNav.has(item.id));
+  // Settings can never be hidden (it is where the menu is configured), whatever a stored value says.
+  const menuNav = visibleNav.filter((item) => item.id === 'settings' || !hiddenNav.has(item.id));
   const allowed = menuNav.some((item) => item.id === screen);
   const activeScreen: Screen = (screen === 'jira' && !jiraConfigured) || !allowed ? 'dashboard' : screen;
 
@@ -256,6 +260,18 @@ function Shell() {
   useEffect(() => {
     activeTabRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }, [activeScreen]);
+
+  // Escape closes the drawer and returns focus to its button.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      setMenuOpen(false);
+      menuToggleRef.current?.focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
 
   const openOverall = (focus: OverallFocus): void => {
     setOverallFocus(focus);
@@ -275,40 +291,70 @@ function Shell() {
   };
 
   return (
-    <>
-      <div className="app-shell">
-        {/* Navigation: ONE strip holding every screen (History and Settings included). It scrolls sideways
-            when the window is too narrow; it never wraps, so no tab drops onto a second row. */}
-        <nav className="app-nav" aria-label={t(state.language, 'nav.mainNavigation')}>
-          <BrandMark lang={state.language} />
-          <div className="app-nav-tabs">
-            {menuNav
-              .filter((item) => item.id !== 'jira' || jiraConfigured)
-              .map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  ref={activeScreen === item.id ? activeTabRef : undefined}
-                  className={activeScreen === item.id ? 'active' : undefined}
-                  aria-current={activeScreen === item.id ? 'page' : undefined}
-                  onClick={() => {
-                    setReportIntent(null);
-                    setScreen(item.id);
-                  }}
-                >
-                  {t(state.language, item.key)}
-                </button>
-              ))}
-          </div>
-        </nav>
-        {/* Identity, workspace and save/sync status: their own region, independent of the navigation width. */}
-        <div className="account-area" role="group" aria-label={t(state.language, 'nav.accountArea')}>
-          <WorkspaceBadge />
-          <SyncStatusIndicator />
-          <SaveStatusIndicator />
-          <ShellLogout />
+    <div className={`app-layout${menuOpen ? ' menu-open' : ''}`}>
+      {/* Left sidebar: brand, ONE vertical navigation holding every screen (History and Settings included), the language
+          control, then the account and status region. On a narrow window it becomes a top bar whose menu opens as a drawer. */}
+      <aside className="app-sidebar">
+        <div className="app-sidebar-top">
+          <SidebarBrandMark lang={state.language} />
+          <button
+            ref={menuToggleRef}
+            type="button"
+            className="btn sidebar-menu-toggle"
+            aria-expanded={menuOpen}
+            aria-controls="app-sidebar-panel"
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            {t(state.language, 'nav.menu')}
+          </button>
         </div>
-      </div>
+        <div id="app-sidebar-panel" className="app-sidebar-panel">
+          <nav className="app-nav" aria-label={t(state.language, 'nav.mainNavigation')}>
+            <div className="app-nav-tabs">
+              {menuNav
+                .filter((item) => item.id !== 'jira' || jiraConfigured)
+                .map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    ref={activeScreen === item.id ? activeTabRef : undefined}
+                    className={activeScreen === item.id ? 'active' : undefined}
+                    aria-current={activeScreen === item.id ? 'page' : undefined}
+                    onClick={() => {
+                      setReportIntent(null);
+                      setScreen(item.id);
+                      setMenuOpen(false);
+                    }}
+                  >
+                    {t(state.language, item.key)}
+                  </button>
+                ))}
+            </div>
+          </nav>
+          {/* The ONE primary EN / 日本語 switch. */}
+          <div className="lang-toggle sidebar-lang-toggle" role="group" aria-label={t(state.language, 'app.languageLabel')}>
+            {LANGUAGES.map((option) => (
+              <button
+                key={option.code}
+                type="button"
+                className={state.language === option.code ? 'active' : undefined}
+                aria-pressed={state.language === option.code}
+                onClick={() => updateField('language', option.code)}
+              >
+                {option.short}
+              </button>
+            ))}
+          </div>
+          {/* Identity, workspace and save/sync status: their own region, always visible below the navigation. */}
+          <div className="account-area" role="group" aria-label={t(state.language, 'nav.accountArea')}>
+            <WorkspaceBadge />
+            <SyncStatusIndicator />
+            <SaveStatusIndicator />
+            <ShellLogout />
+          </div>
+        </div>
+      </aside>
+      <main className="app-main">
       <NotificationBanner />
       <SyncBanners />
       <CorruptionBanner />
@@ -361,7 +407,8 @@ function Shell() {
       )}
       </Suspense>
       </ScreenErrorBoundary>
-    </>
+      </main>
+    </div>
   );
 }
 
