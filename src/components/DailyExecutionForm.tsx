@@ -97,14 +97,15 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
   }, [date, existing, mode, allEntries]);
 
   // In TOTAL mode the status fields hold running totals; this is what the
-  // day's entry will actually record (derived, clamped at 0).
+  // day's entry will actually record (derived — a total below the previous
+  // cumulative yields a negative day delta so the cumulative can decrease).
   const previous = useMemo(() => cumulativeBeforeDate(allEntries, date), [allEntries, date]);
   const derive = (from: DailyExecutionEntry): ExecutionStatusTotals =>
     mode === 'TOTAL'
       ? dailyDeltaFromTotals(statusTotalsOf(from), previous)
       : statusTotalsOf(from);
   const derived = derive(form);
-  const clampedKeys = mode === 'TOTAL' ? DELTA_KEYS.filter((key) => form[key] < previous[key]) : [];
+  const reducedKeys = mode === 'TOTAL' ? DELTA_KEYS.filter((key) => form[key] < previous[key]) : [];
 
   const set = (patch: Partial<DailyExecutionEntry>): void => setForm((prev) => ({ ...prev, ...patch }));
   const setCount = (key: StatusKey, raw: string): void => {
@@ -501,7 +502,7 @@ export function DailyExecutionForm({ lang, date: controlledDate, onDateChange, t
             {t(lang, 'exec.dayCountsHelp')} ({t(lang, 'gap.dayExecuted')}: {formatInteger(dayTotal, lang)})
           </span>
         )}
-        {clampedKeys.length > 0 ? <span className="exec-help exec-clamped">{t(lang, 'exec.clampedHint')}</span> : null}
+        {reducedKeys.length > 0 ? <span className="exec-help exec-clamped">{t(lang, 'exec.reducedHint')}</span> : null}
         {date !== today ? <span className="exec-help">{t(lang, 'exec.entryDateHelp')}</span> : null}
       </div>
 

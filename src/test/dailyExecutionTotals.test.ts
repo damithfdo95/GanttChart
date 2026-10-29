@@ -11,9 +11,10 @@ import {
 /**
  * Cumulative (total) input mode for the daily execution form: the user
  * enters RUNNING TOTALS as of the selected date; the day's per-status
- * counts are derived (total − everything recorded before that date,
- * clamped at 0) before a normal per-day entry is saved. The stored model
- * (one per-day entry per date) is unchanged.
+ * counts are derived (total − everything recorded before that date) before
+ * a normal per-day entry is saved. A total below the previous cumulative
+ * yields a NEGATIVE day delta so the cumulative can be reduced (correction).
+ * The stored model (one per-day entry per date) is unchanged.
  */
 
 const D1 = '2026-10-05'; // Monday
@@ -100,9 +101,9 @@ describe('cumulative input mode helpers', () => {
     expect(delta).toEqual(totals({ pass: 8, fail: 2, notApplicable: 0, spo: 3, blocked: 3, retest: 0, questioned: 2 }));
   });
 
-  it('dailyDeltaFromTotals clamps a decreasing total at zero (e.g. unblocked cases)', () => {
+  it('dailyDeltaFromTotals yields a negative delta when a total is reduced (correction)', () => {
     const delta = dailyDeltaFromTotals(totals({ pass: 5, blocked: 2 }), totals({ pass: 7, blocked: 6 }));
-    expect(delta).toEqual(totals({ pass: 0, blocked: 0 }));
+    expect(delta).toEqual(totals({ pass: -2, blocked: -4 }));
   });
 });
 

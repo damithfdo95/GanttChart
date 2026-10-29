@@ -19,19 +19,25 @@ import { snapshotPass } from './history';
  *   Blocked / Retest / Questioned are informational open-status tallies.
  */
 
-function nonNegativeInt(value: number | null | undefined): number {
+/**
+ * A signed integer (allows negative corrections): a day whose running total
+ * was reduced below the previous cumulative carries a negative delta so the
+ * cumulative can actually decrease. Used by the aggregation paths so a
+ * correction propagates.
+ */
+function signedInt(value: number | null | undefined): number {
   if (value === null || value === undefined || !Number.isFinite(value)) return 0;
-  return Math.max(0, Math.round(value));
+  return Math.round(value);
 }
 
 /** A day's completed cases (the four completed categories + migrated remainder). */
 export function entryCompletedCases(entry: DailyExecutionEntry): number {
   return (
-    nonNegativeInt(entry.pass) +
-    nonNegativeInt(entry.fail) +
-    nonNegativeInt(entry.notApplicable) +
-    nonNegativeInt(entry.spo) +
-    nonNegativeInt(entry.uncategorizedCompleted)
+    signedInt(entry.pass) +
+    signedInt(entry.fail) +
+    signedInt(entry.notApplicable) +
+    signedInt(entry.spo) +
+    signedInt(entry.uncategorizedCompleted)
   );
 }
 
@@ -66,13 +72,13 @@ export function aggregateDailyExecuted(entries: readonly DailyExecutionEntry[]):
   };
   for (const entry of sortDailyExecuted(entries)) {
     totals.casesCompleted += entryCompletedCases(entry);
-    totals.casesPassed += nonNegativeInt(entry.pass);
-    totals.casesFailed += nonNegativeInt(entry.fail);
-    totals.casesNotApplicable += nonNegativeInt(entry.notApplicable);
-    totals.spoAssigned += nonNegativeInt(entry.spo);
-    totals.casesBlocked += nonNegativeInt(entry.blocked);
-    totals.casesRetest += nonNegativeInt(entry.retest);
-    totals.casesQuestioned += nonNegativeInt(entry.questioned);
+    totals.casesPassed += signedInt(entry.pass);
+    totals.casesFailed += signedInt(entry.fail);
+    totals.casesNotApplicable += signedInt(entry.notApplicable);
+    totals.spoAssigned += signedInt(entry.spo);
+    totals.casesBlocked += signedInt(entry.blocked);
+    totals.casesRetest += signedInt(entry.retest);
+    totals.casesQuestioned += signedInt(entry.questioned);
   }
   return totals;
 }
@@ -124,13 +130,13 @@ function sumStatusTotals(entries: readonly DailyExecutionEntry[]): ExecutionStat
     questioned: 0,
   };
   for (const entry of entries) {
-    totals.pass += nonNegativeInt(entry.pass);
-    totals.fail += nonNegativeInt(entry.fail);
-    totals.notApplicable += nonNegativeInt(entry.notApplicable);
-    totals.spo += nonNegativeInt(entry.spo);
-    totals.blocked += nonNegativeInt(entry.blocked);
-    totals.retest += nonNegativeInt(entry.retest);
-    totals.questioned += nonNegativeInt(entry.questioned);
+    totals.pass += signedInt(entry.pass);
+    totals.fail += signedInt(entry.fail);
+    totals.notApplicable += signedInt(entry.notApplicable);
+    totals.spo += signedInt(entry.spo);
+    totals.blocked += signedInt(entry.blocked);
+    totals.retest += signedInt(entry.retest);
+    totals.questioned += signedInt(entry.questioned);
   }
   return totals;
 }
@@ -147,20 +153,23 @@ export function cumulativeThroughDate(entries: readonly DailyExecutionEntry[], d
 
 /**
  * The selected day's per-status counts from entered running totals: the
- * delta against everything recorded before that date, clamped at zero per
- * field (a decreasing total — e.g. unblocked cases — never yields a
- * negative day count).
+ * delta against everything recorded before that date. A decreasing total
+ * (e.g. correcting an over-entered value, or unblocking cases) yields a
+ * NEGATIVE day delta so the cumulative can actually come back down — the
+ * aggregation paths sum signed values. The stored per-day entry may
+ * therefore carry a negative count for a correction day; display layers
+ * clamp at zero.
  */
 export function dailyDeltaFromTotals(entered: ExecutionStatusTotals, previous: ExecutionStatusTotals): ExecutionStatusTotals {
-  const clamp = (value: number): number => nonNegativeInt(value);
+  const delta = (value: number): number => signedInt(value);
   return {
-    pass: clamp(entered.pass - previous.pass),
-    fail: clamp(entered.fail - previous.fail),
-    notApplicable: clamp(entered.notApplicable - previous.notApplicable),
-    spo: clamp(entered.spo - previous.spo),
-    blocked: clamp(entered.blocked - previous.blocked),
-    retest: clamp(entered.retest - previous.retest),
-    questioned: clamp(entered.questioned - previous.questioned),
+    pass: delta(entered.pass - previous.pass),
+    fail: delta(entered.fail - previous.fail),
+    notApplicable: delta(entered.notApplicable - previous.notApplicable),
+    spo: delta(entered.spo - previous.spo),
+    blocked: delta(entered.blocked - previous.blocked),
+    retest: delta(entered.retest - previous.retest),
+    questioned: delta(entered.questioned - previous.questioned),
   };
 }
 
@@ -183,13 +192,13 @@ export function regenerateSnapshotsFromEntries(entries: readonly DailyExecutionE
   let questioned = 0;
   for (const entry of sortDailyExecuted(entries)) {
     executed += entryCompletedCases(entry);
-    passed += nonNegativeInt(entry.pass);
-    failed += nonNegativeInt(entry.fail);
-    notApplicable += nonNegativeInt(entry.notApplicable);
-    spo += nonNegativeInt(entry.spo);
-    blocked += nonNegativeInt(entry.blocked);
-    retest += nonNegativeInt(entry.retest);
-    questioned += nonNegativeInt(entry.questioned);
+    passed += signedInt(entry.pass);
+    failed += signedInt(entry.fail);
+    notApplicable += signedInt(entry.notApplicable);
+    spo += signedInt(entry.spo);
+    blocked += signedInt(entry.blocked);
+    retest += signedInt(entry.retest);
+    questioned += signedInt(entry.questioned);
     snapshots.push({
       id: entry.id,
       date: entry.date,

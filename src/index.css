@@ -3184,6 +3184,16 @@ input[type='checkbox'] {
   color: #43a047;
 }
 
+/* The summed "Total" live-status line (Dashboard Execution): slightly
+   larger and separated so it reads as the aggregate above the per-scope
+   lines. */
+.testrail-progress-total {
+  font-size: 1.05em;
+  border-bottom: 1px dashed var(--border);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+}
+
 .exec-breakdown {
   margin-top: 10px;
   border-top: 1px dashed var(--border);

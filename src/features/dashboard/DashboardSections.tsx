@@ -13,6 +13,7 @@ import { DailyExecutionForm } from '../../components/DailyExecutionForm';
 import { TestRailErrorHint } from '../../components/TestRailErrorHint';
 import { TestRailStatusLine } from '../../components/TestRailStatusLine';
 import type { TestRailExecutionStatus } from './hooks/useTestRailScopeProgress';
+import type { TestRailRunProgress } from '../../../shared/testrail';
 import { formatInteger, formatNumber, formatDuration, formatSignedDuration, formatSignedMultiDayDuration, formatClock } from '../../lib/formatting/format';
 import type { Language } from '../../types';
 
@@ -195,6 +196,23 @@ export function ExecutionSection({
   const testrailLinked = testrail.scopes.some((s) => s.status === 'active' && s.testrail !== undefined);
   const testrailUpdatedTime =
     testrail.fetchedAt === null ? null : new Date(testrail.fetchedAt).toLocaleTimeString(lang === 'ja' ? 'ja-JP' : 'en-US');
+  // The summed live status across every linked scope, shown as a Total line
+  // above the per-scope lines (and before the "updated" timestamp).
+  const testrailTotal: TestRailRunProgress | null =
+    testrail.lines === null || testrail.lines.length === 0
+      ? null
+      : testrail.lines.reduce<TestRailRunProgress>(
+          (acc, { progress }) => ({
+            passed: acc.passed + progress.passed,
+            blocked: acc.blocked + progress.blocked,
+            retest: acc.retest + progress.retest,
+            failed: acc.failed + progress.failed,
+            untested: acc.untested + progress.untested,
+            custom: acc.custom + progress.custom,
+            total: acc.total + progress.total,
+          }),
+          { passed: 0, blocked: 0, retest: 0, failed: 0, untested: 0, custom: 0, total: 0 },
+        );
   return (
     <SectionCard
       title={t(lang, 'sections.execution')}
@@ -231,6 +249,12 @@ export function ExecutionSection({
       ) : null}
       {testrail.lines !== null ? (
         <div className="link-help testrail-progress" role="status">
+          {testrailTotal !== null ? (
+            <p className="testrail-progress-line testrail-progress-total">
+              <strong>{t(lang, 'tm.testrailProgress.total')}</strong>{' '}
+              <TestRailStatusLine lang={lang} progress={testrailTotal} />
+            </p>
+          ) : null}
           {testrail.lines.map(({ scope, progress }) => (
             <p key={scope.id} className="testrail-progress-line">
               <strong>{scope.name}</strong>{' '}

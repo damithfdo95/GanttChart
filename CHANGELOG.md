@@ -3,6 +3,14 @@
 Meaningful user-facing and security changes only, newest first. Categories: Added, Changed, Fixed, Security.
 The product version is `package.json`; formal releases are tagged `v` + that version (see [docs/RELEASING.md](docs/RELEASING.md)).
 
+## Unreleased
+
+### Fixed
+- **Execution (Dashboard) — cumulative totals can now be reduced.** Entering a running total below the previous day's cumulative previously clamped the day's count to 0, so a wrong (too-high) value could never be corrected. A reduced total now records a negative day delta so the cumulative comes back down.
+
+### Added
+- **Live TestRail status — Total line.** The Dashboard Execution section now shows a summed "Total" line (Passed / Blocked / Retest / Failed / Untested / N/A) above the per-scope lines, before the "updated" timestamp.
+
 ## 0.10.0-pilot.5 - responsive left sidebar (tag `v0.10.0-pilot.5` to be created by the owner at release)
 
 ### Changed
