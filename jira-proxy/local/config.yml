@@ -1,0 +1,26 @@
+# Cloudflare Tunnel configuration for the local JIRA proxy (Option A).
+#
+# This routes a public hostname to the local Node server (jira-proxy/local/server.js)
+# running on the corporate network. The tunnel is an OUTBOUND connection from
+# inside the network to Cloudflare, so no inbound firewall rule or public IP is
+# needed on the JIRA host.
+#
+# Usage:
+#   1. Install cloudflared on the internal host.
+#   2. Authenticate:   cloudflared tunnel login
+#   3. Create tunnel:  cloudflared tunnel create jira-proxy
+#   4. Edit the hostname below to your real public hostname.
+#   5. Run:            cloudflared tunnel --config config.yml run jira-proxy
+#
+# Recommended: put Cloudflare Access (Zero Trust) in front of this hostname so
+# only corporate SSO users can reach it. See README.md.
+
+tunnel: jira-proxy
+credentials-file: C:\Users\damith.fernando\.cloudflared\jira-proxy.json
+
+ingress:
+  # The local Node HTTPS/HTTP proxy. It listens on 8787 by default.
+  - hostname: jira-proxy.yourdomain.com
+    service: http://localhost:8787
+  # Catch-all: reject everything else.
+  - service: http_status:404

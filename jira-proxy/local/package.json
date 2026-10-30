@@ -1,0 +1,13 @@
+{
+  "name": "jira-proxy-local",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local HTTPS CORS forwarder for the GanttChart JIRA integration (Option A: run inside the corporate network behind a Cloudflare Tunnel).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
