@@ -16,6 +16,41 @@ it from anywhere. The tunnel is an *outbound* connection from inside the
 network to Cloudflare, so **no inbound firewall rule or public IP is needed**
 on the JIRA host.
 
+## ⚠️ HTTPS is required (mixed-content)
+
+The app is served over **HTTPS** (e.g. `https://ganttchart.damithfdo.workers.dev`).
+A page served over HTTPS **cannot** call a plain `http://` proxy — browsers
+block it as **mixed content**, and the request never reaches the proxy. You
+will see *"The JIRA request failed at the network level"* even though the
+server is running and reachable.
+
+So the **Proxy URL must be `https://`**. Two ways to get that:
+
+- **Cloudflare Tunnel** (below) — gives a real `https://` hostname with a
+  valid certificate. **Recommended**, no cert hassle.
+- **Local TLS** (PC1 only) — run the server with a self-signed cert and use
+  `https://localhost:8787`. You must trust the cert in the browser. See
+  "PC1-only (no tunnel)" below.
+
+## PC1-only (no tunnel)
+
+If the browser is on the **same internal machine** as the proxy (PC1), you can
+skip the tunnel and run the server with TLS directly:
+
+```powershell
+# Generate a self-signed cert (one time)
+openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 365 -subj "/CN=localhost"
+
+# Run with TLS
+$env:TLS_CERT = "cert.pem"
+$env:TLS_KEY  = "key.pem"
+npm start
+```
+
+Then in the app use **Proxy URL** = `https://localhost:8787`. You must trust
+`cert.pem` in the browser (open `https://localhost:8787` once and accept the
+warning). This only works when the app and proxy are on the same machine.
+
 ## Architecture
 
 ```
@@ -110,6 +145,10 @@ Then press **Test Connection**.
 
 ## Troubleshooting
 
+- **"The JIRA request failed at the network level" but the server is running:**
+  the Proxy URL is probably `http://` while the app is served over `https://`
+  (mixed content). Use an `https://` Proxy URL (tunnel hostname, or
+  `https://localhost:8787` with a trusted self-signed cert).
 - **Test Connection still fails with 522/network errors:** the local server is
   not on the corporate network, or the tunnel isn't running. Verify the server
   can reach JIRA directly (`curl -I .../serverInfo`).
