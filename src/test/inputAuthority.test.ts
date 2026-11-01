@@ -150,3 +150,21 @@ describe('component naming', () => {
     expect(src('features/dashboard/DashboardSections.tsx')).toContain("from '../../components/DailyExecutionForm'");
   });
 });
+
+describe('Test Management input consolidation', () => {
+  const screen = src('features/testManagement/TestManagementScreen.tsx');
+
+  it('uses the workspace active project as its only project selection state', () => {
+    expect(screen).toContain('p.id === tm.reports.state.activeProjectId');
+    expect(screen).toContain('tm.reports.setActiveProjectId(e.target.value)');
+    expect(screen).toContain('project.id !== tm.reports.state.activeProjectId');
+    expect(screen).toContain('tm.reports.setActiveProjectId(project.id)');
+    expect(screen).not.toMatch(/useState<string>\(\(\) => tm\.reports\.state\.activeProjectId/);
+  });
+
+  it('keeps automatic scope import plus an explicit retry for linked scopes', () => {
+    expect(screen).toContain('<TestRailScopeImportDialog');
+    expect(screen).toContain('<TestRailCaseImportDialog');
+    expect(screen).toContain("tm.testrailCases.open");
+  });
+});

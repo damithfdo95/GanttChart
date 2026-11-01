@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mapTestRailPriority, planTestRailCaseImport, existingTestRailCaseIds } from '../domain/testManagement/testrailCases';
-import type { TestCase } from '../../shared/testManagement';
+import { importTestRailCaseBatches } from '../domain/testManagement/testrailCaseBatchImport';
+import type { TestCase, TestScope } from '../../shared/testManagement';
 import type { TestRailCaseRow } from '../../shared/testrail';
 
 // ---- fixtures ---------------------------------------------------------------
@@ -25,6 +26,17 @@ const existingCase = (over: Partial<TestCase> = {}): TestCase => ({
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   ...over,
+});
+
+const scope = (id: string, code: string): TestScope => ({
+  id,
+  projectId: 'PRJ-001',
+  name: id,
+  code,
+  status: 'active',
+  order: id === 'sc_1' ? 10 : 20,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
 });
 
 // ---- tests ------------------------------------------------------------------
@@ -99,5 +111,39 @@ describe('planTestRailCaseImport', () => {
   it('falls back to the TC prefix for a scope without a code', () => {
     const plan = planTestRailCaseImport([caseRow()], [], 'PRJ-001', '');
     expect(plan.rows[0]?.key).toBe('TC-001');
+  });
+});
+
+describe('importTestRailCaseBatches', () => {
+  it('deduplicates a TestRail case shared by two runs in the same import', () => {
+    const initial = { scopes: [scope('sc_1', 'ONE'), scope('sc_2', 'TWO')], testCases: [], caseResults: [] };
+    const result = importTestRailCaseBatches(
+      initial,
+      'PRJ-001',
+      [
+        { scopeId: 'sc_1', cases: [caseRow({ caseId: 101 }), caseRow({ caseId: 102, title: 'First only' })] },
+        { scopeId: 'sc_2', cases: [caseRow({ caseId: 101 }), caseRow({ caseId: 103, title: 'Second only' })] },
+      ],
+      '2026-01-02T00:00:00.000Z',
+    );
+
+    expect(result.error).toBeNull();
+    expect(result.imported).toBe(3);
+    expect(result.state.testCases.map((testCase) => testCase.testrailCaseId)).toEqual([101, 102, 103]);
+    expect(new Set(result.state.testCases.map((testCase) => testCase.testrailCaseId)).size).toBe(3);
+  });
+
+  it('is atomic when a target scope is missing', () => {
+    const initial = { scopes: [scope('sc_1', 'ONE')], testCases: [], caseResults: [] };
+    const result = importTestRailCaseBatches(
+      initial,
+      'PRJ-001',
+      [
+        { scopeId: 'sc_1', cases: [caseRow()] },
+        { scopeId: 'missing', cases: [caseRow({ caseId: 102 })] },
+      ],
+      '2026-01-02T00:00:00.000Z',
+    );
+    expect(result).toMatchObject({ state: initial, imported: 0, error: 'scope_not_found' });
   });
 });

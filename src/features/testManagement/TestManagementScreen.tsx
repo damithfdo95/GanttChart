@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAppStateCtx } from '../../app/state-contexts';
 import { useTenant } from '../../app/tenant-context';
 import { useConfirm } from '../../components/ConfirmDialog';
@@ -69,10 +69,15 @@ export function TestManagementScreen() {
   const lang = app.state.language;
   const tm = useTestManagement();
   const projects = useMemo(() => [...tm.reports.state.projects].sort((a, b) => a.projectId.localeCompare(b.projectId)), [tm.reports.state.projects]);
-  const [projectId, setProjectId] = useState<string>(() => tm.reports.state.activeProjectId ?? '');
   const [tab, setTab] = useState<Tab>('overview');
-  const project: ProjectRecord | undefined = projects.find((p) => p.id === projectId) ?? projects[0];
+  const project: ProjectRecord | undefined = projects.find((p) => p.id === tm.reports.state.activeProjectId) ?? projects[0];
   const projectName = (p: ProjectRecord): string => resolveBilingualName(lang, { nameEn: p.nameEn, nameJa: p.nameJa }) || p.projectId;
+
+  // A deleted/stale active id must not leave Test Management showing one
+  // project while the rest of the workspace still points at another.
+  useEffect(() => {
+    if (project !== undefined && project.id !== tm.reports.state.activeProjectId) tm.reports.setActiveProjectId(project.id);
+  }, [project, tm.reports]);
 
   if (project === undefined) {
     return (
@@ -93,7 +98,9 @@ export function TestManagementScreen() {
         <h1>{t(lang, 'tm.title')}</h1>
         <label className="dr-toolbar-field">
           {t(lang, 'tm.project')}
-          <select className="input" value={project.id} onChange={(e) => setProjectId(e.target.value)}>
+          <select className="input" value={project.id} onChange={(e) => {
+            tm.reports.setActiveProjectId(e.target.value);
+          }}>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {projectName(p)}
@@ -563,7 +570,6 @@ function CasesTab({ lang, project }: { lang: Language; project: ProjectRecord })
         <button type="button" className="btn" disabled={archivedScope} onClick={() => { setJiraImporting(true); setEditing(null); setBulk(false); setNote(null); }}>
           {t(lang, 'jira.import.open')}
         </button>
-        {/* Only a scope linked to a TestRail run can import that run's suite cases. */}
         <button
           type="button"
           className="btn"

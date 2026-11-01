@@ -2395,6 +2395,7 @@
   "tm.testrailImport.assignLinkToMember": "メンバーにリンク",
   "tm.testrailImport.assignExisting": "取込済みランのテスターをリンク",
   "tm.testrailImport.casesAutoImported": "ランのスイートから{count}件のテストケースをインポートしました。",
+  "tm.testrailImport.casesAutoFailed": "{count}件のランでケースのインポートに失敗しました。「テストケース → TestRailからインポート」から再試行してください。",
   "tm.testrailImport.assignConfirm": "{count}名のテスターをアサイン",
   "tm.testrailImport.assignSkip": "アサインをスキップ",
   "tm.testrailImport.assignDone": "テスターアサインを{count}件作成しました。",
