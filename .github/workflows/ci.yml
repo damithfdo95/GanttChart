@@ -43,6 +43,12 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Install Chromium for browser tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke and accessibility tests
+        run: npm run test:e2e
+
       - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high
 

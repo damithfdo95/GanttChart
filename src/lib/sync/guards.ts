@@ -26,12 +26,6 @@ export interface SharedContext {
   role: Role | null;
 }
 
-export const browserDialogs: Dialogs = {
-  confirm: (m) => window.confirm(m),
-  prompt: (m) => window.prompt(m),
-  alert: (m) => window.alert(m),
-};
-
 /** A read-only person must not make changes that silently go nowhere. */
 export function guardWrite(lang: Language, ctx: SharedContext, dialogs: Dialogs): boolean {
   if (ctx.enabled && ctx.role === 'viewer') {
