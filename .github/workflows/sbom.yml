@@ -30,7 +30,7 @@ jobs:
       - run: npm run sbom
         working-directory: worker
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sbom-cyclonedx
           path: |
