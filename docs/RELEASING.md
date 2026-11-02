@@ -46,9 +46,12 @@ Flow: release checklist -> push -> deploy -> production smoke -> tag -> pilot no
 
 Rollback basics: see [RECOVERY.md](RECOVERY.md).
 
-## Bundle size budget (gzip, warning only)
+## Bundle size budget (gzip, CI-blocking)
 
-Baseline recorded 2026-10-25 (`npm run build`): main app chunk 125 kB, locale dictionaries 108 kB, vendor (React) 44 kB, largest lazy
+Baseline refreshed after the Vite 8 upgrade: main app chunk budget 150 kB, shared application state 65 kB, locale dictionaries 130 kB,
+vendor (React) 60 kB, and other lazy chunks 40 kB. `npm run bundle:check` exits non-zero when any generated chunk exceeds its budget.
+
+The original baseline recorded 2026-10-25 (`npm run build`): main app chunk 125 kB, locale dictionaries 108 kB, vendor (React) 44 kB, largest lazy
 chunk (Test Management) 20 kB. Budgets: main 150, locales 130, vendor 60, any lazy chunk 40. `npm run bundle:check` prints
 anything over; it never fails the build. The locale bundle grows with every string (EN + JA), so watch it first.
 

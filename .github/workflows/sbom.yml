@@ -22,10 +22,18 @@ jobs:
 
       - run: npm ci
 
+      - run: npm ci
+        working-directory: worker
+
       - run: npm run sbom
+
+      - run: npm run sbom
+        working-directory: worker
 
       - uses: actions/upload-artifact@v4
         with:
           name: sbom-cyclonedx
-          path: sbom.cdx.json
+          path: |
+            sbom.cdx.json
+            worker/sbom.cdx.json
           retention-days: 90

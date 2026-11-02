@@ -1,8 +1,8 @@
 name: Dependency audit
 
 # Weekly and on demand. Production dependencies must be free of High/Critical advisories (blocking).
-# The full audit including development tooling is informational: its fixes are breaking major upgrades (see docs/SAAS_READINESS.md)
-# and are handled as reviewed Dependabot pull requests, never with `npm audit fix --force`.
+# Development tooling is also blocking because it runs against repository
+# content and secrets in developer/CI environments.
 
 on:
   schedule:
@@ -30,9 +30,9 @@ jobs:
         working-directory: worker
         run: npm audit --omit=dev --audit-level=high
 
-      - name: Full audit incl. dev tooling (informational)
-        run: npm audit --audit-level=high || true
+      - name: Full audit incl. dev tooling
+        run: npm audit --audit-level=high
 
-      - name: Full Worker audit incl. dev tooling (informational)
+      - name: Full Worker audit incl. dev tooling
         working-directory: worker
-        run: npm audit --audit-level=high || true
+        run: npm audit --audit-level=high

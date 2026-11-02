@@ -3,6 +3,8 @@ import type { AppRole } from '../../shared/tenancy';
 import { useTenant } from './tenant-context';
 import { useReportsStateCtx } from './state-contexts';
 import type { RcsMember, TesterProjectAssignment } from '../types';
+import type { ScreenId } from '../types/navigation';
+export type { ScreenId } from '../types/navigation';
 import { isAssignedIn } from '../../shared/testerRules';
 
 /**
@@ -18,8 +20,6 @@ export type UiRole = 'sv' | 'tester';
 
 /** manage = change anything there; input = enter their own data only; view = read only; none = not offered. */
 export type ScreenAccess = 'manage' | 'input' | 'view' | 'none';
-
-export type ScreenId = 'dashboard' | 'commandCenter' | 'improvement' | 'testManagement' | 'myTesting' | 'cycles' | 'overall' | 'gantt' | 'dailyReport' | 'tickets' | 'performance' | 'review' | 'reports' | 'team' | 'history' | 'settings' | 'jira';
 
 export const SCREEN_ACCESS: Readonly<Record<ScreenId, Readonly<Record<UiRole, ScreenAccess>>>> = {
   // A Tester sees the Operator section (and enters Today's Execution); the manager panels are the SV's.

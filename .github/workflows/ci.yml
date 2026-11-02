@@ -46,8 +46,14 @@ jobs:
       - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high
 
+      - name: Full dependency audit
+        run: npm audit --audit-level=high
+
       - name: Build
         run: npm run build
+
+      - name: Bundle budgets
+        run: npm run bundle:check
 
   worker:
     name: Worker (typecheck, tests)
@@ -66,6 +72,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Dependency audit
+        run: npm audit --audit-level=high
 
       - name: Typecheck
         run: npm run typecheck

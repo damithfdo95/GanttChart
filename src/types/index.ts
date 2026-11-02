@@ -8,7 +8,8 @@ export type Language = 'en' | 'ja';
  */
 import type { CycleRecord, CycleStatus } from '../../shared/qaRules';
 import type { QaPolicy } from '../../shared/qaPolicy';
-import type { ScreenId } from '../app/access';
+import type { ScreenId } from './navigation';
+export type { ScreenId } from './navigation';
 import type { ReportPublication } from '../../shared/reportPublication';
 import type { CaseExecutionEvent, CaseResult, TestCase, TestScope } from '../../shared/testManagement';
 import type { DailyTeamPlan, MeetingNote } from '../../shared/meeting';
