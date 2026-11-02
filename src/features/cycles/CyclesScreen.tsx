@@ -38,7 +38,7 @@ export function CyclesScreen() {
   const lang = app.state.language;
   const isAdmin = useIsQaAdmin();
   const today = formatDate(todayEpochDays());
-  const cycles = reports.state.cycles ?? [];
+  const cycles = useMemo(() => reports.state.cycles ?? [], [reports.state.cycles]);
   const projects = reports.state.projects;
   const [openId, setOpenId] = useState<string | null>(null);
   const [editing, setEditing] = useState<'new' | string | null>(null);
@@ -231,10 +231,10 @@ function CycleDetail({ lang, cycle, isAdmin, ctx, onBack, onEdit }: { lang: Lang
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [addId, setAddId] = useState('');
   const projects = reports.state.projects;
-  const cycles = reports.state.cycles ?? [];
-  const summary = cycleSummary(cycle, projects, ctx);
-  const members = reports.state.rcsMembers ?? [];
-  const assignments = reports.state.testerAssignments ?? [];
+  const cycles = useMemo(() => reports.state.cycles ?? [], [reports.state.cycles]);
+  const summary = useMemo(() => cycleSummary(cycle, projects, ctx), [cycle, projects, ctx]);
+  const members = useMemo(() => reports.state.rcsMembers ?? [], [reports.state.rcsMembers]);
+  const assignments = useMemo(() => reports.state.testerAssignments ?? [], [reports.state.testerAssignments]);
   const activity = recentActivity(summary.projects, ctx.today, 7);
 
   const people = useMemo(() => {

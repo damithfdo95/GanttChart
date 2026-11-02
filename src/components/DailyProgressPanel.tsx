@@ -59,7 +59,7 @@ export function DailyProgressPanel({
         state.dailyTargetOverrides ?? [],
         dayWindowsFromRows(state.planningRows, projectDayWindowDefaults(state)),
       ),
-    [state.planningRows, state.perHourPerTester, productiveHours, state.totalCases, state.targetPassRate, state.dailyTargetOverrides, state],
+    [state, productiveHours],
   );
 
   const gaps = useMemo(

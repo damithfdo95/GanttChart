@@ -86,7 +86,7 @@ export function PerformanceTab() {
   const [selectedTester, setSelectedTester] = useState<string | null>(null);
 
   const projects = reportsApi.state.projects;
-  const members = reportsApi.state.rcsMembers ?? [];
+  const members = useMemo(() => reportsApi.state.rcsMembers ?? [], [reportsApi.state.rcsMembers]);
   const access = useAccess();
   const tester = access.isTester;
   const ownMember = members.find((m) => m.id === access.ownMemberId) ?? null;
@@ -128,7 +128,7 @@ export function PerformanceTab() {
   }, [periodKind, year, month, half, customStart, customEnd]);
 
   const range = useMemo(() => getPeriodRange(selector), [selector]);
-  const scopeProjectIds = projectScope === '' ? null : [projectScope];
+  const scopeProjectIds = useMemo(() => (projectScope === '' ? null : [projectScope]), [projectScope]);
 
   const options = useMemo(
     () => ({ range, projectIds: scopeProjectIds, members, registeredOnly: true }),
@@ -149,7 +149,7 @@ export function PerformanceTab() {
   // ---- active-project daily execution entry (V6.6 §12) ----
   const activeProject = projects.find((p) => p.id === reportsApi.state.activeProjectId);
   const activeProjectId = activeProject?.projectId ?? '';
-  const activeRecords: TesterDailyPerformance[] = app.state.testerDailyPerformance ?? [];
+  const activeRecords: TesterDailyPerformance[] = useMemo(() => app.state.testerDailyPerformance ?? [], [app.state.testerDailyPerformance]);
   const activeProjectName =
     activeProject !== undefined
       ? projectDisplayName(activeProject, lang)

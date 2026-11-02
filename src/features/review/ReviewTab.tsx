@@ -70,8 +70,8 @@ export function ReviewTab() {
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
 
   const projects = reportsApi.state.projects;
-  const reviews = reportsApi.state.reviews ?? [];
-  const members = reportsApi.state.rcsMembers ?? [];
+  const reviews = useMemo(() => reportsApi.state.reviews ?? [], [reportsApi.state.reviews]);
+  const members = useMemo(() => reportsApi.state.rcsMembers ?? [], [reportsApi.state.rcsMembers]);
 
   const allRecords = useMemo(
     () => projects.flatMap((p) => p.inputs.testerDailyPerformance ?? []),

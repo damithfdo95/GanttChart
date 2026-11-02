@@ -24,8 +24,8 @@ export function DataBackup() {
     downloadStateAsJson(state);
   };
 
-  const handleImportFile = (file: File): void => {
-    if (!guard.guardWrite()) return; // read-only people cannot replace the shared project's data
+  const handleImportFile = async (file: File): Promise<void> => {
+    if (!(await guard.guardWrite())) return; // read-only people cannot replace the shared project's data
     const reader = new FileReader();
     reader.onload = () => {
       const result = parseImportPayload(String(reader.result ?? ''));
@@ -45,7 +45,7 @@ export function DataBackup() {
     const name = resolveBilingualName(lang, { nameEn: state.projectNameEn, nameJa: state.projectNameJa }) || t(lang, 'app.title');
     if (!(await ask(t(lang, 'dashboard.confirmReset', { name }), { severity: 'danger' }))) return;
     // In shared mode the project is everyone's: say so, and never for read-only people.
-    if (!guard.confirmEveryone('shared.confirm.resetProject')) return;
+    if (!(await guard.confirmEveryone('shared.confirm.resetProject'))) return;
     resetToDemo();
     setMessage(null);
   };

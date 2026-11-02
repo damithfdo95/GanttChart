@@ -23,7 +23,7 @@ export function ManagerPanel({ lang }: { lang: Language }) {
   const today = formatDate(todayEpochDays());
   const nowIso = useMemo(() => new Date().toISOString(), []);
   const projects = reports.state.projects;
-  const cycles = reports.state.cycles ?? [];
+  const cycles = useMemo(() => reports.state.cycles ?? [], [reports.state.cycles]);
   const ctx: RiskContext = useMemo(() => ({ today, nowIso, assignments: reports.state.testerAssignments ?? [] }), [today, nowIso, reports.state.testerAssignments]);
   const scopeId = cycleId !== '' && cycles.some((c) => c.id === cycleId) ? cycleId : null;
   const scoped = scopeId === null ? projects : projects.filter((p) => p.cycleId === scopeId);

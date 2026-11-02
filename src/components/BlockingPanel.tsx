@@ -38,7 +38,7 @@ export function BlockingPanel({ now }: BlockingPanelProps) {
   const lang = state.language;
   const ask = useAskConfirm(lang);
   const today = formatDate(todayEpochDays());
-  const events = state.blockingEvents ?? [];
+  const events = useMemo(() => state.blockingEvents ?? [], [state.blockingEvents]);
   const [jiraImporting, setJiraImporting] = useState(false);
   const [jiraMessage, setJiraMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 

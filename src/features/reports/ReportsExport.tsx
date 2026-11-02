@@ -75,12 +75,15 @@ export function ReportsExport() {
 
   // Team filtering was removed from the UI (team is no longer displayed);
   // exports always cover every team.
-  const filters: ExportFilters = {
-    dateFrom: dateFrom === '' ? null : dateFrom,
-    dateTo: dateTo === '' ? null : dateTo,
-    team: null,
-    status: status === '' ? null : (status as AttendanceStatus),
-  };
+  const filters: ExportFilters = useMemo(
+    () => ({
+      dateFrom: dateFrom === '' ? null : dateFrom,
+      dateTo: dateTo === '' ? null : dateTo,
+      team: null,
+      status: status === '' ? null : (status as AttendanceStatus),
+    }),
+    [dateFrom, dateTo, status],
+  );
 
   const projection = useMemo(
     () =>
@@ -311,7 +314,7 @@ export function ReportsExport() {
         build: () => ({ sheet: overtimeSheet(lang, app.state), json: projection.rows }),
       },
     ],
-    [lang, filters.dateFrom, filters.dateTo, filters.team, filters.status, reportsApi.state, app.state, projection, settings.progressRules],
+    [lang, filters, reportsApi.state, app.state, projection, settings.progressRules, readiness],
   );
 
   // Timestamp includes the time so same-day exports never collide.
@@ -427,7 +430,7 @@ export function ReportsExport() {
         return;
       }
       // Restoring a backup replaces the WHOLE shared workspace for everyone: administrators only, typed confirmation.
-      if (!guard.confirmReplace()) return;
+      if (!(await guard.confirmReplace())) return;
       // Safety first: download a backup of the current data before replacing it.
       exportBackup();
       void (async () => {

@@ -12,15 +12,15 @@ import type { TesterDto } from '../../../shared/tenancy';
 export function useTestManagement() {
   const reports = useReportsStateCtx();
   const { principal } = useTenant();
-  const scopes = reports.state.scopes ?? [];
-  const testCases = reports.state.testCases ?? [];
-  const caseResults = reports.state.caseResults ?? [];
+  const scopes = useMemo(() => reports.state.scopes ?? [], [reports.state.scopes]);
+  const testCases = useMemo(() => reports.state.testCases ?? [], [reports.state.testCases]);
+  const caseResults = useMemo(() => reports.state.caseResults ?? [], [reports.state.caseResults]);
   const byCase = useMemo(() => resultsByCase(caseResults), [caseResults]);
-  const caseExecutions = reports.state.caseExecutions ?? [];
+  const caseExecutions = useMemo(() => reports.state.caseExecutions ?? [], [reports.state.caseExecutions]);
   const state: TestManagementState = useMemo(() => ({ scopes, testCases, caseResults, caseExecutions }), [scopes, testCases, caseResults, caseExecutions]);
   const actor = principal?.userId ?? null;
   // The actor's Team Member (stable identity) when the account is linked to one; never guessed from a name.
-  const members = reports.state.rcsMembers ?? [];
+  const members = useMemo(() => reports.state.rcsMembers ?? [], [reports.state.rcsMembers]);
   const actorMemberId = actor === null ? undefined : members.find((m) => m.userId === actor)?.id;
 
   /**
@@ -55,7 +55,7 @@ export function useTestManagement() {
 export function usePeopleDirectory(accounts: readonly TesterDto[] | null): PeopleDirectory {
   const { principal } = useTenant();
   const reports = useReportsStateCtx();
-  const members = reports.state.rcsMembers ?? [];
+  const members = useMemo(() => reports.state.rcsMembers ?? [], [reports.state.rcsMembers]);
   return useMemo(
     () => ({
       members,

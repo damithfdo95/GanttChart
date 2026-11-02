@@ -38,7 +38,7 @@ export function MilestonePanel({ now }: MilestonePanelProps) {
   const { state, updateField } = useAppStateCtx();
   const lang = state.language;
   const ask = useAskConfirm(lang);
-  const milestones = state.milestones ?? [];
+  const milestones = useMemo(() => state.milestones ?? [], [state.milestones]);
   const nowAbsoluteMinutes = todayEpochDays() * 1440 + now;
 
   const setMilestones = (next: Milestone[]): void => updateField('milestones', next);

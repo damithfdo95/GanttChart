@@ -228,7 +228,7 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
   // exists, otherwise the planned/defaults window).
   const dayWindows = useMemo(
     () => dayWindowsFromRows(state.planningRows, projectDayWindowDefaults(state)),
-    [state.planningRows, state.startTime, state.dailyOvertimeMinutes, state.intervalEnabled],
+    [state],
   );
   const todayWindow = useMemo(() => effectiveTodayWindow(state, today), [state, today]);
 
@@ -407,7 +407,7 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
               workingDays,
               state.startDate,
               state.startTime,
-              nowAnchor,
+              { epochDay: todayEpoch, timeOfDay: now },
               overtimeMinutes,
               offDays,
             );
@@ -419,7 +419,7 @@ export function Dashboard({ onOpenOverall, onOpenMeeting }: { onOpenOverall?: (f
       });
     }
     return rows;
-  }, [state.totalCases, state.casesCompleted, state.perHourPerTester, state.currentTesters, state.startDate, state.startTime, workingDays, offDays, overtimeMinutes, whatIfCount, whatIfRemainingCases, todayEpoch, now]);
+  }, [state.perHourPerTester, state.currentTesters, state.startDate, state.startTime, workingDays, offDays, overtimeMinutes, whatIfCount, whatIfRemainingCases, todayEpoch, now]);
 
   // ---- handlers (§22–§24) ----------------------------------------------------
   const handleNumberChange = (field: NumberField, raw: string): void => {

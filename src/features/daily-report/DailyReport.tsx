@@ -1,5 +1,5 @@
 import { useAskConfirm } from '../../components/ConfirmDialog';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AttendanceRecord, DailyReport as DailyReportEntity, DailyTopic, Language, ReportActivity } from '../../types';
 import { useAppStateCtx } from '../../app/state-contexts';
 import { useReportsStateCtx } from '../../app/state-contexts';
@@ -107,22 +107,10 @@ export function DailyReport({ initialDate, prepare = false, onOpenProjects }: { 
   )?.projectId ?? null;
 
   useEffect(() => {
-    if (findDraft(reportsApi.state.reports, selectedDate) === undefined && !finalizedForDate && !proposing) {
-      const created = newDraft(selectedDate, uiLang, settings.supervisorName, nowIso(), activeProjectId);
-      // Seed today's schedule for the morning report from the live plan.
-      const seeded = morningScheduleSuggestions(uiLang);
-      if (seeded.length > 0) {
-        created.morningSchedule = seeded.map((text) => ({ id: generateId(), text, source: 'AUTO' as const }));
-      }
-      reportsApi.upsertReport(created);
-    }
-  }, [selectedDate, reportsApi, uiLang, settings.supervisorName, activeProjectId, finalizedForDate, proposing]);
-
-  useEffect(() => {
     setPreviewText(draft?.previewText ?? '');
     setMorningPreview(draft?.morningPreviewText ?? '');
     setMessage(null);
-  }, [draft?.id, selectedDate]);
+  }, [draft?.id, draft?.previewText, draft?.morningPreviewText, selectedDate]);
 
   const attendanceForDate = reportsApi.state.attendance.filter((r) => r.date === selectedDate);
   // The canonical daily execution entry for the report date (if any): the
@@ -152,18 +140,33 @@ export function DailyReport({ initialDate, prepare = false, onOpenProjects }: { 
     [app.state],
   );
 
-  const projectNameFor = (language: Language): string =>
-    (language === 'en' ? app.state.projectNameEn : app.state.projectNameJa) ||
-    (language === 'en' ? app.state.projectNameJa : app.state.projectNameEn) ||
-    t(language, 'app.title');
+  const projectNameFor = useCallback(
+    (language: Language): string =>
+      (language === 'en' ? app.state.projectNameEn : app.state.projectNameJa) ||
+      (language === 'en' ? app.state.projectNameJa : app.state.projectNameEn) ||
+      t(language, 'app.title'),
+    [app.state.projectNameEn, app.state.projectNameJa],
+  );
 
   const todayPlanningRow = app.state.planningRows.find((r) => r.date === selectedDate);
   /** Suggested "Today's schedule" items for the morning report, in the report language. */
-  const morningScheduleSuggestions = (language: Language): string[] => {
-    const remaining = Math.max(0, app.state.totalCases - app.state.casesCompleted);
-    if (todayPlanningRow === undefined && remaining <= 0) return [];
-    return [projectNameFor(language)];
-  };
+  const morningScheduleSuggestions = useCallback(
+    (language: Language): string[] => {
+      const remaining = Math.max(0, app.state.totalCases - app.state.casesCompleted);
+      if (todayPlanningRow === undefined && remaining <= 0) return [];
+      return [projectNameFor(language)];
+    },
+    [app.state.totalCases, app.state.casesCompleted, todayPlanningRow, projectNameFor],
+  );
+
+  useEffect(() => {
+    if (findDraft(reportsApi.state.reports, selectedDate) === undefined && !finalizedForDate && !proposing) {
+      const created = newDraft(selectedDate, uiLang, settings.supervisorName, nowIso(), activeProjectId);
+      const seeded = morningScheduleSuggestions(uiLang);
+      if (seeded.length > 0) created.morningSchedule = seeded.map((text) => ({ id: generateId(), text, source: 'AUTO' as const }));
+      reportsApi.upsertReport(created);
+    }
+  }, [selectedDate, reportsApi, uiLang, settings.supervisorName, activeProjectId, finalizedForDate, proposing, morningScheduleSuggestions]);
 
   const suggestions = buildNextDaySuggestions(reportLanguage, {
     projectName: projectNameFor(reportLanguage),

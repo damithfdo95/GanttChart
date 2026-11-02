@@ -287,8 +287,8 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
     );
   };
 
-  const handleImportFile = (file: File): void => {
-    if (!guard.guardWrite()) return;
+  const handleImportFile = async (file: File): Promise<void> => {
+    if (!(await guard.guardWrite())) return;
     const reader = new FileReader();
     reader.onload = async () => {
       const result = detectImportFile(String(reader.result ?? ''));
@@ -299,7 +299,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
       if (result.kind === 'backup') {
         if (!(await ask(t(lang, 'import.confirmBackup'), { severity: 'warning' }))) return;
         // A full backup replaces the WHOLE shared workspace for everyone: administrators only, typed confirmation.
-        if (!guard.confirmReplace()) return;
+        if (!(await guard.confirmReplace())) return;
         app.replaceState(result.data.appState);
         // A file never creates or changes a login link: people with a login keep the link this workspace has now.
         reportsApi.replaceReportsState(sanitizeRestoredAccountLinks(result.data.reportsState, reportsApi.state, access.userId));
@@ -351,7 +351,7 @@ export function Overall({ focus, onOpenGantt, onProjectCreated }: OverallProps) 
   const handleDeleteProject = async (project: ProjectRecord): Promise<void> => {
     const name = resolveBilingualName(lang, { nameEn: project.nameEn, nameJa: project.nameJa }) || '—';
     if (!(await ask(t(lang, 'overall.confirmDeleteProject', { name }), { severity: 'danger' }))) return;
-    if (!guard.confirmEveryone('shared.confirm.deleteProject')) return;
+    if (!(await guard.confirmEveryone('shared.confirm.deleteProject'))) return;
     const wasActive = reportsApi.state.activeProjectId === project.id;
     const fallback = reportsApi.state.projects.find((p) => p.id !== project.id) ?? null;
     reportsApi.removeProject(project.id);

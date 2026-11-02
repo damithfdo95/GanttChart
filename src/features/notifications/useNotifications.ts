@@ -55,8 +55,8 @@ export function useDueNotifications() {
   const reports = useReportsStateCtx();
   const { principal, api } = useTenant();
   const defs = useMemo(() => reports.state.notifications ?? [], [reports.state.notifications]);
-  const acks = reports.state.notificationAcks ?? [];
-  const members = reports.state.rcsMembers ?? [];
+  const acks = useMemo(() => reports.state.notificationAcks ?? [], [reports.state.notificationAcks]);
+  const members = useMemo(() => reports.state.rcsMembers ?? [], [reports.state.rcsMembers]);
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const [state, setState] = useState<Record<string, AckState>>({});
 

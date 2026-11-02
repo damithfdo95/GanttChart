@@ -16,7 +16,7 @@ export function TesterWorkload({ lang }: { lang: Language }) {
   const { testers } = useTesters();
   const today = formatDate(todayEpochDays());
   const projects = reports.state.projects;
-  const assignments = reports.state.testerAssignments ?? [];
+  const assignments = useMemo(() => reports.state.testerAssignments ?? [], [reports.state.testerAssignments]);
   const cycles = reports.state.cycles ?? [];
   const rows = useMemo(() => (testers === null ? [] : testerWorkload(testers.map((x) => x.id), projects, assignments, today)), [testers, projects, assignments, today]);
   const unassigned = useMemo(() => unassignedProjects(projects, assignments, today), [projects, assignments, today]);

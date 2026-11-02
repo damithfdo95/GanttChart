@@ -59,7 +59,7 @@ interface JiraImportTicketsProps {
   /** Close the confirmation step (the tab's button in the export row toggles it). */
   onClose: () => void;
   /** Shared-mode write gate (guardWrite) — checked once before committing. */
-  canWrite: () => boolean;
+  canWrite: () => Promise<boolean>;
   /** Persist one project's merged bugTickets (updateProject — one commit per project). */
   onCommit: (projectId: string, bugTickets: BugTicket[]) => void;
   /** Transient tab-level feedback after a successful commit. */
@@ -121,9 +121,9 @@ export function JiraImportTickets({
 
   const routedTicketCount = routing === null ? 0 : routing.routed.reduce((sum, entry) => sum + entry.issues.length, 0);
 
-  const confirmImport = (): void => {
+  const confirmImport = async (): Promise<void> => {
     if (routing === null || routing.routed.length === 0 || committing) return;
-    if (!canWrite()) return;
+    if (!(await canWrite())) return;
     setCommitting(true);
     setResult(null);
     const outcomes: ImportTicketResult[] = [];

@@ -302,7 +302,7 @@ function useScopeTotalSync(app: AppStateApi, reports: ReportsStateApi, enabled: 
     if (reconciled === projects) return;
     const others = reconciled.map((p, i) => (p.id === activeId ? projects[i] ?? p : p));
     if (others.some((p, i) => p !== projects[i])) reports.setProjects(others);
-  }, [app, reports, enabled]);
+  }, [app, app.state, reports, enabled]);
 }
 
 /**
@@ -314,7 +314,7 @@ function useScopeTotalSync(app: AppStateApi, reports: ReportsStateApi, enabled: 
 function usePortfolioSeed(app: AppStateApi, reports: ReportsStateApi, enabled: boolean): void {
   useEffect(() => {
     if (enabled) reports.seedInitialProject(app.state);
-  }, [reports, enabled]);
+  }, [app.state, reports, enabled]);
 }
 
 /**

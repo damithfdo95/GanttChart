@@ -260,9 +260,9 @@ export function JiraScreen() {
     setMessage({ kind: imported.errors.length > 0 ? 'error' : 'ok', text: parts.join(' ') });
   };
 
-  const handleLinkReporter = (reporterName: string, memberId: string): void => {
+  const handleLinkReporter = async (reporterName: string, memberId: string): Promise<void> => {
     if (memberId === '') return;
-    if (!guard.guardWrite()) return;
+    if (!(await guard.guardWrite())) return;
     const member = memberById.get(memberId);
     if (member === undefined) return;
     reportsApi.upsertExternalIdentity(
@@ -500,7 +500,7 @@ export function JiraScreen() {
           baseUrl={reportsApi.state.settings.jira?.baseUrl ?? ''}
           today={today}
           onClose={() => setImportOpen(false)}
-          canWrite={() => guard.guardWrite()}
+          canWrite={guard.guardWrite}
           onCommit={handleCommitImportedTickets}
           onImported={handleImportedTickets}
         />

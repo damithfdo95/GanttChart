@@ -48,7 +48,7 @@ export function TicketTab() {
       ? projectDisplayName(activeProject, lang)
       : resolveBilingualName(lang, { nameEn: app.state.projectNameEn, nameJa: app.state.projectNameJa });
 
-  const tickets: BugTicket[] = app.state.bugTickets ?? [];
+  const tickets: BugTicket[] = useMemo(() => app.state.bugTickets ?? [], [app.state.bugTickets]);
   const today = formatDate(todayEpochDays());
 
   // Unique member names from the member master, attendance and existing

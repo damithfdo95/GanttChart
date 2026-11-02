@@ -32,7 +32,7 @@ export function ProjectControlCenter({ lang }: { lang: Language }) {
   const state = reports.state;
   const project = state.projects.find((p) => p.id === state.activeProjectId) ?? null;
   const cycles = state.cycles ?? [];
-  const assignments = state.testerAssignments ?? [];
+  const assignments = useMemo(() => state.testerAssignments ?? [], [state.testerAssignments]);
   const members = state.rcsMembers ?? [];
   const ctx: RiskContext = useMemo(() => ({ today, nowIso: new Date().toISOString(), assignments }), [today, assignments]);
   if (project === null) return null;
