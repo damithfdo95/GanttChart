@@ -147,14 +147,13 @@ describe('cycles: shared, Admin-administered, tenant-bound', () => {
 });
 
 describe('execution results: impossible values are refused by the server', () => {
-  it('refuses negative, fractional and impossible-date entries from any client, and stores nothing', async () => {
+  it('refuses fractional and impossible-date entries from any client, and stores nothing', async () => {
     const a = await workspace('Alpha');
     const editor = await joined(a.t.adminEmail);
     const before = (await get<{ revision: number }>(a.t.adminEmail, '/api/export')).json.revision;
     for (const [over, message] of [
-      [{ pass: -1 }, 'execution_entry_invalid_pass'],
       [{ fail: 2.5 }, 'execution_entry_invalid_fail'],
-      [{ blocked: -3 }, 'execution_entry_invalid_blocked'],
+      [{ pass: 20_000_001 }, 'execution_entry_invalid_pass'],
       [{ date: '2026-02-30' }, 'execution_entry_invalid_date'],
       [{ date: 'yesterday' }, 'execution_entry_invalid_date'],
     ] as const) {
@@ -162,6 +161,17 @@ describe('execution results: impossible values are refused by the server', () =>
       expect(r, JSON.stringify(over)).toMatchObject({ ok: false, reject: { reason: 'invalid', message } });
     }
     expect((await get<{ revision: number }>(a.t.adminEmail, '/api/export')).json.revision).toBe(before);
+  });
+
+  it('accepts a NEGATIVE day delta (a reduced cumulative) and stores it', async () => {
+    const a = await workspace('Alpha');
+    const editor = await joined(a.t.adminEmail);
+    expect((await commit(editor, [projectRec('proj-1', 'PRJ-001', {}, [entry({ id: 'd1', pass: 60, fail: 20 })], 100)])).ok).toBe(true);
+    // The SV corrects an over-entered total: the day's delta is negative, the cumulative comes back down.
+    const reduced = await commit(editor, [projectRec('proj-1', 'PRJ-001', {}, [entry({ id: 'd1', pass: 60, fail: 20 }), entry({ id: 'd2', date: '2026-10-06', pass: -10, fail: 0 })], 100)]);
+    expect(reduced.ok).toBe(true);
+    const stored = (await get<{ records: Array<{ kind: string; id: string; json: string }> }>(a.t.adminEmail, '/api/export')).json.records.find((r) => r.kind === 'project' && r.id === 'proj-1');
+    expect(stored && JSON.parse(stored.json).inputs.dailyExecuted.some((e: { pass: number }) => e.pass === -10)).toBe(true);
   });
 
   it('refuses pushing completed cases above the planned total, allows exactly the total, and allows lowering the total afterwards', async () => {

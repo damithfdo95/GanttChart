@@ -53,7 +53,9 @@ Endpoints: `GET /api/tenant/team`, `POST /api/tenant/assignments` (Admin only).
 Deviation from a naive "planned = executed + remaining": N/A and SPO count as completed work, so Executed alone does
 not add up to Planned − Remaining. This matches the existing progress engine.
 
-Server validation (`projectExecutionError`): counts are non-negative integers (≤ 10,000,000), Testers 0–100,000,
+Server validation (`projectExecutionError`): the seven status counts are integers within ±10,000,000 — negative values are
+valid correction deltas (a cumulative total entered below the previous day's is stored as a negative day delta so the
+cumulative can come back down); `uncategorizedCompleted` is 0–10,000,000, Testers 0–100,000,
 overtime 0–180 min, one entry per date, valid ISO dates, and an existing project's *completed* total cannot rise
 above its planned total. Rules only inspect data a commit changes, so old data never blocks a save. Lowering Planned
 below what was executed is allowed (history is preserved) and is shown as a warning in the UI.

@@ -106,6 +106,15 @@ function isCount(value: unknown): boolean {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 10_000_000;
 }
 
+/**
+ * A status count may be NEGATIVE: in cumulative (total) input mode a total entered below the previous cumulative is
+ * stored as a negative day delta so the cumulative can come back down (correcting an over-entered value). The bound
+ * is symmetric (±10,000,000) so a correction can never smuggle in an absurd magnitude either.
+ */
+function isSignedCount(value: unknown): boolean {
+  return typeof value === 'number' && Number.isInteger(value) && Math.abs(value) <= 10_000_000;
+}
+
 /** Where a day's aggregate came from. Absent on older entries (read as a manual entry). */
 export const EXECUTION_SOURCES = ['manual', 'caseExecution', 'testrail'] as const;
 export type ExecutionSourceValue = (typeof EXECUTION_SOURCES)[number];
@@ -136,7 +145,7 @@ export function executionEntryError(entry: unknown): string | null {
   const e = entry as Record<string, unknown>;
   if (typeof e.id !== 'string' || e.id.length === 0 || e.id.length > 200) return 'execution_entry_invalid_id';
   if (!isIsoDate(e.date)) return 'execution_entry_invalid_date';
-  for (const f of COUNT_FIELDS) if (!isCount(e[f])) return `execution_entry_invalid_${f}`;
+  for (const f of COUNT_FIELDS) if (!isSignedCount(e[f])) return `execution_entry_invalid_${f}`;
   for (const f of OPTIONAL_COUNT_FIELDS) if (e[f] !== undefined && !isCount(e[f])) return `execution_entry_invalid_${f}`;
   // People on the day: a head count, but half-day planning can make it fractional, so only "a sane non-negative number" is required.
   if (typeof e.testers !== 'number' || !Number.isFinite(e.testers) || e.testers < 0 || e.testers > 100_000) return 'execution_entry_invalid_testers';
@@ -147,6 +156,12 @@ export function executionEntryError(entry: unknown): string | null {
 /** Cases a day's entry counts as completed (the four completed categories + the migrated remainder). */
 export function entryCompleted(entry: Record<string, unknown>): number {
   const n = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.round(v)) : 0);
+  return n(entry.pass) + n(entry.fail) + n(entry.notApplicable) + n(entry.spo) + n(entry.uncategorizedCompleted);
+}
+
+/** A day's completed total as stored, negative correction included (for the planned-total rule: a reduction never trips it). */
+function entryCompletedSigned(entry: Record<string, unknown>): number {
+  const n = (v: unknown): number => (typeof v === 'number' && Number.isInteger(v) ? v : 0);
   return n(entry.pass) + n(entry.fail) + n(entry.notApplicable) + n(entry.spo) + n(entry.uncategorizedCompleted);
 }
 
@@ -190,7 +205,7 @@ export function projectExecutionError(prevJson: string | null, nextJson: string)
   if (prev !== null && (changed.length > 0 || nextEntries.length !== prevEntries.length)) {
     const total = (next.inputs as Record<string, unknown> | undefined)?.totalCases;
     if (typeof total === 'number' && Number.isFinite(total)) {
-      const sum = (list: Record<string, unknown>[]) => list.reduce((s, e) => s + entryCompleted(e), 0);
+      const sum = (list: Record<string, unknown>[]) => list.reduce((s, e) => s + entryCompletedSigned(e), 0);
       const after = sum(nextEntries);
       if (after > total && after > sum(prevEntries)) return 'executed_exceeds_planned';
     }

@@ -65,6 +65,13 @@ describe('daily execution entries', () => {
     expect(executionEntryError(entry({ uncategorizedCompleted: 4 }))).toBeNull();
   });
 
+  it('accepts NEGATIVE status counts (a reduced cumulative is stored as a negative day delta)', () => {
+    for (const f of ['pass', 'fail', 'notApplicable', 'spo', 'blocked', 'retest', 'questioned']) {
+      expect(executionEntryError(entry({ [f]: -5 })), `${f}=-5`).toBeNull();
+    }
+    expect(executionEntryError(entry({ pass: -10_000_000 }))).toBeNull();
+  });
+
   it('accepts optional provenance (source, stamp, TestRail ids) and rejects unknown sources or foreign reference keys', () => {
     expect(executionEntryError(entry({ source: 'testrail', sourceUpdatedAt: '2026-10-08T01:42:00.000Z', sourceRef: { provider: 'testrail', runId: 9001 } }))).toBeNull();
     expect(executionEntryError(entry({ source: 'manual' }))).toBeNull();
@@ -73,9 +80,9 @@ describe('daily execution entries', () => {
     expect(executionEntryError(entry({ sourceRef: { provider: 'testrail', apiKey: 'x' } }))).toBe('execution_entry_invalid_sourceRef');
   });
 
-  it('rejects negative, fractional, non-numeric and absurd counts and impossible dates', () => {
+  it('rejects fractional, non-numeric and absurd counts and impossible dates', () => {
     for (const f of ['pass', 'fail', 'notApplicable', 'spo', 'blocked', 'retest', 'questioned']) {
-      for (const bad of [-1, 1.5, NaN, Infinity, '3', null, 20_000_000]) expect(executionEntryError(entry({ [f]: bad })), `${f}=${String(bad)}`).toBe(`execution_entry_invalid_${f}`);
+      for (const bad of [1.5, NaN, Infinity, '3', null, 20_000_001, -20_000_001]) expect(executionEntryError(entry({ [f]: bad })), `${f}=${String(bad)}`).toBe(`execution_entry_invalid_${f}`);
     }
     expect(executionEntryError(entry({ date: '2026-02-30' }))).toBe('execution_entry_invalid_date');
     expect(executionEntryError(entry({ date: 'today' }))).toBe('execution_entry_invalid_date');
@@ -93,15 +100,23 @@ describe('daily execution entries', () => {
 
 describe('a changed project record', () => {
   it('only NEW or CHANGED entries are examined: old data is never refused for what it already holds', () => {
-    const legacy = project([entry({ id: 'old', pass: -5 })]);
-    expect(projectExecutionError(legacy, project([entry({ id: 'old', pass: -5 }), entry({ id: 'new', date: '2026-10-06' })]))).toBeNull();
-    expect(projectExecutionError(legacy, project([entry({ id: 'old', pass: -4 })]))).toBe('execution_entry_invalid_pass');
+    const legacy = project([entry({ id: 'old', pass: 1.5 })]);
+    expect(projectExecutionError(legacy, project([entry({ id: 'old', pass: 1.5 }), entry({ id: 'new', date: '2026-10-06' })]))).toBeNull();
+    expect(projectExecutionError(legacy, project([entry({ id: 'old', pass: 2.5 })]))).toBe('execution_entry_invalid_pass');
   });
 
   it('refuses a bad new entry', () => {
-    expect(projectExecutionError(project([]), project([entry({ pass: -1 })]))).toBe('execution_entry_invalid_pass');
-    expect(projectExecutionError(project([]), project([entry({ fail: 1.5 })]))).toBe('execution_entry_invalid_fail');
+    expect(projectExecutionError(project([]), project([entry({ pass: 1.5 })]))).toBe('execution_entry_invalid_pass');
+    expect(projectExecutionError(project([]), project([entry({ fail: 2.5 })]))).toBe('execution_entry_invalid_fail');
     expect(projectExecutionError(project([]), project([entry({ date: '2026-13-01' })]))).toBe('execution_entry_invalid_date');
+  });
+
+  it('a negative day delta (a reduced cumulative) is accepted and lowers the completed total', () => {
+    const base = project([entry({ id: 'a', pass: 60, fail: 20 })], {}, 100); // 80 completed
+    expect(projectExecutionError(base, project([entry({ id: 'a', pass: 60, fail: 20 }), entry({ id: 'b', date: '2026-10-06', pass: -10, fail: 0 })], {}, 100))).toBeNull();
+    // The signed sum is what the planned-total rule sees: 80 - 10 = 70 <= 100.
+    const over = project([entry({ id: 'a', pass: 60, fail: 20 })], {}, 50);
+    expect(projectExecutionError(over, project([entry({ id: 'a', pass: 60, fail: 20 }), entry({ id: 'b', date: '2026-10-06', pass: -10, fail: 0 })], {}, 50))).toBeNull();
   });
 
   it('refuses a second entry for the same day, but tolerates a duplicate that already existed', () => {
@@ -130,7 +145,7 @@ describe('a changed project record', () => {
 
   it('a project that is new to the workspace (restore/import) is checked for shape but not refused for its totals', () => {
     expect(projectExecutionError(null, project([entry({ pass: 500 })], {}, 100))).toBeNull();
-    expect(projectExecutionError(null, project([entry({ pass: -1 })], {}, 100))).toBe('execution_entry_invalid_pass');
+    expect(projectExecutionError(null, project([entry({ pass: 1.5 })], {}, 100))).toBe('execution_entry_invalid_pass');
   });
 
   it('refuses something that is not a project at all', () => {
@@ -220,6 +235,6 @@ describe('who may change what, and what may refer to what', () => {
   });
 
   it('an invalid execution entry inside a project is refused with the reason', () => {
-    expect(commit('admin', [{ kind: 'project', id: 'p1', json: project([entry({ pass: -3 })]) }], [], { 'project:p1': project([]) })).toBe('execution_entry_invalid_pass');
+    expect(commit('admin', [{ kind: 'project', id: 'p1', json: project([entry({ pass: 1.5 })]) }], [], { 'project:p1': project([]) })).toBe('execution_entry_invalid_pass');
   });
 });
