@@ -18,10 +18,10 @@
     "validate": "wrangler types && wrangler deploy --dry-run --env=\"\" --outdir .wrangler/dryrun"
   },
   "dependencies": {
-    "jose": "^6.2.14"
+    "jose": "^6.2.15"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "^1.4.11",
+    "@cloudflare/vitest-plugin": "^1.6.0",
     "@types/node": "^24.0.0",
     "@types/sql.js": "^1.4.11",
     "sql.js": "^1.15.2",
