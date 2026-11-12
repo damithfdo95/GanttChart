@@ -5,6 +5,12 @@ The product version is `package.json`; formal releases are tagged `v` + that ver
 
 ## Unreleased
 
+## 0.10.0-pilot.8 - reliable sign-out and stable Shared History dates (future tag `v0.10.0-pilot.8`)
+
+### Fixed
+- **Sign Out now reliably ends the active authentication session.** Password sessions are revoked server-side; Access SSO uses the application-domain logout endpoint after revoking any coexisting application session. Live sync and WebSockets stop immediately, authenticated client state is removed, redirects stay on the application origin, and device-local JIRA/TestRail settings remain untouched.
+- **Shared History date filtering is deterministic at the JST boundary.** Inclusive Asia/Tokyo calendar-day ranges remain `[00:00 JST, next-day 00:00 JST)`, now use the shared `businessDayRangeIso()` helper, and are covered at start, end, UTC-midnight and fixed historical boundaries. No business rules changed.
+
 ## 0.10.0-pilot.7 - production audit hardening (future tag `v0.10.0-pilot.7`)
 
 ### Added
