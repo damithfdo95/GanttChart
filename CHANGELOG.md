@@ -5,17 +5,23 @@ The product version is `package.json`; formal releases are tagged `v` + that ver
 
 ## Unreleased
 
+## 0.10.0-pilot.7 - production audit hardening (future tag `v0.10.0-pilot.7`)
+
 ### Added
 - **Sign-in is dual: Cloudflare Access SSO or a Worker password.** The public page offers two doors: "Sign in with SSO" (`/login`, the Access JWT verified by the Worker) and "Sign in with a password" (`/signin`, the Worker's own session cookie). Either alone is enough; the registry still decides who may use the app. Access is optional configuration (`ACCESS_TEAM_DOMAIN` + `ACCESS_AUD` as a pair); without it the deployment is password-only.
 - **SV sets a user's initial password.** From Team Members, an SV can set (or reset) any linked login's password (`POST /api/tenant/users/:id/password`). The person must choose their own at the next sign-in (forced change), and any session they had is ended. Audited as `user.password_set`.
 - **Password sign-in for the Super Admin** via the `SUPER_ADMIN_PASSWORD` secret (a stored hash, not the plaintext).
 
 ### Security
+- **Production Access configuration is deploy-safe.** `ACCESS_AUD` remains a required Worker secret instead of a tracked placeholder that could overwrite the live value; the production guard enforces this boundary.
+- **Session revocation timing is explicit.** `SESSION_RECHECK_MS` is declared in production and development configuration so runtime behavior and generated Worker types cannot drift.
 - **Disabling an account, changing its access level or changing its role (SV ↔ Tester) now revokes the person's sessions server-side.** The next request is authorised under the new state immediately (live WebSocket connections were already closed; the session tokens are now killed too).
 - **Live-sync WebSocket messages re-check the session against the registry** (defence in depth): even if the immediate close ever raced or failed, a revoked session's next message is refused and the socket closed. Passed checks are cached for 30 seconds, so the steady-state cost is nil.
 - **Password sign-in hardening:** per-account lockout after 10 failed attempts (15 minutes), constant-time verification with no account enumeration, PBKDF2-SHA256 (100k iterations) hashes, HttpOnly+Secure+SameSite=Lax session cookie with 7-day server-side revocation.
 
 ### Fixed
+- **Production verification is green again.** The frontend/Worker type-only dependency boundary and Team Management test fixture types no longer break Worker TypeScript checks.
+- Responsive browser verification now covers 420, 900, 1280 and 1920 pixel widths, drawer keyboard behavior, horizontal overflow and unexpected console errors.
 - **Execution (Dashboard) — cumulative totals can now be reduced.** Entering a running total below the previous day's cumulative previously clamped the day's count to 0, so a wrong (too-high) value could never be corrected. A reduced total now records a negative day delta so the cumulative comes back down.
 
 ### Added
