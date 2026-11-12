@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { WorkspaceStore, type CommitInput } from '../src/store';
+import { businessDayRangeIso } from '../../shared/businessTime';
 import { createTestStorage } from './helpers/sqlJsStorage';
 
 type TestStorage = Awaited<ReturnType<typeof createTestStorage>>;
@@ -53,6 +54,24 @@ describe('basics', () => {
     const same = commit({ puts: [put('project', 'p1', { n: 1 })], deletes: [{ kind: 'report', id: 'nope' }] });
     expect(same).toMatchObject({ ok: true, changed: false, revision: 1 });
     expect(store.revision()).toBe(1);
+  });
+});
+
+describe('revision business-day filtering', () => {
+  it('uses inclusive-start/exclusive-end JST bounds at fixed historical instants', () => {
+    const day = businessDayRangeIso('2026-10-08');
+    const instants = [
+      '2026-10-07T14:59:59.999Z', // just before 2026-10-08 JST
+      day.from, // exact start: included
+      '2026-10-08T00:00:00.000Z', // UTC midnight, still 2026-10-08 JST
+      '2026-10-08T14:59:59.999Z', // just before the exclusive end: included
+      day.to, // exact next JST midnight: excluded
+      '2026-10-08T15:00:00.001Z', // just after the range
+    ];
+    for (const [index, now] of instants.entries()) commit({ now, puts: [put('project', `p${index}`, { index })], deletes: [] });
+
+    const revisions = store.listRevisions(100, undefined, day);
+    expect(revisions.map((r) => r.committedAt).sort()).toEqual([day.from, '2026-10-08T00:00:00.000Z', '2026-10-08T14:59:59.999Z'].sort());
   });
 });
 

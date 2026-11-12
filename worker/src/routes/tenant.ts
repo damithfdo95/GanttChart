@@ -4,7 +4,7 @@
  * ALWAYS the verified principal's — never a client-supplied value.
  */
 
-import { businessDate } from '../../../shared/businessTime';
+import { businessDate, businessDayRangeIso } from '../../../shared/businessTime';
 import { accountRoleOf, memberRoleOf, memberRoleWord } from '../../../shared/members';
 import { parseNotificationInput } from '../../../shared/notifications';
 import { isRecordKind, type RecordKind } from '../../../shared/protocol';
@@ -74,16 +74,15 @@ export async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
       filter.actor = actor;
     }
     // Dates are business-time (Asia/Tokyo, UTC+9, no daylight saving) calendar days: [from 00:00, to + 1 day 00:00).
-    const dayStart = (date: string): string => new Date(Date.parse(`${date}T00:00:00+09:00`)).toISOString();
     const from = url.searchParams.get('from');
     if (from !== null && from !== '') {
       if (!isDateString(from)) return problem(400, 'invalid_date');
-      filter.from = dayStart(from);
+      filter.from = businessDayRangeIso(from).from;
     }
     const to = url.searchParams.get('to');
     if (to !== null && to !== '') {
       if (!isDateString(to)) return problem(400, 'invalid_date');
-      filter.to = new Date(Date.parse(dayStart(to)) + 86_400_000).toISOString();
+      filter.to = businessDayRangeIso(to).to;
     }
     return json(await roomFor(ctx, p).listRevisions(p.tenantId, limit, before, filter));
   }

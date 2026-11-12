@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import type { UserDto } from '../../../shared/tenancy';
-import { businessMomentMs } from '../../../shared/businessTime';
+import { businessDate, businessMomentMs } from '../../../shared/businessTime';
 import { dailyPlanId, meetingNoteId } from '../../../shared/meeting';
 import { ackId } from '../../../shared/notifications';
 import { activateWeb, call, createTenant, get, openSocket, post, rec, type Tenant } from './tenancy-harness';
@@ -330,7 +330,7 @@ describe('the workspace logo', () => {
 
 // ---- Shared History filters --------------------------------------------------------------------------
 
-type Rev = { revision: number; actor: string; at?: string; summary: Array<{ kind: string }>; changed?: Array<{ kind: string; id: string }> };
+type Rev = { revision: number; actor: string; committedAt: string; summary: Array<{ kind: string }>; changed?: Array<{ kind: string; id: string }> };
 const revs = async (as: string, query = '') => {
   const r = await get<Rev[]>(as, `/api/revisions?limit=500${query}`);
   return { status: r.status, list: Array.isArray(r.json) ? r.json : [] };
@@ -372,9 +372,12 @@ describe('Shared History filters (server side)', () => {
 
   it('filters by business-day range; the bounds are inclusive days', async () => {
     const { t } = await seeded();
-    const today = new Date().toISOString().slice(0, 10);
-    const yday = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
-    expect((await revs(t.adminEmail, `&from=${yday}&to=${today}`)).list.length).toBeGreaterThan(0);
+    const unfiltered = (await revs(t.adminEmail)).list;
+    const latest = unfiltered[0];
+    expect(latest).toBeDefined();
+    if (latest === undefined) throw new Error('seeded revision missing');
+    const committedDay = businessDate(new Date(latest.committedAt));
+    expect((await revs(t.adminEmail, `&from=${committedDay}&to=${committedDay}`)).list.length).toBeGreaterThan(0);
     expect((await revs(t.adminEmail, '&from=2001-01-01&to=2001-01-02')).list).toHaveLength(0);
     expect((await revs(t.adminEmail, '&from=2999-01-01')).list).toHaveLength(0);
   });

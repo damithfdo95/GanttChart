@@ -32,6 +32,12 @@ export function businessMomentMs(date: string, time: string): number {
   return Date.parse(`${date}T${time}:00+09:00`);
 }
 
+/** Inclusive start and exclusive end instants of one Asia/Tokyo calendar day, stored and compared as UTC ISO timestamps. */
+export function businessDayRangeIso(date: string): { from: string; to: string } {
+  const fromMs = businessMomentMs(date, '00:00');
+  return { from: new Date(fromMs).toISOString(), to: new Date(fromMs + 86_400_000).toISOString() };
+}
+
 const jstStampFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: BUSINESS_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
 /**
