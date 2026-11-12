@@ -1,6 +1,6 @@
 # SaaS readiness assessment
 
-Status as of the Phase 13 hardening baseline (2026-10-25). This is an engineering assessment, **not legal advice**.
+Status reviewed against the pilot.6 repository baseline (2026-11-12). This is an engineering assessment, **not legal advice**.
 Priorities: **P0** = before any external pilot, **P1** = before a paid launch, **P2** = later / enterprise.
 Nothing here claims a control exists unless it is in the repository and tested.
 
@@ -58,8 +58,8 @@ No known tenant-isolation defect or live secret exposure was found in this audit
 - **Before pilot:** Cloudflare Rate Limiting rules on `/api/*`, `/ws` (writes, backup import, admin actions, WebSocket upgrade);
   enable repository security features. **Before paid:** pen test, narrower `connect-src` once the proxy moves behind the app,
   security headers on API, HSTS on the custom domain.
-- **Dependencies:** production dependencies have no advisories; development tooling (vite/vitest/wrangler/miniflare chain) has
-  Critical/High advisories that need **major** upgrades (e.g. vitest 5). They do not ship, but should be upgraded deliberately (P1).
+- **Dependencies:** both current lockfiles audit clean for production and development dependencies. CI audits both trees; dependency
+  updates still require review and deterministic `npm ci` verification.
 
 ### Compliance
 - **Current:** nothing formal. Data = QA execution data and work emails. **Before paid:** privacy policy, DPA template, data-location

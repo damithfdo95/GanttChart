@@ -158,22 +158,23 @@ migration**.
 ## 5. Sign-in configuration (*you run*)
 
 Sign-in is dual. The Worker's own password sign-in needs three secrets, and the Cloudflare
-Access SSO path needs the two (optional) `vars` in `wrangler.jsonc` — `ACCESS_TEAM_DOMAIN`
-and `ACCESS_AUD` — which must be set **as a pair** (both or neither; the guard refuses
-half-configured Access because it fails closed at runtime):
+Access SSO path needs `ACCESS_TEAM_DOMAIN` in `wrangler.jsonc` and the matching
+`ACCESS_AUD` Worker secret. Keeping the AUD out of the repository prevents a deploy
+from replacing the live value with a placeholder:
 
 ```bash
 cd worker
 npx wrangler secret put SESSION_SECRET        # paste at least 32 random characters (e.g. `openssl rand -base64 32`)
 npx wrangler secret put SUPER_ADMIN_EMAILS    # paste e.g. admin@example.com  (several: a@x.com,b@y.com)
 npx wrangler secret put SUPER_ADMIN_PASSWORD  # paste a `hashPassword` output (see below)
+npx wrangler secret put ACCESS_AUD            # existing deployments normally already have this
 npx wrangler secret list                      # read-only: names only
 ```
 
 `ACCESS_TEAM_DOMAIN` is the Zero Trust team domain (`https://<team>.cloudflareaccess.com`)
-and `ACCESS_AUD` the Access application's AUD tag (comma-separated for several). When both
-are absent the deployment is password-only (`/login` then behaves like any other public
-path); when both are set, a valid Access JWT on any Worker route is accepted as-is.
+and the `ACCESS_AUD` secret is the Access application's AUD tag (comma-separated for several).
+When the team domain is absent the deployment is password-only (`/login` then behaves like
+any other public path); when configured, a valid Access JWT on any Worker route is accepted.
 
 `SUPER_ADMIN_PASSWORD` is the **hash** of the Super Admin's password, not the password itself.
 Generate it once and paste the whole line:
@@ -278,7 +279,7 @@ once no Super Admin / older Admin needs it.
 `wrangler types`/dry-runs), through the config's `build.command`. It deploys nothing and contacts no account.
 It refuses the deployment when:
 
-* `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are not set **as a pair** (both or neither: Access sign-in is optional, but half-configured Access fails closed);
+* `ACCESS_TEAM_DOMAIN` is malformed or `ACCESS_AUD` is missing from the required Worker secrets;
 * `MANAGED_USER_EMAIL_DOMAINS` is empty or contains entries that are not plain domains;
 * `SESSION_SECRET` or `SUPER_ADMIN_EMAILS` appears under `vars`, or is missing from `secrets.required`;
 * any development variable (`ENVIRONMENT`, `DEV_EMAIL`, `ALLOWED_ORIGINS`) is in the production config;

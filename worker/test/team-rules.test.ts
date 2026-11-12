@@ -4,6 +4,7 @@ import { createTestStorage } from './helpers/sqlJsStorage';
 import { teamCommitError, type TeamMembershipRecord, type TeamRecord } from '../../shared/teamRules';
 import { applyRecordChanges } from '../../src/lib/sync/records';
 import { defaultReportsState } from '../../src/lib/storage/reports';
+import type { RecordPut } from '../../shared/protocol';
 
 type TestStorage = Awaited<ReturnType<typeof createTestStorage>>;
 
@@ -50,7 +51,7 @@ function commit(overrides: Partial<CommitInput> & Pick<CommitInput, 'puts' | 'de
 
 describe('Team Management records in the store (rules hook wired as in production)', () => {
   it('accepts well-formed team and membership records', () => {
-    const member = { kind: 'member', id: 'USER0001', json: JSON.stringify({ id: 'USER0001', name: 'A', team: 'Ecosystem', role: 'tester', startDate: '2026-01-01', active: true }) };
+    const member: RecordPut = { kind: 'member', id: 'USER0001', json: JSON.stringify({ id: 'USER0001', name: 'A', team: 'Ecosystem', role: 'tester', startDate: '2026-01-01', active: true }) };
     const r = commit({ puts: [member, { kind: 'team', id: 'TEAM-ECO', json: JSON.stringify(team()) }, { kind: 'teamMembership', id: 'TMB-0001', json: JSON.stringify(membership()) }], deletes: [] });
     expect(r).toMatchObject({ ok: true, changed: true });
     expect(store.snapshot().records.map((x) => `${x.kind}:${x.id}`).sort()).toEqual(['member:USER0001', 'team:TEAM-ECO', 'teamMembership:TMB-0001']);
@@ -62,7 +63,7 @@ describe('Team Management records in the store (rules hook wired as in productio
   });
 
   it('rejects overlapping PRIMARY memberships through the rules hook', () => {
-    const member = { kind: 'member', id: 'USER0001', json: JSON.stringify({ id: 'USER0001', name: 'A', team: 'Ecosystem', role: 'tester', startDate: '2026-01-01', active: true }) };
+    const member: RecordPut = { kind: 'member', id: 'USER0001', json: JSON.stringify({ id: 'USER0001', name: 'A', team: 'Ecosystem', role: 'tester', startDate: '2026-01-01', active: true }) };
     commit({ puts: [member, { kind: 'team', id: 'TEAM-ECO', json: JSON.stringify(team()) }, { kind: 'teamMembership', id: 'TMB-0001', json: JSON.stringify(membership()) }], deletes: [] });
     const second = commit({
       puts: [

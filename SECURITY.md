@@ -46,7 +46,7 @@ implemented in the application; see "Known limitations".
 
 ## Secrets
 
-- Worker secrets: `SESSION_SECRET`, `SUPER_ADMIN_EMAILS` (set with `wrangler secret put`; **never** in the repository). Non-secret
+- Worker secrets: `ACCESS_AUD`, `SESSION_SECRET`, `SUPER_ADMIN_EMAILS` (set with `wrangler secret put`; **never** in the repository). Non-secret
   settings live in `worker/wrangler.jsonc`. Local `.dev.vars`, `.env*`, key files and backups are git-ignored.
 - **Passwords**: sign-in is the Worker's own (email + password). Passwords are stored only as salted PBKDF2-SHA-256 hashes
   (100,000 iterations, per-password salt) in the registry Durable Object; the hash format carries its own algorithm and iteration
@@ -86,5 +86,5 @@ text or memos.
 - Integration credentials live in browser storage (device-local), not in an encrypted backend vault.
 - GitHub secret scanning, push protection, code scanning and Dependabot alerts are **repository settings** that must be enabled by the
   owner; this repository ships the workflows/config but cannot turn them on.
-- Development-tool dependencies (vite/vitest/wrangler) have known advisories whose fixes are major upgrades; production dependencies
-  have none (`npm run audit:prod`).
+- Root and Worker production and development dependency trees currently have no npm advisories. CI audits both lockfiles; keep
+  reviewing dependency updates rather than assuming a clean audit remains current.

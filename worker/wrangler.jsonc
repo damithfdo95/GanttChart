@@ -49,21 +49,23 @@
   "observability": { "enabled": true, "head_sampling_rate": 1 },
 
   // Non-secret production configuration lives HERE, so a plain deploy can never blank it.
-  // ACCESS_TEAM_DOMAIN / ACCESS_AUD enable the Cloudflare Access sign-in path (optional:
-  // when absent, only the Worker's own password sign-in exists). They are public
-  // metadata (the team domain appears in login URLs), not secrets.
+  // ACCESS_TEAM_DOMAIN enables the Cloudflare Access sign-in path. The matching
+  // ACCESS_AUD remains a Worker secret so a deploy cannot replace the live value
+  // with a repository placeholder.
   "vars": {
     "ACCESS_TEAM_DOMAIN": "https://qa-internal.cloudflareaccess.com",
-    "ACCESS_AUD": "replace-with-the-access-application-aud-tag",
     "MANAGED_USER_EMAIL_DOMAINS": "rakuten.com",
-    "HISTORY_RETENTION_DAYS": "30"
+    "HISTORY_RETENTION_DAYS": "30",
+    // How long an authenticated WebSocket session may be cached before the
+    // registry is checked again. Explicit here so generated Env types match runtime use.
+    "SESSION_RECHECK_MS": "30000"
   },
 
-  // SESSION_SECRET and SUPER_ADMIN_EMAILS are Worker SECRETS (set once with `wrangler secret put`,
+  // ACCESS_AUD, SESSION_SECRET and SUPER_ADMIN_EMAILS are Worker SECRETS (set once with `wrangler secret put`,
   // never listed in "vars"). Wrangler never deletes a secret on deploy, so a deploy cannot wipe
   // them; listing them here makes a deploy refuse to go ahead if they are missing, and the
   // guard below refuses to let them reappear under "vars" (where a deploy WOULD overwrite them).
-  "secrets": { "required": ["SESSION_SECRET", "SUPER_ADMIN_EMAILS"] },
+  "secrets": { "required": ["ACCESS_AUD", "SESSION_SECRET", "SUPER_ADMIN_EMAILS"] },
 
   // Runs before EVERY `wrangler deploy` of this config (and its --dry-run). It deploys nothing;
   // it only stops a deployment whose production safety settings are incomplete.
@@ -79,7 +81,8 @@
         "SESSION_SECRET": "dev-session-secret-0123456789abcdef0123456789abcdef",
         "MANAGED_USER_EMAIL_DOMAINS": "example.com,dev.test",
         "ALLOWED_ORIGINS": "http://localhost:5173,http://localhost:8787",
-        "HISTORY_RETENTION_DAYS": "30"
+        "HISTORY_RETENTION_DAYS": "30",
+        "SESSION_RECHECK_MS": "30000"
       },
       "durable_objects": {
         "bindings": [

@@ -18,7 +18,7 @@ import type {
 } from '../../types';
 import { ATTENDANCE_STATUSES, REVIEW_PERIOD_TYPES, REVIEW_STATUSES } from '../../types';
 import { checkCycle } from '../../../shared/qaRules';
-import type { ScreenId } from '../../app/access';
+import type { ScreenId } from '../../types/navigation';
 import { qaPolicyError } from '../../../shared/qaPolicy';
 import { checkCaseExecution, checkCaseResult, checkScope, checkTestCase } from '../../../shared/testManagement';
 import { checkDailyPlan, checkMeetingNote } from '../../../shared/meeting';

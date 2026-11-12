@@ -25,7 +25,7 @@ describe('the production configuration in the repository', () => {
   it('keeps the production auth secrets OUT of vars and requires them as secrets', () => {
     const c = real();
     for (const name of SECRET_NAMES) expect(c.vars).not.toHaveProperty(name);
-    expect(c.secrets.required).toEqual(expect.arrayContaining(['SESSION_SECRET', 'SUPER_ADMIN_EMAILS']));
+    expect(c.secrets.required).toEqual(expect.arrayContaining(['ACCESS_AUD', 'SESSION_SECRET', 'SUPER_ADMIN_EMAILS']));
   });
 
   it('holds the non-secret production settings', () => {
@@ -47,19 +47,13 @@ describe('guard rules (each one is a way production could be left unsafe)', () =
     expect(errorsFor(c, ctx).join('\n')).toContain(fragment);
   };
 
-  it('accepts the dual-auth Access vars only as a well-formed pair (both or neither)', () => {
-    // The repository config itself carries both and must pass (covered by the
-    // "passes the pre-deployment guard" test above); here we prove the rules.
-    expectError((c) => delete c.vars.ACCESS_TEAM_DOMAIN, 'must BOTH be set');
-    expectError((c) => delete c.vars.ACCESS_AUD, 'must BOTH be set');
+  it('accepts a well-formed Access team domain while keeping its AUD secret', () => {
     expectError((c) => (c.vars.ACCESS_TEAM_DOMAIN = 'http://qa-internal.cloudflareaccess.com'), 'https://<team>.cloudflareaccess.com');
     expectError((c) => (c.vars.ACCESS_TEAM_DOMAIN = 'https://qa-internal.cloudflareaccess.com/'), 'no path and no trailing slash');
     expectError((c) => (c.vars.ACCESS_TEAM_DOMAIN = 'https://evil.example.com'), 'cloudflareaccess.com');
-    expectError((c) => (c.vars.ACCESS_AUD = '  '), 'non-empty string');
-    // Both absent is a valid password-only deployment.
+    // An absent team domain is a valid password-only deployment.
     const c = clone();
     delete c.vars.ACCESS_TEAM_DOMAIN;
-    delete c.vars.ACCESS_AUD;
     expect(errorsFor(c)).toEqual([]);
   });
 
