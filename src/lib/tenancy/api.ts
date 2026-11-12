@@ -71,6 +71,8 @@ export interface TenancyApi {
   /** Add a Team Member: an SV or a Tester. The tenant is the server's, never sent. */
   createUser(email: string, access: UserAccess, displayName?: string, role?: 'sv' | 'tester'): Promise<UserDto>;
   updateUser(userId: string, patch: { status?: 'enabled' | 'disabled'; access?: UserAccess }): Promise<{ user: UserDto; disconnected: boolean }>;
+  /** Set (or reset) a user's initial password (SV). The person must choose their own at the next sign-in; their sessions end. */
+  setUserPassword(userId: string, password: string): Promise<{ ok: true; revokedSessions: number }>;
   requestDeletion(): Promise<TenantDto>;
   cancelDeletion(): Promise<TenantDto>;
   /** Hand the workspace's ownership to another enabled SV (the Owner SV only; the typed word is checked by the server too). */
@@ -184,6 +186,7 @@ export function createTenancyApi(fetchFn: FetchLike = (i, init) => fetch(i, init
     assignMember: (projectId, memberId, scopeId) => call('POST', '/api/tenant/assignments', { projectId, memberId, ...(scopeId === undefined ? {} : { scopeId }) }),
     createProfile: (userId) => call('POST', '/api/tenant/members/profile', { userId }),
     updateUser: (userId, patch) => call('PATCH', `/api/tenant/users/${encodeURIComponent(userId)}`, patch),
+    setUserPassword: (userId, password) => call('POST', `/api/tenant/users/${encodeURIComponent(userId)}/password`, { password }),
     requestDeletion: async () => (await call<{ tenant: TenantDto }>('POST', '/api/tenant/deletion-request', { confirm: REQUEST_DELETION_CONFIRMATION })).tenant,
     team: async () => (await call<{ testers: TesterDto[] }>('GET', '/api/tenant/team')).testers,
     assignTester: (projectId, userId, scopeId) => call('POST', '/api/tenant/assignments', { projectId, userId, ...(scopeId === undefined ? {} : { scopeId }) }),

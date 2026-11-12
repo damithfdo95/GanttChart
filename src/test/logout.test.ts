@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ACCESS_LOGOUT_PATH, completeLogout, startLogout, type LogoutDeps } from '../lib/auth/logout';
+import { LOGOUT_API_PATH, completeLogout, startLogout, type LogoutDeps } from '../lib/auth/logout';
 import { phaseAfterEnd } from '../app/sessionEnd';
 import { LogoutButton, SignedOutScreen } from '../features/tenancy/LogoutButton';
 import { SuperAdminConsole } from '../features/tenancy/SuperAdminConsole';
@@ -46,10 +46,10 @@ function rig(opts: { unsent?: number; saveFails?: boolean } = {}): Rig {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('logout flow', () => {
-  it('uses Cloudflare Access’s own endpoint on THIS origin (a relative path, nothing appended)', () => {
-    expect(ACCESS_LOGOUT_PATH).toBe('/cdn-cgi/access/logout');
-    expect(ACCESS_LOGOUT_PATH.startsWith('/')).toBe(true);
-    expect(ACCESS_LOGOUT_PATH).not.toMatch(/[?#:]|\/\//); // no query, no fragment, no host, no redirect parameter
+  it('uses the Worker’s own sign-out endpoint on THIS origin (a relative path, nothing appended)', () => {
+    expect(LOGOUT_API_PATH).toBe('/api/auth/logout');
+    expect(LOGOUT_API_PATH.startsWith('/')).toBe(true);
+    expect(LOGOUT_API_PATH).not.toMatch(/[?#:]|\/\//); // no query, no fragment, no host, no redirect parameter
     expect(logoutSource).not.toMatch(/workers\.dev|https?:\/\//);
   });
 
@@ -57,7 +57,7 @@ describe('logout flow', () => {
     const r = rig();
     expect(await startLogout(r.deps)).toEqual({ kind: 'done' });
     expect(r.calls).toEqual(['unsent?', 'stopSync', 'saveLocal', 'endSession', 'navigate']);
-    expect(r.navigated).toEqual(['/cdn-cgi/access/logout']);
+    expect(r.navigated).toEqual(['/signin']);
   });
 
   it('with unsent shared changes: warns first and does NOTHING else (the session and the sync stay active)', async () => {
@@ -81,7 +81,7 @@ describe('logout flow', () => {
     await startLogout(r.deps);
     await completeLogout(r.deps);
     expect(r.calls.slice(1)).toEqual(['stopSync', 'saveLocal', 'endSession', 'navigate']);
-    expect(r.navigated).toEqual([ACCESS_LOGOUT_PATH]);
+    expect(r.navigated).toEqual(['/signin']);
   });
 
   it('stops the live connection BEFORE anything else, and the session ends BEFORE the page is left', async () => {
@@ -94,7 +94,7 @@ describe('logout flow', () => {
   it('failing to save the device copy never traps the person in the app', async () => {
     const r = rig({ saveFails: true });
     await completeLogout(r.deps);
-    expect(r.navigated).toEqual([ACCESS_LOGOUT_PATH]);
+    expect(r.navigated).toEqual(['/signin']);
     expect(r.calls).toContain('endSession');
   });
 
@@ -103,20 +103,20 @@ describe('logout flow', () => {
       const r = rig();
       await startLogout(r.deps);
       expect(r.calls, role).toEqual(['unsent?', 'stopSync', 'saveLocal', 'endSession', 'navigate']);
-      expect(r.navigated, role).toEqual([ACCESS_LOGOUT_PATH]);
+      expect(r.navigated, role).toEqual(['/signin']);
     }
   });
 
-  it('is SELF sign-out only: nothing about a person, tenant or account is an input, and no API is called', async () => {
+  it('is SELF sign-out only: nothing about a person, tenant or account is an input, and the only API called is the sign-out', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     const r = rig({ unsent: 0 });
     await startLogout(r.deps);
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(r.navigated[0]).toBe(ACCESS_LOGOUT_PATH); // exactly the constant: no user id, email or tenant id in it
+    expect(fetchSpy).toHaveBeenCalledTimes(1); // exactly the sign-out call
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(LOGOUT_API_PATH); // no user id, email or tenant id in it
+    expect(r.navigated[0]).toBe('/signin');
     // The dependency surface has no parameter that could carry an identity.
     expect(Object.keys(r.deps).sort()).toEqual(['endSession', 'navigate', 'saveLocal', 'stopSync', 'unsentChanges']);
-    for (const fn of [logoutSource, buttonSource]) expect(fn).not.toMatch(/\bfetch\s*\(|XMLHttpRequest|\/api\//);
   });
 
   it('never touches the device’s own data: no clearing, no unlinking, no preference or storage writes', () => {
@@ -144,8 +144,8 @@ describe('how a session ends (one place for sign-out and expiry)', () => {
 
   it('only a refusal because the sign-in is gone counts as an ended session — not a permission refusal', () => {
     expect(isSessionEnded(new ApiError(401, 'login_required', {}))).toBe(true);
-    expect(isSessionEnded(new ApiError(401, 'Missing Access token', {}))).toBe(true);
-    expect(isSessionEnded(new ApiError(403, 'Invalid Access token', {}))).toBe(true);
+    expect(isSessionEnded(new ApiError(401, 'Missing session', {}))).toBe(true);
+    expect(isSessionEnded(new ApiError(403, 'Invalid session', {}))).toBe(true);
     expect(isSessionEnded(new ApiError(403, 'forbidden', {}))).toBe(false);
     expect(isSessionEnded(new ApiError(404, 'not_found', {}))).toBe(false);
     expect(isSessionEnded(new ApiError(409, 'email_taken', {}))).toBe(false);
@@ -209,10 +209,5 @@ describe('what each role sees', () => {
     const html = renderToStaticMarkup(createElement(PublicLanding, { initialLang: 'en', notice: phaseAfterEnd('expired').kind === 'landing' ? 'sessionEnded' : null }));
     expect(html).toContain('Your sign-in has ended');
     expect(html).not.toMatch(/ten_|usr_|@/);
-  });
-
-  it('if Cloudflare did not handle the sign-out request, the person is told they may still be signed in', () => {
-    const html = renderToStaticMarkup(createElement(PublicLanding, { initialLang: 'en', notice: 'logoutIncomplete' }));
-    expect(html).toContain('may still be signed in');
   });
 });

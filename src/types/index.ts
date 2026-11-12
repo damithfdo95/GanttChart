@@ -240,7 +240,85 @@ export interface RcsMember {
   email?: string;
   /** Stage 8D: when the profile was removed from active use (informational; `active` and `endDate` carry the rule). */
   removedAt?: string;
+  /**
+   * Team Management (TM-101): the person's employee code (free text, display
+   * only). Optional — absent on all pre-Team-Management data.
+   */
+  employeeCode?: string;
+  /** Team Management (TM-101): organizational job title (display only; separate from application permissions). */
+  jobTitle?: string;
+  /** Team Management (TM-102): employment type. Absent = unknown/legacy. */
+  employmentType?: 'FULL_TIME' | 'PART_TIME' | 'CONTRACTOR';
+  /** Team Management (TM-102): employment status. Absent = derived from `active` (active ? ACTIVE : INACTIVE). */
+  employmentStatus?: 'ACTIVE' | 'INACTIVE' | 'DEPARTED';
+  /**
+   * Team Management (TM-101): the member's time zone (IANA name, display
+   * only in Phase 1–3 — all rules keep the single business time zone).
+   */
+  timezone?: string;
+  /** Team Management (TM-501): default weekly working minutes when no member schedule covers the date. */
+  defaultWeeklyMinutes?: number;
+  /** Team Management (TM-101): administrative notes (SV only). */
+  adminNotes?: string;
 }
+
+// ---- Team Management records (TM-00 Phase 1) ----
+
+import type {
+  TeamRecord,
+  TeamMembershipRecord,
+  SkillRecord,
+  MemberSkillRecord,
+  WorkScheduleRecord,
+  WorkScheduleDay,
+  MemberScheduleRecord,
+  LeaveRequestRecord,
+  LeaveDayRecord,
+  HolidayCalendarRecord,
+  HolidayRecord,
+  CapacityAllocationRecord,
+  TeamSupervisorRecord,
+  MembershipKind,
+  DurationType,
+  TeamStatus,
+  TransferChangeType,
+  TransferStatus,
+  SkillProficiency,
+  SkillCategory,
+  LeaveStatus,
+  AllocationStatus,
+  SupervisorRole,
+  EmploymentType,
+  EmploymentStatus,
+} from '../../shared/teamRules';
+
+export type {
+  TeamRecord,
+  TeamMembershipRecord,
+  SkillRecord,
+  MemberSkillRecord,
+  WorkScheduleRecord,
+  WorkScheduleDay,
+  MemberScheduleRecord,
+  LeaveRequestRecord,
+  LeaveDayRecord,
+  HolidayCalendarRecord,
+  HolidayRecord,
+  CapacityAllocationRecord,
+  TeamSupervisorRecord,
+  MembershipKind,
+  DurationType,
+  TeamStatus,
+  TransferChangeType,
+  TransferStatus,
+  SkillProficiency,
+  SkillCategory,
+  LeaveStatus,
+  AllocationStatus,
+  SupervisorRole,
+  EmploymentType,
+  EmploymentStatus,
+};
 
 // ---- Bug tracking & tester performance (V6.6) ----
 
@@ -854,6 +932,22 @@ export interface ReportsState {
    * every earlier payload stays valid; normalized to [] on load/import.
    */
   projectOwners?: ProjectOwnerEntry[];
+  /**
+   * Team Management (TM-00 Phase 1): teams, memberships, supervisors,
+   * skills, schedules, leave, holiday calendars and capacity allocations.
+   * All optional: a workspace without them (everything before Team
+   * Management) works exactly as before; normalized to [] on load/import.
+   */
+  teams?: TeamRecord[];
+  teamMemberships?: TeamMembershipRecord[];
+  teamSupervisors?: TeamSupervisorRecord[];
+  skills?: SkillRecord[];
+  memberSkills?: MemberSkillRecord[];
+  workSchedules?: WorkScheduleRecord[];
+  memberSchedules?: MemberScheduleRecord[];
+  leaveRequests?: LeaveRequestRecord[];
+  holidayCalendars?: HolidayCalendarRecord[];
+  capacityAllocations?: CapacityAllocationRecord[];
 }
 
 /**

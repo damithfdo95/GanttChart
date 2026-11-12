@@ -45,6 +45,8 @@ export const SCREEN_ACCESS: Readonly<Record<ScreenId, Readonly<Record<UiRole, Sc
   jira: { sv: 'manage', tester: 'view' },
   // SV: Team Members management. Tester: "My Team Member Profile" only.
   team: { sv: 'manage', tester: 'view' },
+  // Team Management (Phase 1): SV manages teams and assignments; a Tester views their own assignments and requests leave (Phase 3).
+  teamManagement: { sv: 'manage', tester: 'view' },
   history: { sv: 'manage', tester: 'none' },
   settings: { sv: 'manage', tester: 'none' },
 };

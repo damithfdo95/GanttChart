@@ -12,15 +12,17 @@ const REGISTRATION_JA = /新規登録|会員登録|サインアップ|アカウ�
 describe('the public page', () => {
   const html = (lang: 'en' | 'ja', failed = false): string => renderToStaticMarkup(createElement(PublicLanding, { initialLang: lang, notice: failed ? 'signInFailed' : null }));
 
-  it('shows the product, a short description, the language choice and ONE sign-in link to /login', () => {
+  it('shows the product, a short description, the language choice and TWO sign-in links: SSO (/login) and password (/signin)', () => {
     const en = html('en');
     expect(en).toContain('GanttChart');
     expect(en).toContain('Internal QA test-execution management');
     expect(en).toContain('EN');
     expect(en).toContain('日本語');
-    expect((en.match(/<a /g) ?? []).length).toBe(1);
+    expect((en.match(/<a /g) ?? []).length).toBe(2);
     expect(en).toContain('href="/login"');
-    expect(en).toContain('Sign in');
+    expect(en).toContain('href="/signin"');
+    expect(en).toContain('Sign in with SSO');
+    expect(en).toContain('Sign in with a password');
   });
 
   it('is Japanese when asked to be', () => {
@@ -28,6 +30,7 @@ describe('the public page', () => {
     expect(ja).toContain('社内QAテスト実行管理');
     expect(ja).toContain('サインイン');
     expect(ja).toContain('href="/login"');
+    expect(ja).toContain('href="/signin"');
   });
 
   it('has NO registration, account request, invitation or any input at all', () => {

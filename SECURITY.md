@@ -46,8 +46,13 @@ implemented in the application; see "Known limitations".
 
 ## Secrets
 
-- Worker secrets: `ACCESS_AUD`, `SUPER_ADMIN_EMAILS` (set with `wrangler secret put`; **never** in the repository). Non-secret
+- Worker secrets: `SESSION_SECRET`, `SUPER_ADMIN_EMAILS` (set with `wrangler secret put`; **never** in the repository). Non-secret
   settings live in `worker/wrangler.jsonc`. Local `.dev.vars`, `.env*`, key files and backups are git-ignored.
+- **Passwords**: sign-in is the Worker's own (email + password). Passwords are stored only as salted PBKDF2-SHA-256 hashes
+  (100,000 iterations, per-password salt) in the registry Durable Object; the hash format carries its own algorithm and iteration
+  count so it can be raised later. A wrong password, an unknown email and an account without a password all return the same
+  generic error (no account enumeration). Ten consecutive failures lock an account for 15 minutes. The Super Admin's password
+  is a stored hash in the `SUPER_ADMIN_PASSWORD` secret (configuration, not data).
 - **Integration credentials (JIRA token, TestRail API key) are stored in the user's browser on that device only.** They are excluded
   from shared sync records, from full backups and from history backups (tests: `jiraDeviceLocal`, `testrailDeviceLocal`,
   `securityBaseline`). They are sent only to the configured address, which must be `https://` (plain `http://` only for localhost).

@@ -22,11 +22,13 @@ import { AuthError, DEV_IDENTITY_COOKIE, authenticate } from './auth';
 import { isWorkerPath } from '../../shared/routes';
 import { toPrincipalDto, workspaceRoleOf } from './permissions';
 import { parseEmailList, resolvePrincipal } from './principal';
+import { authRoutes, changePasswordRoute } from './routes/auth';
 import {
   IDENTITY_EMAIL_HEADER,
   IDENTITY_EXPIRES_HEADER,
   IDENTITY_ROLE_HEADER,
   IDENTITY_USER_HEADER,
+  SESSION_HEADER,
   TENANT_HEADER,
   WorkspaceRoom,
 } from './workspaceRoom';
@@ -79,7 +81,14 @@ async function route(request: Request, env: Env): Promise<Response> {
     return env.ASSETS.fetch(request);
   }
 
-  if (path === '/login') return login(request, env);
+  if (path === '/login' || path === '/signin') return login(request, env);
+
+  // The registry stub, used by the auth routes and the pipeline below.
+  const registry = env.REGISTRY.getByName(REGISTRY_NAME);
+
+  // The sign-in / sign-out routes are the ONLY unauthenticated API routes.
+  const auth = await authRoutes(request, env, registry);
+  if (auth !== null) return auth;
 
   // 1. origin / CSRF
   if (path === '/ws') {
@@ -91,8 +100,8 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (request.headers.get(INTENT_HEADER) === null) return problem(403, 'Missing intent header');
   }
 
-  // 2. authenticate
-  const identity = await authenticate(request, env);
+  // 2. authenticate (the session cookie, checked against the registry's session list)
+  const identity = await authenticate(request, env, (sid) => registry.sessionValid(sid));
 
   // Development only: switch which person this browser is (so every role can be tried locally).
   if (path === '/api/dev/as' && method === 'POST' && env.ENVIRONMENT === 'development') {
@@ -102,7 +111,6 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
 
   // 3. resolve the principal through the registry (unknown identities fail closed)
-  const registry = env.REGISTRY.getByName(REGISTRY_NAME);
   const superAdmins = parseEmailList(env.SUPER_ADMIN_EMAILS);
   const resolved = await resolvePrincipal(identity.email, superAdmins, (email) => registry.authenticate(email));
   if (!resolved.ok) return denied(resolved.reason, identity.email);
@@ -114,6 +122,9 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (path === '/ws') return openSocket(ctx);
   if (path === '/api/whoami' && method === 'GET') return whoami(ctx);
+
+  const changed = await changePasswordRoute(ctx);
+  if (changed !== null) return changed;
 
   return (await tenantRoutes(ctx)) ?? (await superRoutes(ctx)) ?? problem(404, 'Not found');
 }
@@ -128,23 +139,23 @@ function denied(reason: DenyReason, email: string): Response {
 // ---- sign-in ----------------------------------------------------------------------
 
 /**
- * `/login` exists so that "Sign in" has a URL Cloudflare Access protects. Access
- * challenges the visitor there; once they are through, the request reaches this
- * Worker WITH a token, which is verified like any other, and the person is sent
- * back to the app at "/". The destination is fixed: there is no redirect parameter, so this
- * can never be used as an open redirect. Reaching this code without a valid token
- * (Access not configured for the path) never signs anybody in; it sends them back to the
- * public page with a notice.
+ * `/login` and `/signin` are the two sign-in entries. `/login` is the Cloudflare
+ * Access entry (when Access is configured for it, Access challenges the visitor
+ * before the request ever arrives); `/signin` is the password form's own URL.
+ * With a VALID identity — an Access JWT or a session cookie — the person goes
+ * straight to "/". Without one the SPA shell is served: the login form lives
+ * there, so this can never loop.
  */
 async function login(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'GET' && request.method !== 'HEAD') return problem(405, 'method_not_allowed');
-  let target = '/';
   try {
-    await authenticate(request, env);
+    const registry = env.REGISTRY.getByName(REGISTRY_NAME);
+    await authenticate(request, env, (sid) => registry.sessionValid(sid));
+    return new Response(null, { status: 302, headers: { Location: '/', ...SECURITY_HEADERS } });
   } catch {
-    target = '/?signin=unavailable';
+    /* not signed in: serve the SPA (its login form is exactly right) */
+    return env.ASSETS.fetch(new Request(request.url, { ...request, redirect: 'manual', method: 'GET' }));
   }
-  return new Response(null, { status: 302, headers: { Location: target, ...SECURITY_HEADERS } });
 }
 
 // ---- who am I -------------------------------------------------------------------
@@ -152,7 +163,9 @@ async function login(request: Request, env: Env): Promise<Response> {
 async function whoami(ctx: Ctx): Promise<Response> {
   const p = member(ctx);
   const tenant = p === null ? null : await ctx.registry.getTenant(p.tenantId);
-  return json(toPrincipalDto(ctx.principal, tenant));
+  // A member whose password was set by an SV must change it before using the app.
+  const mustChangePassword = p === null ? false : await ctx.registry.mustChangePassword(p.userId);
+  return json({ ...toPrincipalDto(ctx.principal, tenant), mustChangePassword });
 }
 
 // ---- WebSocket ------------------------------------------------------------------
@@ -165,11 +178,12 @@ async function openSocket(ctx: Ctx): Promise<Response> {
   if (role === null) return problem(403, 'forbidden', { reason: 'workspace_not_shared' });
   // Rebuild the headers so nothing the client sent can masquerade as identity or tenant.
   const headers = new Headers(ctx.request.headers);
-  for (const h of [IDENTITY_EMAIL_HEADER, IDENTITY_ROLE_HEADER, IDENTITY_EXPIRES_HEADER, IDENTITY_USER_HEADER, TENANT_HEADER, 'x-tenant-id', 'x-workspace-id']) headers.delete(h);
+  for (const h of [IDENTITY_EMAIL_HEADER, IDENTITY_ROLE_HEADER, IDENTITY_EXPIRES_HEADER, IDENTITY_USER_HEADER, TENANT_HEADER, SESSION_HEADER, 'x-tenant-id', 'x-workspace-id']) headers.delete(h);
   headers.set(TENANT_HEADER, p.tenantId);
   headers.set(IDENTITY_USER_HEADER, p.userId);
   headers.set(IDENTITY_EMAIL_HEADER, p.email);
   headers.set(IDENTITY_ROLE_HEADER, role);
   if (ctx.identity.expiresAt !== null) headers.set(IDENTITY_EXPIRES_HEADER, String(ctx.identity.expiresAt));
+  if (ctx.identity.sessionId !== null) headers.set(SESSION_HEADER, ctx.identity.sessionId);
   return roomFor(ctx, p).fetch(new Request(ctx.request, { headers }));
 }

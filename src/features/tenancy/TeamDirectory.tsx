@@ -65,6 +65,10 @@ export function TeamDirectory({
   const [message, setMessage] = useState<Message>(null);
   const [busy, setBusy] = useState(false);
   const [linking, setLinking] = useState<Record<string, string>>({});
+  const [pwFor, setPwFor] = useState<UserDto | null>(null);
+  const [pw1, setPw1] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [pwError, setPwError] = useState<string | null>(null);
 
   const handle = useCallback(
     (e: unknown): void => {
@@ -267,6 +271,38 @@ export function TeamDirectory({
   };
 
   const giveProfile = (user: UserDto): Promise<void> => run(async () => (api === null ? null : (await api.createProfile(user.id), t(lang, 'tenancy.members.profileCreated', { email: user.email }))));
+
+  // ---- SV sets (or resets) a user's initial password ----
+
+  const MIN_PASSWORD_LENGTH = 10;
+
+  const openPassword = (user: UserDto): void => {
+    setPwFor(user);
+    setPw1('');
+    setPw2('');
+    setPwError(null);
+  };
+
+  const closePassword = (): void => setPwFor(null);
+
+  const submitPassword = async (): Promise<void> => {
+    if (pwFor === null || api === null || busy) return;
+    setPwError(null);
+    if (pw1.length < MIN_PASSWORD_LENGTH) {
+      setPwError(t(lang, 'pwchange.short', { min: String(MIN_PASSWORD_LENGTH) }));
+      return;
+    }
+    if (pw1 !== pw2) {
+      setPwError(t(lang, 'pwchange.mismatch'));
+      return;
+    }
+    const user = pwFor;
+    setPwFor(null); // the dialog closes before the request; the result arrives as a message
+    await run(async () => {
+      const done = await api.setUserPassword(user.id, pw1);
+      return done.revokedSessions > 0 ? t(lang, 'dir.pw.setDoneEnded', { email: user.email, count: done.revokedSessions }) : t(lang, 'dir.pw.setDone', { email: user.email });
+    });
+  };
 
   // ---- the table ------------------------------------------------------------------
 
@@ -567,6 +603,11 @@ export function TeamDirectory({
                                     {t(lang, user.status === 'disabled' ? 'tenancy.users.enable' : 'tenancy.users.disable')}
                                   </button>
                                 ) : null}
+                                {web && user !== null && !self ? (
+                                  <button type="button" className="btn btn-ghost" disabled={busy || user.status === 'disabled'} onClick={() => openPassword(user)} title={user.status === 'disabled' ? t(lang, 'dir.pw.disabled') : undefined}>
+                                    {t(lang, 'dir.pw.setAction')}
+                                  </button>
+                                ) : null}
                                 {iAmOwner && user !== null && heirs.some((h) => h.id === user.id) ? (
                                   <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void transfer(user)}>
                                     {t(lang, 'tenancy.owner.transfer')}
@@ -585,6 +626,54 @@ export function TeamDirectory({
           </table>
         </div>
       )}
+
+      {pwFor !== null ? (
+        <div className="confirm-backdrop" role="presentation" onClick={closePassword}>
+          <div
+            className="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dir-pw-title"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') closePassword();
+            }}
+          >
+            <h2 id="dir-pw-title">{t(lang, 'dir.pw.title', { name: pwFor.displayName ?? pwFor.email })}</h2>
+            <p>{t(lang, 'dir.pw.body', { email: pwFor.email })}</p>
+            <p className="link-help">{t(lang, 'dir.pw.rules', { min: String(MIN_PASSWORD_LENGTH) })}</p>
+            <form
+              className="tenancy-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void submitPassword();
+              }}
+            >
+              <label className="form-field">
+                <span>{t(lang, 'pwchange.new')}</span>
+                <input type="password" autoComplete="new-password" required minLength={MIN_PASSWORD_LENGTH} value={pw1} onChange={(e) => setPw1(e.target.value)} autoFocus />
+              </label>
+              <label className="form-field">
+                <span>{t(lang, 'pwchange.confirm')}</span>
+                <input type="password" autoComplete="new-password" required value={pw2} onChange={(e) => setPw2(e.target.value)} />
+              </label>
+              {pwError === null ? null : (
+                <p role="alert" className="link-help">
+                  {pwError}
+                </p>
+              )}
+              <div className="confirm-actions">
+                <button type="button" className="btn" onClick={closePassword}>
+                  {t(lang, 'tenancy.cancel')}
+                </button>
+                <button type="submit" className="btn" disabled={busy || pw1.length < MIN_PASSWORD_LENGTH || pw1 !== pw2}>
+                  {t(lang, 'dir.pw.submit')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
     </>
   );

@@ -1,8 +1,9 @@
 {
   // Used ONLY by `npm run test:prod-sim` (local workerd). Never deployed.
-  // It mirrors PRODUCTION: no development identity, real Access JWT verification,
-  // the public static shell, and the same run_worker_first routes as wrangler.jsonc
-  // (a unit test keeps those two identical). Only the secret VALUES are test values.
+  // It mirrors PRODUCTION: no development identity, real dual authentication
+  // (Cloudflare Access JWT + session cookie), the public static shell, and the
+  // same run_worker_first routes as wrangler.jsonc (a unit test keeps those two
+  // identical). Only the secret VALUES are test values.
   "name": "ganttchart-prod-sim",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-06",
@@ -11,7 +12,7 @@
     "directory": "./test/fixtures/public",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/ws", "/login"]
+    "run_worker_first": ["/api/*", "/ws", "/login", "/signin"]
   },
   "durable_objects": {
     "bindings": [
@@ -26,7 +27,9 @@
   "vars": {
     "ACCESS_TEAM_DOMAIN": "https://sim-team.cloudflareaccess.com",
     "ACCESS_AUD": "sim-aud-tag",
+    "SESSION_SECRET": "prod-sim-session-secret-0123456789abcdef0123456789abcdef",
     "SUPER_ADMIN_EMAILS": "boss@rakuten.com",
+    "SUPER_ADMIN_PASSWORD": "pbkdf2$100000$vKkxK6pLN/+jVwUG3Lkgjg==$CkX+hEg1+64DNw68gsudqHDPVmNKwbnavq6t7e4b7io=",
     "MANAGED_USER_EMAIL_DOMAINS": "rakuten.com",
     "HISTORY_RETENTION_DAYS": "30"
   }

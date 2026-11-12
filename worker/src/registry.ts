@@ -99,6 +99,20 @@ export type RegistryError =
 
 export type Reg<T> = { ok: true; value: T } | { ok: false; error: RegistryError };
 
+/** The outcome of a password check: never says WHICH part was wrong (no user enumeration). */
+export type PasswordCheck =
+  | { ok: true; user: UserRow; tenant: TenantRow; mustChange: boolean }
+  | { ok: false; reason: 'invalid_credentials' | 'locked' | 'no_password' };
+
+/** A session record as the registry keeps it. */
+export interface SessionRow {
+  id: string;
+  user_id: string | null;
+  email: string;
+  created_at: string;
+  expires_at: string;
+}
+
 const fail = (error: RegistryError): { ok: false; error: RegistryError } => ({ ok: false, error });
 
 /**
@@ -163,7 +177,32 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS admin_audit_by_tenant ON admin_audit (tenant_id, id)`,
   `CREATE TRIGGER IF NOT EXISTS admin_audit_no_update BEFORE UPDATE ON admin_audit BEGIN SELECT RAISE(ABORT, 'admin_audit is append-only'); END`,
   `CREATE TRIGGER IF NOT EXISTS admin_audit_no_delete BEFORE DELETE ON admin_audit BEGIN SELECT RAISE(ABORT, 'admin_audit is append-only'); END`,
+  // Password credentials for the Worker's own sign-in (replaces Cloudflare Access).
+  // One row per user; the hash format carries its own algorithm and iteration count.
+  `CREATE TABLE IF NOT EXISTS credentials (
+     user_id           TEXT PRIMARY KEY REFERENCES users (id),
+     password_hash     TEXT NOT NULL,
+     must_change      INTEGER NOT NULL DEFAULT 0,
+     set_at           TEXT NOT NULL,
+     set_by           TEXT NOT NULL,
+     failed_attempts  INTEGER NOT NULL DEFAULT 0,
+     locked_until     TEXT
+   )`,
+  // Server-side session records: the revocation half of the session token.
+  // A token is valid only while its id is here and not expired.
+  `CREATE TABLE IF NOT EXISTS sessions (
+     id          TEXT PRIMARY KEY,
+     user_id     TEXT REFERENCES users (id),
+     email       TEXT NOT NULL,
+     created_at  TEXT NOT NULL,
+     expires_at  TEXT NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS sessions_by_user ON sessions (user_id)`,
 ];
+
+/** After this many consecutive failures an account is locked for LOCK_MINUTES (reset by a successful sign-in or an SV's reset). */
+const MAX_FAILED_ATTEMPTS = 10;
+const LOCK_MINUTES = 15;
 
 /** Columns added after the first release. Added in place, so an existing registry upgrades itself on first start. */
 const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; ddl: string }> = [
@@ -521,6 +560,125 @@ export class RegistryStore {
     return { allowed: true, user, tenant };
   }
 
+  // ---- password sign-in (replaces Cloudflare Access) -------------------------
+
+  /**
+   * Check an email + password pair. On success the caller creates a session.
+   * On failure the same generic reason is returned whether the email is
+   * unknown, the password wrong or the account has no password yet: the
+   * response must not let anyone enumerate accounts. A locked account is
+   * reported as 'locked' (the person must be told to wait or ask an SV).
+   *
+   * `verify` is injected (the store stays synchronous/pure over SQL).
+   */
+  checkPassword(rawEmail: string, password: string, now: string, verify: (password: string, hash: string) => Promise<boolean>): Promise<PasswordCheck> {
+    return (async () => {
+      const user = this.findUserByEmail(rawEmail);
+      if (user === null) {
+        // Burn comparable time so an unknown email is not measurably faster.
+        await verify(password, 'pbkdf2$100000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');
+        return { ok: false, reason: 'invalid_credentials' };
+      }
+      const row = this.storage.sql
+        .exec<{ password_hash: string; must_change: number; failed_attempts: number; locked_until: string | null } & Record<string, string | number | null>>(
+          `SELECT password_hash, must_change, failed_attempts, locked_until FROM credentials WHERE user_id = ?`,
+          user.id,
+        )
+        .toArray()[0];
+      if (row === undefined) {
+        await verify(password, 'pbkdf2$100000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');
+        return { ok: false, reason: 'invalid_credentials' };
+      }
+      if (row.locked_until !== null && Date.parse(row.locked_until) > Date.parse(now)) return { ok: false, reason: 'locked' };
+
+      const good = await verify(password, row.password_hash);
+      if (!good) {
+        const failed = row.failed_attempts + 1;
+        const locked = failed >= MAX_FAILED_ATTEMPTS ? new Date(Date.parse(now) + LOCK_MINUTES * 60_000).toISOString() : null;
+        this.storage.sql.exec(`UPDATE credentials SET failed_attempts = ?, locked_until = ? WHERE user_id = ?`, failed, locked, user.id);
+        return { ok: false, reason: locked !== null ? 'locked' : 'invalid_credentials' };
+      }
+
+      // Success: clear the counters, then apply the normal access rules.
+      this.storage.sql.exec(`UPDATE credentials SET failed_attempts = 0, locked_until = NULL WHERE user_id = ?`, user.id);
+      const tenant = this.getTenant(user.tenant_id);
+      if (tenant === null) return { ok: false, reason: 'invalid_credentials' }; // orphan row: fail closed
+      const decision = decideAccess(user, tenant);
+      if (!decision.allowed) return { ok: false, reason: 'invalid_credentials' };
+      const stamped = this.storage.sql.exec<UserRow & Record<string, string | number | null>>(
+        `UPDATE users SET status = CASE WHEN status = 'invited' THEN 'active' ELSE status END, last_login_at = ?, updated_at = ? WHERE id = ? RETURNING *`,
+        now,
+        now,
+        user.id,
+      ).toArray()[0];
+      return { ok: true, user: stamped ?? user, tenant, mustChange: row.must_change === 1 };
+    })();
+  }
+
+  /** Set (or reset) a user's password. `mustChange` forces a change at the next sign-in (initial passwords). */
+  setPassword(input: { userId: string; passwordHash: string; mustChange: boolean; setBy: string; now: string }): void {
+    this.storage.sql.exec(
+      `INSERT INTO credentials (user_id, password_hash, must_change, set_at, set_by, failed_attempts, locked_until) VALUES (?, ?, ?, ?, ?, 0, NULL)
+       ON CONFLICT (user_id) DO UPDATE SET password_hash = excluded.password_hash, must_change = excluded.must_change, set_at = excluded.set_at, set_by = excluded.set_by, failed_attempts = 0, locked_until = NULL`,
+      input.userId,
+      input.passwordHash,
+      input.mustChange ? 1 : 0,
+      input.now,
+      input.setBy,
+    );
+  }
+
+  /** Change one's own password: the old one must match (verified with `verify`). All of the person's other sessions are revoked. */
+  changeOwnPassword(input: { userId: string; currentPassword: string; newPasswordHash: string; now: string }, verify: (password: string, hash: string) => Promise<boolean>): Promise<'ok' | 'wrong_password'> {
+    return (async () => {
+      const row = this.storage.sql
+        .exec<{ password_hash: string } & Record<string, string | number | null>>(`SELECT password_hash FROM credentials WHERE user_id = ?`, input.userId)
+        .toArray()[0];
+      if (row === undefined || !(await verify(input.currentPassword, row.password_hash))) return 'wrong_password';
+      this.storage.sql.exec(`UPDATE credentials SET password_hash = ?, must_change = 0, set_at = ?, set_by = ? WHERE user_id = ?`, input.newPasswordHash, input.now, input.userId, input.userId);
+      this.revokeSessionsOfUser(input.userId, input.now);
+      return 'ok';
+    })();
+  }
+
+  /** Does this user still owe a password change (the forced-change flag)? */
+  mustChangePassword(userId: string): boolean {
+    const row = this.storage.sql.exec<{ must_change: number } & Record<string, string | number | null>>(`SELECT must_change FROM credentials WHERE user_id = ?`, userId).toArray()[0];
+    return row?.must_change === 1;
+  }
+
+  // ---- sessions (the revocation half of the session token) ------------------
+
+  /** Record a new session. Returns the row the caller signs into a token. */
+  createSession(input: { id: string; userId: string | null; email: string; now: string; ttlMs: number }): SessionRow {
+    const expires = new Date(Date.parse(input.now) + input.ttlMs).toISOString();
+    this.storage.sql.exec(`INSERT INTO sessions (id, user_id, email, created_at, expires_at) VALUES (?, ?, ?, ?, ?)`, input.id, input.userId, input.email, input.now, expires);
+    return { id: input.id, user_id: input.userId, email: input.email, created_at: input.now, expires_at: expires };
+  }
+
+  /** Is this session id still listed and unexpired? (Called on EVERY request via the token's sid.) */
+  sessionValid(id: string, now: string): boolean {
+    const row = this.storage.sql.exec<{ expires_at: string } & Record<string, string | number | null>>(`SELECT expires_at FROM sessions WHERE id = ?`, id).toArray()[0];
+    return row !== undefined && Date.parse(row.expires_at) > Date.parse(now);
+  }
+
+  /** Delete one session (its token becomes worthless at once). */
+  revokeSession(id: string): void {
+    this.storage.sql.exec(`DELETE FROM sessions WHERE id = ?`, id);
+  }
+
+  /** Delete every session of one user (password changed, account disabled, role changed). */
+  revokeSessionsOfUser(userId: string, now: string): number {
+    const gone = this.storage.sql.exec(`DELETE FROM sessions WHERE user_id = ? RETURNING id`, userId).toArray().length;
+    this.pruneSessions(now);
+    return gone;
+  }
+
+  /** Housekeeping: drop expired sessions (called opportunistically). */
+  pruneSessions(now: string): void {
+    this.storage.sql.exec(`DELETE FROM sessions WHERE expires_at <= ?`, now);
+  }
+
   // ---- tenants (Super Admin) -----------------------------------------------
 
   /**
@@ -728,6 +886,11 @@ export class RegistryStore {
         this.appendAudit({ ...base, action: nextStatus === 'disabled' ? 'user.disabled' : 'user.reactivated' });
       }
       if (input.access !== undefined && input.access !== user.access) this.appendAudit({ ...base, action: 'user.access_changed', meta: { from: user.access, to: input.access } });
+      // A disabled account, or one whose access level changed, must not keep a live session: the next
+      // request is authorised under the new state. (The caller also closes the person's live connections.)
+      if (nextStatus === 'disabled' || (input.access !== undefined && input.access !== user.access)) {
+        this.revokeSessionsOfUser(input.userId, input.now);
+      }
       return ok(this.getUserInTenant(input.tenantId, input.userId)!);
     });
   }
@@ -757,6 +920,9 @@ export class RegistryStore {
         targetEmail: user.email,
         meta: { from: user.role === 'admin' ? 'sv' : 'tester', to: input.role === 'admin' ? 'sv' : 'tester' },
       });
+      // A role change must not keep a live session: the next request is authorised as the new role.
+      // (The caller also closes the person's live connections.)
+      this.revokeSessionsOfUser(input.userId, input.now);
       return ok(this.getUserInTenant(input.tenantId, input.userId)!);
     });
   }
@@ -767,7 +933,7 @@ export class RegistryStore {
    */
   recordMemberEvent(input: {
     tenantId: string;
-    action: Extract<AuditAction, `member.${string}` | `notification.${string}` | `branding.${string}`>;
+    action: Extract<AuditAction, `member.${string}` | `notification.${string}` | `branding.${string}` | `user.${string}`>;
     actor: AuditActor;
     userId?: string | null;
     meta?: Record<string, string | number | boolean | null>;

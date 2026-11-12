@@ -33,6 +33,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'review', key: 'nav.review' },
   { id: 'reports', key: 'nav.reports' },
   { id: 'team', key: 'nav.team' },
+  { id: 'teamManagement', key: 'nav.teamManagement' },
   { id: 'history', key: 'nav.history' },
   // JIRA ticket analysis (an extra prerequisite: the integration must be configured — filtered at the App shell call site).
   { id: 'jira', key: 'nav.jira' },

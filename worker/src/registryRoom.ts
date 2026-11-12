@@ -8,8 +8,9 @@
  */
 
 import { DurableObject } from 'cloudflare:workers';
+import { verifyPassword } from './passwords';
 import { isManagedEmail, parseManagedDomains, type AdminAuditDto, type AuditAction, type AuditActor, type StorageMode, type TenantDto, type TenantListQuery, type TenantListResult, type TesterDto, type UserAccess, type UserDto } from '../../shared/tenancy';
-import { RegistryStore, toTenantDto, toUserDto, type AuthResult, type DeletionAuditRow, type Reg, type UserRow } from './registry';
+import { RegistryStore, toTenantDto, toUserDto, type AuthResult, type DeletionAuditRow, type PasswordCheck, type Reg, type SessionRow, type UserRow } from './registry';
 
 const mapReg = <A, B>(r: Reg<A>, f: (a: A) => B): Reg<B> => (r.ok ? { ok: true, value: f(r.value) } : r);
 
@@ -42,6 +43,46 @@ export class RegistryRoom extends DurableObject<Env> {
   /** Authenticated email → may they use the application, and as what? */
   async authenticate(email: string): Promise<AuthResult> {
     return this.store.authenticate(email, this.now());
+  }
+
+  // ---- password sign-in (replaces Cloudflare Access) -------------------------
+
+  /** Check an email + password pair (see RegistryStore.checkPassword). */
+  async checkPassword(email: string, password: string): Promise<PasswordCheck> {
+    return this.store.checkPassword(email, password, this.now(), verifyPassword);
+  }
+
+  /** Set (or reset) a user's password. `mustChange` forces a change at the next sign-in. */
+  async setPassword(input: { userId: string; passwordHash: string; mustChange: boolean; setBy: string }): Promise<void> {
+    this.store.setPassword({ ...input, now: this.now() });
+  }
+
+  /** Change one's own password: the old one must match; every other session is revoked. */
+  async changeOwnPassword(input: { userId: string; currentPassword: string; newPasswordHash: string }): Promise<'ok' | 'wrong_password'> {
+    return this.store.changeOwnPassword({ ...input, now: this.now() }, verifyPassword);
+  }
+
+  /** Does this user still owe a password change? */
+  async mustChangePassword(userId: string): Promise<boolean> {
+    return this.store.mustChangePassword(userId);
+  }
+
+  // ---- sessions (the revocation half of the session token) ------------------
+
+  async createSession(input: { id: string; userId: string | null; email: string; ttlMs: number }): Promise<SessionRow> {
+    return this.store.createSession({ ...input, now: this.now() });
+  }
+
+  async sessionValid(id: string): Promise<boolean> {
+    return this.store.sessionValid(id, this.now());
+  }
+
+  async revokeSession(id: string): Promise<void> {
+    this.store.revokeSession(id);
+  }
+
+  async revokeSessionsOfUser(userId: string): Promise<number> {
+    return this.store.revokeSessionsOfUser(userId, this.now());
   }
 
   async getTenant(tenantId: string): Promise<TenantDto | null> {
@@ -133,7 +174,7 @@ export class RegistryRoom extends DurableObject<Env> {
   }
 
   /** Stage 8D: a Team Member event of the workspace for the administrative trail (actor from the Worker's verified principal). */
-  async recordMemberEvent(input: { tenantId: string; action: Extract<AuditAction, `member.${string}` | `notification.${string}` | `branding.${string}`>; actor: AuditActor; userId?: string | null; meta?: Record<string, string | number | boolean | null> }): Promise<void> {
+  async recordMemberEvent(input: { tenantId: string; action: Extract<AuditAction, `member.${string}` | `notification.${string}` | `branding.${string}` | `user.${string}`>; actor: AuditActor; userId?: string | null; meta?: Record<string, string | number | boolean | null> }): Promise<void> {
     this.store.recordMemberEvent({ ...input, now: this.now() });
   }
 

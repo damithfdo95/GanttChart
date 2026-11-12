@@ -223,6 +223,7 @@ export const AUDIT_ACTIONS = [
   'user.disabled',
   'user.reactivated',
   'user.access_changed',
+  'user.password_set',
   'owner.transferred',
   // Stage 8D: Team Member profiles and the accounts linked to them (workspace-level; never shown to the Super Admin).
   'member.created',

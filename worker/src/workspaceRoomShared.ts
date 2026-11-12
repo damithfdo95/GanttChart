@@ -77,6 +77,8 @@ export interface Attachment {
   clientId: string | null;
   /** End of the Access session (ms epoch); null for the local dev identity. */
   expiresAt: number | null;
+  /** Registry session id (password sign-in / Access JWT with sid); null when there is no session row to check. */
+  sessionId: string | null;
 }
 
 export const IDENTITY_EMAIL_HEADER = 'x-gc-verified-email';
@@ -84,6 +86,9 @@ export const IDENTITY_ROLE_HEADER = 'x-gc-verified-role';
 export const IDENTITY_EXPIRES_HEADER = 'x-gc-verified-exp';
 export const IDENTITY_USER_HEADER = 'x-gc-user';
 export const TENANT_HEADER = 'x-gc-tenant';
+export const SESSION_HEADER = 'x-gc-session';
+/** How long a passed registry session check is trusted before re-checking (defence in depth, not a per-message round trip). */
+export const SESSION_RECHECK_MS = 30_000;
 export const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * Default history retention. Kept at 30 days (not longer) so the full-record

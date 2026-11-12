@@ -33,6 +33,7 @@ const TicketTab = lazy(() => import('../features/tickets/TicketTab').then((m) =>
 const PerformanceTab = lazy(() => import('../features/performance/PerformanceTab').then((m) => ({ default: m.PerformanceTab })));
 const ReviewTab = lazy(() => import('../features/review/ReviewTab').then((m) => ({ default: m.ReviewTab })));
 const TeamScreen = lazy(() => import('../features/tenancy/TeamScreen').then((m) => ({ default: m.TeamScreen })));
+const TeamManagementScreen = lazy(() => import('../features/teamManagement/TeamManagementScreen').then((m) => ({ default: m.TeamManagementScreen })));
 const CyclesScreen = lazy(() => import('../features/cycles/CyclesScreen').then((m) => ({ default: m.CyclesScreen })));
 const TestManagementScreen = lazy(() => import('../features/testManagement/TestManagementScreen').then((m) => ({ default: m.TestManagementScreen })));
 const MyTestingScreen = lazy(() => import('../features/testManagement/MyTestingScreen').then((m) => ({ default: m.MyTestingScreen })));
@@ -402,6 +403,8 @@ function Shell() {
         <HistoryScreen />
       ) : activeScreen === 'team' && (principal?.role === 'admin' || principal?.role === 'user') ? (
         <TeamScreen onOpenSettings={() => setScreen('settings')} />
+      ) : activeScreen === 'teamManagement' ? (
+        <TeamManagementScreen />
       ) : (
         <Settings />
       )}

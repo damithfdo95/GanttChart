@@ -9,10 +9,10 @@
  */
 
 /** Must equal WORKER_ROUTES in shared/routes.ts (a unit test keeps the two identical). */
-export const EXPECTED_WORKER_ROUTES = ['/api/*', '/ws', '/login'];
+export const EXPECTED_WORKER_ROUTES = ['/api/*', '/ws', '/login', '/signin'];
 
 /** Secrets that must never appear under "vars": a deploy would overwrite a secret-like var with whatever the file says. */
-export const SECRET_NAMES = ['ACCESS_AUD', 'SUPER_ADMIN_EMAILS'];
+export const SECRET_NAMES = ['SESSION_SECRET', 'SUPER_ADMIN_EMAILS'];
 
 /** Variables that switch on development behaviour and must never be in the production config. */
 export const DEV_ONLY_VARS = ['ENVIRONMENT', 'DEV_EMAIL', 'ALLOWED_ORIGINS'];
@@ -71,16 +71,25 @@ export function checkProduction(config, context) {
   const notes = [];
   const vars = config.vars ?? {};
 
-  // ---- Cloudflare Access: who may even reach the Worker ----
-  const team = typeof vars.ACCESS_TEAM_DOMAIN === 'string' ? vars.ACCESS_TEAM_DOMAIN : '';
-  let teamOk = false;
-  try {
-    const u = new URL(team);
-    teamOk = u.protocol === 'https:' && u.hostname.endsWith('.cloudflareaccess.com') && (u.pathname === '/' || u.pathname === '') && u.search === '' && !team.endsWith('/');
-  } catch {
-    teamOk = false;
+  // ---- dual authentication: Cloudflare Access (optional) + the Worker's own password sign-in ----
+  // Access is OPTIONAL now: when the vars are absent, only password sign-in exists.
+  // But a HALF-configured Access (one var without the other) is refused: the
+  // Worker treats that as a misconfiguration and fails closed.
+  const hasTeam = Object.prototype.hasOwnProperty.call(vars, 'ACCESS_TEAM_DOMAIN');
+  const hasAud = Object.prototype.hasOwnProperty.call(vars, 'ACCESS_AUD');
+  if (hasTeam !== hasAud) errors.push('vars.ACCESS_TEAM_DOMAIN and vars.ACCESS_AUD must BOTH be set (or both absent: Access sign-in is optional, but half-configured Access fails closed).');
+  if (hasTeam && hasAud) {
+    const team = typeof vars.ACCESS_TEAM_DOMAIN === 'string' ? vars.ACCESS_TEAM_DOMAIN : '';
+    let teamOk = false;
+    try {
+      const u = new URL(team);
+      teamOk = u.protocol === 'https:' && u.hostname.endsWith('.cloudflareaccess.com') && (u.pathname === '/' || u.pathname === '') && u.search === '' && !team.endsWith('/');
+    } catch {
+      teamOk = false;
+    }
+    if (!teamOk) errors.push('vars.ACCESS_TEAM_DOMAIN must be an https://<team>.cloudflareaccess.com URL with no path and no trailing slash.');
+    if (typeof vars.ACCESS_AUD !== 'string' || vars.ACCESS_AUD.trim() === '') errors.push('vars.ACCESS_AUD must be the Access application\'s AUD tag (a non-empty string).');
   }
-  if (!teamOk) errors.push('vars.ACCESS_TEAM_DOMAIN must be an https://<team>.cloudflareaccess.com URL with no path and no trailing slash (the Worker rejects every sign-in without it).');
 
   // ---- the account-provisioning gate ----
   const domains = parseDomains(vars.MANAGED_USER_EMAIL_DOMAINS);
@@ -123,10 +132,10 @@ export function checkProduction(config, context) {
   // ---- public vs authenticated routes ----
   const first = config.assets?.run_worker_first;
   if (!Array.isArray(first) || !sameSet(first, EXPECTED_WORKER_ROUTES)) {
-    errors.push(`assets.run_worker_first must be exactly ${JSON.stringify(EXPECTED_WORKER_ROUTES)} (the Worker-handled, Access-protected routes).`);
+    errors.push(`assets.run_worker_first must be exactly ${JSON.stringify(EXPECTED_WORKER_ROUTES)} (the Worker-handled, session-protected routes).`);
   }
   if (config.assets?.not_found_handling !== 'single-page-application') errors.push('assets.not_found_handling must be "single-page-application" (the public sign-in page is the SPA).');
-  if (config.preview_urls !== false) errors.push('preview_urls must be false: a preview hostname is a second hostname Access does not protect.');
+  if (config.preview_urls !== false) errors.push('preview_urls must be false: a preview hostname is a second hostname the Worker does not protect.');
   if (config.workers_dev !== true) errors.push('workers_dev must be true (the workers.dev hostname is the application URL).');
   if (config.account_id !== undefined || config.routes !== undefined || config.route !== undefined) errors.push('account_id / routes must not be committed (a custom domain is out of scope).');
 
@@ -139,11 +148,11 @@ export function checkProduction(config, context) {
   if (typeof sampling !== 'number' || !(sampling > 0 && sampling <= 1)) errors.push('observability.head_sampling_rate must be a number in (0, 1].');
 
   // ---- documentation of the expectations ----
-  for (const needle of [...SECRET_NAMES, 'MANAGED_USER_EMAIL_DOMAINS', '/login', '/api', '/ws']) {
+  for (const needle of [...SECRET_NAMES, 'MANAGED_USER_EMAIL_DOMAINS', '/login', '/signin', '/api', '/ws']) {
     if (!context.docsText.includes(needle)) errors.push(`docs/DEPLOYMENT_PLAN.md must document ${needle}.`);
   }
 
   // What this guard cannot see.
-  notes.push('Not verifiable from here: the secrets ACCESS_AUD and SUPER_ADMIN_EMAILS exist on the Worker; the Access destinations are /login, /api and /ws (docs/DEPLOYMENT_PLAN.md).');
+  notes.push('Not verifiable from here: the secrets SESSION_SECRET and SUPER_ADMIN_EMAILS exist on the Worker (SESSION_SECRET must be at least 32 characters); when Access is configured, its destinations are /login, /api and /ws (docs/DEPLOYMENT_PLAN.md).');
   return { errors, notes };
 }

@@ -81,6 +81,17 @@ npm run test        # Vitest suite (1,200+ tests)
 
 The application architecture and local database design are documented in [DATABASE.md](DATABASE.md).
 
+### Signing in (shared / web version)
+
+In the shared (web) version the public page offers two ways in — **either one is enough**:
+
+- **Sign in with SSO** — your company account via Cloudflare Access. If you are already signed in to Access you go straight in; otherwise Access asks you first.
+- **Sign in with a password** — the email address your SV registered for you, plus a password. Ten failed attempts lock the account for 15 minutes (ask your SV if this happens).
+
+**The first time you sign in with a password you must choose your own.** The SV gives you an initial password; the app immediately asks you to replace it with one only you know. Until you do, every sign-in asks again.
+
+**When your access ends, so does your session.** If you are disabled, your access level or role changes, or your password is reset, the app signs you out — the next request is refused and you must sign in again.
+
 ---
 
 ## 3. Basic Concepts
@@ -419,6 +430,7 @@ Executions (read-only), Gantt (read-only), Tickets, Performance (their own rows)
 
 * **Total Test Cases** is typed by an SV on **Test Management -> Scopes**. The project total is the sum of its scopes; you do not have to register every test case. A warning appears if more cases are registered than the total.
 * **Team Members** is the one list of people. Add a person with or without a login; create the login later and the same person is linked. SVs can change a role (SV / Tester), remove or reactivate a person.
+* **Set password** (SV): give a linked login its initial password — or reset a forgotten one — from Team Members. The person must choose their own at the next sign-in, and any session they had is ended. The password never appears in logs or exports.
 * **Meeting View** (SV): **Gantt -> Meeting View**, or **Open Morning Meeting / Open Evening Meeting** on the Dashboard. Morning shows today's plan for the whole team; Evening shows plan against actual and lets you prepare tomorrow's plan. **Present** hides the editing controls.
 
 ### Test Management and the TestRail Result Analysis

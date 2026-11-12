@@ -25,12 +25,11 @@ describe('the production configuration in the repository', () => {
   it('keeps the production auth secrets OUT of vars and requires them as secrets', () => {
     const c = real();
     for (const name of SECRET_NAMES) expect(c.vars).not.toHaveProperty(name);
-    expect(c.secrets.required).toEqual(expect.arrayContaining(['ACCESS_AUD', 'SUPER_ADMIN_EMAILS']));
+    expect(c.secrets.required).toEqual(expect.arrayContaining(['SESSION_SECRET', 'SUPER_ADMIN_EMAILS']));
   });
 
   it('holds the non-secret production settings', () => {
     const c = real();
-    expect(c.vars.ACCESS_TEAM_DOMAIN).toBe('https://qa-internal.cloudflareaccess.com');
     expect(c.vars.MANAGED_USER_EMAIL_DOMAINS).toBe('rakuten.com');
     expect(c.vars.HISTORY_RETENTION_DAYS).toBe('30');
     expect(c.preview_urls).toBe(false);
@@ -48,11 +47,20 @@ describe('guard rules (each one is a way production could be left unsafe)', () =
     expect(errorsFor(c, ctx).join('\n')).toContain(fragment);
   };
 
-  it('Access team domain must be https://<team>.cloudflareaccess.com', () => {
-    for (const bad of ['', 'http://qa-internal.cloudflareaccess.com', 'https://evil.example', 'https://qa-internal.cloudflareaccess.com/', 'https://qa-internal.cloudflareaccess.com/x', 'qa-internal.cloudflareaccess.com']) {
-      expectError((c) => (c.vars.ACCESS_TEAM_DOMAIN = bad), 'ACCESS_TEAM_DOMAIN');
-    }
-    expectError((c) => delete c.vars.ACCESS_TEAM_DOMAIN, 'ACCESS_TEAM_DOMAIN');
+  it('accepts the dual-auth Access vars only as a well-formed pair (both or neither)', () => {
+    // The repository config itself carries both and must pass (covered by the
+    // "passes the pre-deployment guard" test above); here we prove the rules.
+    expectError((c) => delete c.vars.ACCESS_TEAM_DOMAIN, 'must BOTH be set');
+    expectError((c) => delete c.vars.ACCESS_AUD, 'must BOTH be set');
+    expectError((c) => (c.vars.ACCESS_TEAM_DOMAIN = 'http://qa-internal.cloudflareaccess.com'), 'https://<team>.cloudflareaccess.com');
+    expectError((c) => (c.vars.ACCESS_TEAM_DOMAIN = 'https://qa-internal.cloudflareaccess.com/'), 'no path and no trailing slash');
+    expectError((c) => (c.vars.ACCESS_TEAM_DOMAIN = 'https://evil.example.com'), 'cloudflareaccess.com');
+    expectError((c) => (c.vars.ACCESS_AUD = '  '), 'non-empty string');
+    // Both absent is a valid password-only deployment.
+    const c = clone();
+    delete c.vars.ACCESS_TEAM_DOMAIN;
+    delete c.vars.ACCESS_AUD;
+    expect(errorsFor(c)).toEqual([]);
   });
 
   it('managed domains must exist and be plain domain names', () => {
@@ -115,13 +123,13 @@ describe('guard rules (each one is a way production could be left unsafe)', () =
   });
 
   it('the deployment documentation must state the expectations', () => {
-    for (const needle of ['ACCESS_AUD', 'SUPER_ADMIN_EMAILS', 'MANAGED_USER_EMAIL_DOMAINS', '/login']) {
+    for (const needle of ['SESSION_SECRET', 'SUPER_ADMIN_EMAILS', 'MANAGED_USER_EMAIL_DOMAINS', '/login', '/signin']) {
       expectError(() => undefined, needle, { ...ok, docsText: docs.split(needle).join('') });
     }
   });
 
   it('always reminds what it cannot verify', () => {
-    expect(checkProduction(real(), ok).notes.join(' ')).toMatch(/secrets ACCESS_AUD and SUPER_ADMIN_EMAILS/);
+    expect(checkProduction(real(), ok).notes.join(' ')).toMatch(/secrets SESSION_SECRET and SUPER_ADMIN_EMAILS/);
   });
 });
 

@@ -31,6 +31,7 @@ import {
   type ServerMessage,
 } from '../../shared/protocol';
 import { qaCommitError } from '../../shared/qaRules';
+import { teamCommitError } from '../../shared/teamRules';
 import { logEvent, safeError } from './log';
 import { memberRoleOf } from '../../shared/members';
 import { businessClock, businessDate } from '../../shared/businessTime';
@@ -52,6 +53,8 @@ import {
   LEGACY_WORKSPACE_NAME,
   MAX_RETENTION_DAYS,
   RETENTION_FLAG,
+  SESSION_HEADER,
+  SESSION_RECHECK_MS,
   SIZE_GUARD_BYTES,
   SIZE_GUARD_RETENTION_DAYS,
   TENANT_HEADER,
@@ -71,12 +74,16 @@ import {
   visibleTo,
 } from './workspaceRoomShared';
 
-export { IDENTITY_EMAIL_HEADER, IDENTITY_EXPIRES_HEADER, IDENTITY_ROLE_HEADER, IDENTITY_USER_HEADER, TENANT_HEADER, LEGACY_WORKSPACE_NAME };
+export { IDENTITY_EMAIL_HEADER, IDENTITY_EXPIRES_HEADER, IDENTITY_ROLE_HEADER, IDENTITY_USER_HEADER, SESSION_HEADER, TENANT_HEADER, LEGACY_WORKSPACE_NAME };
 export type { MemberInfo, WorkspaceState, ImportInput, ImportResult };
 
 export class WorkspaceRoom extends DurableObject<Env> {
   private readonly store: WorkspaceStore;
   private frozen = false;
+  /** Session ids recently confirmed valid by the registry (checked again after the re-check TTL). */
+  private readonly sessionCheckedAt = new Map<string, number>();
+  /** How long a passed registry check is trusted (default 30 s; overridable for tests via SESSION_RECHECK_MS). */
+  private readonly sessionRecheckMs: number;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -84,6 +91,8 @@ export class WorkspaceRoom extends DurableObject<Env> {
       sql: ctx.storage.sql,
       transactionSync: (fn) => ctx.storage.transactionSync(fn),
     });
+    const configured = Number(env.SESSION_RECHECK_MS);
+    this.sessionRecheckMs = Number.isFinite(configured) && configured >= 0 ? configured : SESSION_RECHECK_MS;
     // Heartbeats are answered by the runtime without waking a hibernated object.
     // The frames must match JSON.stringify of the protocol's ping/pong exactly.
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(JSON.stringify({ t: 'ping' }), JSON.stringify({ t: 'pong' })));
@@ -129,7 +138,8 @@ export class WorkspaceRoom extends DurableObject<Env> {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server);
-    const attachment: Attachment = { email, userId, tenantId, role, clientId: null, expiresAt };
+    const sessionId = request.headers.get(SESSION_HEADER);
+    const attachment: Attachment = { email, userId, tenantId, role, clientId: null, expiresAt, sessionId: sessionId === null || sessionId === '' ? null : sessionId };
     server.serializeAttachment(attachment);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -150,6 +160,13 @@ export class WorkspaceRoom extends DurableObject<Env> {
       return;
     }
     if (isExpired(attachment)) {
+      this.send(ws, { t: 'error', code: 'session_expired', message: 'Your sign-in session has ended; reload to sign in again.' });
+      ws.close(CLOSE_CODES.sessionExpired, 'session expired');
+      return;
+    }
+    // Defence in depth: the registry closes live sockets when a session is revoked, but if that push
+    // ever raced or failed, the next message still re-checks the session row (cached for SESSION_RECHECK_MS).
+    if (attachment.sessionId !== null && !(await this.sessionStillValid(attachment.sessionId))) {
       this.send(ws, { t: 'error', code: 'session_expired', message: 'Your sign-in session has ended; reload to sign in again.' });
       ws.close(CLOSE_CODES.sessionExpired, 'session expired');
       return;
@@ -248,8 +265,10 @@ export class WorkspaceRoom extends DurableObject<Env> {
         actor: attachment.email,
         reason: msg.reason ?? 'edit',
         now: new Date().toISOString(),
-        // Who may change what, and what may refer to what (shared/qaRules.ts).
-        rules: ({ puts, deletes, get, list }) => qaCommitError({ role: attachment.role, userId: attachment.userId, today: businessDate(), puts, deletes, view: { get, list } }),
+        // Who may change what, and what may refer to what (shared/qaRules.ts, shared/teamRules.ts).
+        rules: ({ puts, deletes, get, list }) =>
+          qaCommitError({ role: attachment.role, userId: attachment.userId, today: businessDate(), puts, deletes, view: { get, list } }) ??
+          teamCommitError({ puts, deletes, view: { get, list } }),
       });
     } catch (error) {
       // transactionSync rolled back: nothing was applied.
@@ -989,6 +1008,18 @@ export class WorkspaceRoom extends DurableObject<Env> {
     this.store.prune(new Date(Date.now() - retention * DAY_MS).toISOString());
     this.maybeRunRetention(Date.now());
     await this.ctx.storage.setAlarm(Date.now() + DAY_MS);
+  }
+
+  /** Registry session check with a short positive cache; a revoked session is refused on its next message. */
+  private async sessionStillValid(sessionId: string): Promise<boolean> {
+    const checkedAt = this.sessionCheckedAt.get(sessionId);
+    const now = Date.now();
+    if (checkedAt !== undefined && now - checkedAt < this.sessionRecheckMs) return true;
+    const registry = this.env.REGISTRY.getByName('registry');
+    const valid = await registry.sessionValid(sessionId);
+    if (valid) this.sessionCheckedAt.set(sessionId, now);
+    else this.sessionCheckedAt.delete(sessionId);
+    return valid;
   }
 
   // ---- helpers ----------------------------------------------------------------

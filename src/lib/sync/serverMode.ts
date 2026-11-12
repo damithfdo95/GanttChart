@@ -16,8 +16,10 @@ export type ServerDetection =
   | { mode: 'denied'; reason: DenyReason; email: string }
   /** No shared backend here (static hosting, vite dev without a proxy): keep working locally. */
   | { mode: 'local' }
-  /** The sign-in session ended (Access answered with a login redirect / 401 / 403). */
+  /** The sign-in session ended (the Worker answered with a 401 / 403). */
   | { mode: 'login-required' }
+  /** Signed in, but the SV-set initial password must be changed before the app is usable. */
+  | { mode: 'must-change-password' }
   /** The backend answered but refused (e.g. Access not configured → fails closed with 500). */
   | { mode: 'error'; status: number }
   /** It looks like a shared deployment but the network failed. */
@@ -77,6 +79,8 @@ export async function detectServer(fetchFn: FetchLike = (i, init) => fetch(i, in
   try {
     const body: unknown = await res.json();
     if (isPrincipalDto(body)) {
+      // A forced password change comes before anything else: no workspace data is used until it is done.
+      if ((body as { mustChangePassword?: unknown }).mustChangePassword === true) return { mode: 'must-change-password' };
       const identity: Identity | null = body.workspaceRole === null ? null : { email: body.email, role: body.workspaceRole };
       // A Worker from before display names existed does not send one.
       return { mode: 'server', principal: { ...body, displayName: body.displayName ?? null }, identity };

@@ -39,6 +39,16 @@ import type {
   ReportsState,
   TesterProjectAssignment,
   TesterReview,
+  TeamRecord,
+  TeamMembershipRecord,
+  TeamSupervisorRecord,
+  SkillRecord,
+  MemberSkillRecord,
+  WorkScheduleRecord,
+  MemberScheduleRecord,
+  LeaveRequestRecord,
+  HolidayCalendarRecord,
+  CapacityAllocationRecord,
 } from '../../types';
 import type { RecordDelete, RecordKind, RecordPut } from '../../../shared/protocol';
 
@@ -83,6 +93,16 @@ const ORDER: Record<Exclude<RecordKind, 'settings'>, (record: never) => string> 
   notification: (r: NotificationDef) => r.createdAt ?? '',
   notificationAck: (r: NotificationAck) => r.at ?? '',
   branding: (r: BrandingRecord) => r.id,
+  team: (r: TeamRecord) => r.name ?? '',
+  teamMembership: (r: TeamMembershipRecord) => `${r.effectiveFrom ?? ''}`,
+  teamSupervisor: (r: TeamSupervisorRecord) => `${r.effectiveFrom ?? ''}`,
+  skill: (r: SkillRecord) => r.name ?? '',
+  memberSkill: (r: MemberSkillRecord) => r.id,
+  workSchedule: (r: WorkScheduleRecord) => r.name ?? '',
+  memberSchedule: (r: MemberScheduleRecord) => `${r.effectiveFrom ?? ''}`,
+  leaveRequest: (r: LeaveRequestRecord) => r.startDate ?? '',
+  holidayCalendar: (r: HolidayCalendarRecord) => r.name ?? '',
+  capacityAllocation: (r: CapacityAllocationRecord) => `${r.effectiveFrom ?? ''}`,
 };
 
 function sortKind<T extends Identified>(kind: Exclude<RecordKind, 'settings'>, items: T[]): T[] {
@@ -139,6 +159,16 @@ const ARRAY_FIELDS: ArrayField[] = [
   { kind: 'notification', read: (s) => s.notifications ?? [], write: (s, v) => ({ ...s, notifications: v as NotificationDef[] }) },
   { kind: 'notificationAck', read: (s) => s.notificationAcks ?? [], write: (s, v) => ({ ...s, notificationAcks: v as NotificationAck[] }) },
   { kind: 'branding', read: (s) => s.brandings ?? [], write: (s, v) => ({ ...s, brandings: v as BrandingRecord[] }) },
+  { kind: 'team', read: (s) => s.teams ?? [], write: (s, v) => ({ ...s, teams: v as TeamRecord[] }) },
+  { kind: 'teamMembership', read: (s) => s.teamMemberships ?? [], write: (s, v) => ({ ...s, teamMemberships: v as TeamMembershipRecord[] }) },
+  { kind: 'teamSupervisor', read: (s) => s.teamSupervisors ?? [], write: (s, v) => ({ ...s, teamSupervisors: v as TeamSupervisorRecord[] }) },
+  { kind: 'skill', read: (s) => s.skills ?? [], write: (s, v) => ({ ...s, skills: v as SkillRecord[] }) },
+  { kind: 'memberSkill', read: (s) => s.memberSkills ?? [], write: (s, v) => ({ ...s, memberSkills: v as MemberSkillRecord[] }) },
+  { kind: 'workSchedule', read: (s) => s.workSchedules ?? [], write: (s, v) => ({ ...s, workSchedules: v as WorkScheduleRecord[] }) },
+  { kind: 'memberSchedule', read: (s) => s.memberSchedules ?? [], write: (s, v) => ({ ...s, memberSchedules: v as MemberScheduleRecord[] }) },
+  { kind: 'leaveRequest', read: (s) => s.leaveRequests ?? [], write: (s, v) => ({ ...s, leaveRequests: v as LeaveRequestRecord[] }) },
+  { kind: 'holidayCalendar', read: (s) => s.holidayCalendars ?? [], write: (s, v) => ({ ...s, holidayCalendars: v as HolidayCalendarRecord[] }) },
+  { kind: 'capacityAllocation', read: (s) => s.capacityAllocations ?? [], write: (s, v) => ({ ...s, capacityAllocations: v as CapacityAllocationRecord[] }) },
 ];
 
 const FIELD_BY_KIND = new Map(ARRAY_FIELDS.map((f) => [f.kind, f]));
@@ -212,7 +242,11 @@ export function applyRecordChanges(state: ReportsState, puts: readonly RecordPut
   }
 
   for (const kind of touchedKinds) {
-    const field = FIELD_BY_KIND.get(kind)!;
+    // A record kind this build does not know (a newer workspace's Team
+    // Management records seen by an older client, or any future kind) is
+    // skipped, not crashed on: forward compatibility.
+    const field = FIELD_BY_KIND.get(kind);
+    if (field === undefined) continue;
     const b = byKind.get(kind)!;
     const current = field.read(next);
     const seen = new Set<string>();
@@ -278,6 +312,16 @@ export function reportsFromRecords(records: readonly RecordPut[], local: Reports
     notifications: [],
     notificationAcks: [],
     brandings: [],
+    teams: [],
+    teamMemberships: [],
+    teamSupervisors: [],
+    skills: [],
+    memberSkills: [],
+    workSchedules: [],
+    memberSchedules: [],
+    leaveRequests: [],
+    holidayCalendars: [],
+    capacityAllocations: [],
   };
   const built = applyRecordChanges(empty, records, []);
   // The device's own project selection survives if that project still exists.

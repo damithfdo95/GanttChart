@@ -31,6 +31,8 @@ export type StartupDecision =
   | { kind: 'local' }
   /** Not signed in: the public page with the Sign In button (no data, no offline copy is opened). */
   | { kind: 'landing' }
+  /** Signed in but the SV-set initial password must be replaced before anything else. */
+  | { kind: 'must-change-password' }
   | { kind: 'denied'; reason: DenyReason; email: string }
   | { kind: 'super-admin'; principal: PrincipalDto }
   /** A tenant whose data lives in this browser (local storage mode). `clearDevice`: leftover sync state of an earlier web mode. */
@@ -58,6 +60,8 @@ export function decideStartup(detection: ServerDetection, device: DeviceState): 
       return { kind: 'problem', problem: 'error', status: detection.status };
     case 'login-required':
       return { kind: 'landing' };
+    case 'must-change-password':
+      return { kind: 'must-change-password' };
     case 'unreachable': {
       // Offline: a device that was linked keeps working from its own copy (the sync client reports it
       // and recovers). The server has not been able to say who this is, so only a copy that was

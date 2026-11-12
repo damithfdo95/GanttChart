@@ -13,9 +13,9 @@
   //
   // PUBLIC vs PROTECTED (docs/DEPLOYMENT_PLAN.md):
   //   public     "/" and the built SPA files - code and static text only, never data
-  //   protected  /login, /api/*, /ws - Cloudflare Access destinations, AND every one of
-  //              them verifies the Access token inside the Worker, so they stay closed
-  //              even if an Access destination were missing.
+  //   protected  /login, /signin, /api/*, /ws - every one of them verifies the
+  //              identity inside the Worker (Access JWT or session cookie), so
+  //              they stay closed whatever the platform does.
   // Preview / version URLs stay OFF so there is no second hostname for the same Worker.
   "workers_dev": true,
   "preview_urls": false,
@@ -26,7 +26,7 @@
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     // Must equal WORKER_ROUTES in shared/routes.ts (checked by scripts/check-production.mjs).
-    "run_worker_first": ["/api/*", "/ws", "/login"]
+    "run_worker_first": ["/api/*", "/ws", "/login", "/signin"]
   },
 
   // WORKSPACE: one instance PER TENANT (addressed by tenant id) = the data plane.
@@ -49,17 +49,21 @@
   "observability": { "enabled": true, "head_sampling_rate": 1 },
 
   // Non-secret production configuration lives HERE, so a plain deploy can never blank it.
+  // ACCESS_TEAM_DOMAIN / ACCESS_AUD enable the Cloudflare Access sign-in path (optional:
+  // when absent, only the Worker's own password sign-in exists). They are public
+  // metadata (the team domain appears in login URLs), not secrets.
   "vars": {
     "ACCESS_TEAM_DOMAIN": "https://qa-internal.cloudflareaccess.com",
+    "ACCESS_AUD": "replace-with-the-access-application-aud-tag",
     "MANAGED_USER_EMAIL_DOMAINS": "rakuten.com",
     "HISTORY_RETENTION_DAYS": "30"
   },
 
-  // ACCESS_AUD and SUPER_ADMIN_EMAILS are Worker SECRETS (set once with `wrangler secret put`,
+  // SESSION_SECRET and SUPER_ADMIN_EMAILS are Worker SECRETS (set once with `wrangler secret put`,
   // never listed in "vars"). Wrangler never deletes a secret on deploy, so a deploy cannot wipe
   // them; listing them here makes a deploy refuse to go ahead if they are missing, and the
   // guard below refuses to let them reappear under "vars" (where a deploy WOULD overwrite them).
-  "secrets": { "required": ["ACCESS_AUD", "SUPER_ADMIN_EMAILS"] },
+  "secrets": { "required": ["SESSION_SECRET", "SUPER_ADMIN_EMAILS"] },
 
   // Runs before EVERY `wrangler deploy` of this config (and its --dry-run). It deploys nothing;
   // it only stops a deployment whose production safety settings are incomplete.
@@ -72,6 +76,7 @@
         "ENVIRONMENT": "development",
         "DEV_EMAIL": "super@dev.test",
         "SUPER_ADMIN_EMAILS": "super@dev.test",
+        "SESSION_SECRET": "dev-session-secret-0123456789abcdef0123456789abcdef",
         "MANAGED_USER_EMAIL_DOMAINS": "example.com,dev.test",
         "ALLOWED_ORIGINS": "http://localhost:5173,http://localhost:8787",
         "HISTORY_RETENTION_DAYS": "30"
@@ -86,7 +91,7 @@
         "directory": "../dist",
         "binding": "ASSETS",
         "not_found_handling": "single-page-application",
-        "run_worker_first": ["/api/*", "/ws", "/login"]
+        "run_worker_first": ["/api/*", "/ws", "/login", "/signin"]
       }
     }
   }

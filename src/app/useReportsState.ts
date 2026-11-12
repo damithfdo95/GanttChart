@@ -14,6 +14,9 @@ import type {
   RcsMember,
   ReportSettings,
   ReportsState,
+  TeamMembershipRecord,
+  TeamRecord,
+  TeamSupervisorRecord,
   TesterProjectAssignment,
   TesterReview,
 } from '../types';
@@ -94,6 +97,14 @@ export interface ReportsStateApi {
    * mapping per external account stays in effect.
    */
   upsertExternalIdentity: (identity: ExternalIdentity) => void;
+  /** Team Management (Phase 1): add or replace one team by id. */
+  upsertTeam: (team: TeamRecord) => void;
+  /** Team Management (Phase 1): add or replace one membership by id. */
+  upsertTeamMembership: (membership: TeamMembershipRecord) => void;
+  /** Team Management (Phase 1): add or replace one supervisor by id. */
+  upsertTeamSupervisor: (supervisor: TeamSupervisorRecord) => void;
+  /** Team Management (Phase 1): apply a backfill plan as ONE state update (one commit). */
+  applyTeamBackfill: (teams: readonly TeamRecord[], memberships: readonly TeamMembershipRecord[]) => void;
 }
 
 /**
@@ -317,6 +328,32 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
     });
   }, []);
 
+  const upsertById = <T extends { id: string }>(list: readonly T[] | undefined, item: T): T[] => {
+    const items = list ?? [];
+    return items.some((x) => x.id === item.id) ? items.map((x) => (x.id === item.id ? item : x)) : [...items, item];
+  };
+
+  const upsertTeamAction = useCallback((team: TeamRecord): void => {
+    setState((prev) => ({ ...prev, teams: upsertById(prev.teams, team) }));
+  }, []);
+
+  const upsertTeamMembershipAction = useCallback((membership: TeamMembershipRecord): void => {
+    setState((prev) => ({ ...prev, teamMemberships: upsertById(prev.teamMemberships, membership) }));
+  }, []);
+
+  const upsertTeamSupervisorAction = useCallback((supervisor: TeamSupervisorRecord): void => {
+    setState((prev) => ({ ...prev, teamSupervisors: upsertById(prev.teamSupervisors, supervisor) }));
+  }, []);
+
+  const applyTeamBackfillAction = useCallback((teams: readonly TeamRecord[], memberships: readonly TeamMembershipRecord[]): void => {
+    if (teams.length === 0 && memberships.length === 0) return;
+    setState((prev) => ({
+      ...prev,
+      teams: [...(prev.teams ?? []), ...teams],
+      teamMemberships: [...(prev.teamMemberships ?? []), ...memberships],
+    }));
+  }, []);
+
   return {
     state,
     updateSettings,
@@ -353,5 +390,9 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
     removeProjectOwner: removeProjectOwnerAction,
     appendIdentityAudit: appendIdentityAuditAction,
     upsertExternalIdentity: upsertExternalIdentityAction,
+    upsertTeam: upsertTeamAction,
+    upsertTeamMembership: upsertTeamMembershipAction,
+    upsertTeamSupervisor: upsertTeamSupervisorAction,
+    applyTeamBackfill: applyTeamBackfillAction,
   };
 }

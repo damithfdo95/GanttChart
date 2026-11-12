@@ -2,18 +2,19 @@
  * Self-service sign-out, as plain orchestration over injected dependencies so every
  * path is unit-tested.
  *
- * Authentication belongs to Cloudflare Access, so signing out means: stop this page's
- * own use of the session, then visit Access's logout endpoint on THIS origin. Nothing
- * here talks to the application's API, and nothing here names a person or a workspace:
- * it signs out the browser that clicked, never anybody else.
+ * The sign-in session is the Worker's own (a session cookie), so signing out
+ * means: tell the Worker to revoke the session (POST /api/auth/logout, which
+ * also clears the cookie), stop this page's own use of the session, and show
+ * the sign-in page. Nothing here names a person or a workspace: it signs out
+ * the browser that clicked, never anybody else.
  *
  * What it never does: delete or change any server data, change any account/tenant,
  * or touch this device's own data (local database, backups, device link and copy,
  * preferences). That is "Clear this device", a different, deliberate action.
  */
 
-/** Cloudflare-managed endpoint on the application's own domain (not a Worker route). It takes no parameters. */
-export const ACCESS_LOGOUT_PATH = '/cdn-cgi/access/logout';
+/** The Worker's sign-out endpoint (revokes the session server-side and clears the cookie). */
+export const LOGOUT_API_PATH = '/api/auth/logout';
 
 export interface LogoutDeps {
   /** Edits not yet on the shared server (0 in local mode / when nothing is pending). */
@@ -26,6 +27,8 @@ export interface LogoutDeps {
   endSession(): void;
   /** Leave the page for the given same-origin path. */
   navigate(path: string): void;
+  /** POST the sign-out (injectable for tests). */
+  fetchFn?: (input: string, init?: RequestInit) => Promise<Response>;
 }
 
 export type LogoutStart = { kind: 'done' } | { kind: 'confirm'; unsent: number };
@@ -51,7 +54,18 @@ export async function completeLogout(deps: LogoutDeps): Promise<void> {
   } catch {
     /* the device copy is whatever was last saved */
   }
-  // 3. Nothing authenticated may stay on screen, then leave.
+  // 3. Revoke the session server-side (the cookie is cleared with the answer).
+  //    A failure must not trap anyone in the app either: the local stop below still happens.
+  try {
+    await (deps.fetchFn ?? ((i: string, init?: RequestInit) => fetch(i, init)))(LOGOUT_API_PATH, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'x-gc-intent': 'logout' },
+    });
+  } catch {
+    /* the session ends with the cookie when the browser closes; nothing else to do */
+  }
+  // 4. Nothing authenticated may stay on screen, then leave for the sign-in page.
   deps.endSession();
-  deps.navigate(ACCESS_LOGOUT_PATH);
+  deps.navigate('/signin');
 }

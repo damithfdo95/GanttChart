@@ -26,11 +26,12 @@ import { downloadTextFile, fileStamp } from '../lib/export/download';
 import { AccessDenied } from '../features/tenancy/AccessDenied';
 import { SuperAdminConsole } from '../features/tenancy/SuperAdminConsole';
 import { PublicLanding } from '../features/tenancy/PublicLanding';
+import { LoginForm } from '../features/tenancy/LoginForm';
+import { ChangePasswordScreen } from '../features/tenancy/ChangePasswordScreen';
 import { SignedOutScreen } from '../features/tenancy/LogoutButton';
 import { SessionProvider } from './session-context';
 import { ConfirmProvider } from '../components/ConfirmDialog';
 import { phaseAfterEnd, type LandingNotice, type SessionEnd } from './sessionEnd';
-import { ACCESS_LOGOUT_PATH } from '../lib/auth/logout';
 import { flushSync } from 'react-dom';
 import { t } from '../i18n';
 
@@ -42,6 +43,7 @@ type Phase =
   | { kind: 'ready'; boot: PersistenceBoot; shared: SharedBoot | null; tenant: TenantApi }
   | { kind: 'link'; principal: PrincipalDto; identity: Identity; plan: LinkPlan; server: ServerWorkspace }
   | { kind: 'landing'; notice: LandingNotice }
+  | { kind: 'must-change-password' }
   | { kind: 'signed-out' }
   | { kind: 'denied'; reason: DenyReason; email: string }
   | { kind: 'super'; principal: PrincipalDto }
@@ -81,6 +83,9 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
         return;
       case 'landing':
         setPhase({ kind: 'landing', notice: landingNotice() });
+        return;
+      case 'must-change-password':
+        setPhase({ kind: 'must-change-password' });
         return;
       case 'denied':
         setPhase(decision);
@@ -144,7 +149,12 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
   };
 
   if (phase.kind === 'signed-out') return <SignedOutScreen lang={lang} />;
-  if (phase.kind === 'landing') return <PublicLanding initialLang={lang} notice={phase.notice} />;
+  if (phase.kind === 'landing') {
+    // /signin is the password form's own URL; anywhere else the public page with both sign-in options.
+    if (window.location.pathname === '/signin') return <LoginForm lang={lang} />;
+    return <PublicLanding initialLang={lang} notice={phase.notice} />;
+  }
+  if (phase.kind === 'must-change-password') return <ChangePasswordScreen lang={lang} />;
   if (phase.kind === 'ready') {
     return (
       <SessionProvider value={session}>
@@ -196,11 +206,10 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
 }
 
 /**
- * What the public page should say. If this very page was served at Cloudflare's logout path, Access did not handle
- * the request (it should have), so the person is NOT signed out and must be told, not shown a normal sign-in page.
+ * What the public page should say. The old Cloudflare Access logout path is
+ * gone; only the Worker's own sign-in exists now.
  */
 function landingNotice(): LandingNotice {
-  if (window.location.pathname.startsWith('/cdn-cgi/')) return window.location.pathname === ACCESS_LOGOUT_PATH ? 'logoutIncomplete' : null;
   return new URLSearchParams(window.location.search).get('signin') === 'unavailable' ? 'signInFailed' : null;
 }
 

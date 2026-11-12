@@ -6,8 +6,8 @@ manual steps to reach it. **Nothing in this document has been executed by the
 development tooling:** no deployment, no secret, no Access change, no DNS change.
 Every step marked *you run* is performed manually by the owner.
 
-> **Cloudflare authentication is not GanttChart authorization.**
-> Cloudflare Access proves **who** a person is (a verified email). GanttChart's own
+> **Sign-in is dual: Cloudflare Access SSO *or* the Worker's own password sign-in — either is enough.**
+> The Worker proves **who** a person is (a verified Access JWT or a verified session). GanttChart's own
 > registry decides **whether** that person may use the application, as which role,
 > in which workspace. An authenticated `@rakuten.com` employee who has no GanttChart
 > account is shown "no account" and is never added automatically.
@@ -16,23 +16,25 @@ Every step marked *you run* is performed manually by the owner.
 
 ```
 anyone ──► https://ganttchart.damithfdo.workers.dev/        PUBLIC  (static sign-in page, no data)
-                │  click "Sign in"
-                ▼
-           /login        ── Cloudflare Access (login, one-time PIN) ──► Worker verifies the Access JWT ──► 302 "/"
-                │
-                ▼ the app calls (same origin, with the Access cookie)
-           /api/*        ── Access ──► Worker: JWT → registry lookup → role/tenant/status → permission
-           /ws           ── Access ──► Worker: same pipeline, then the tenant's own Durable Object
+                │  "Sign in with SSO"                        "Sign in with a password"
+                ▼                                            ▼
+           /login  (Access in front)                   /signin  (the SPA's password form)
+                │ Access JWT on every request                  │
+                │                                              └─► POST /api/auth/login ──► session cookie ──► "/"
+                ▼ the app calls (same origin, with the Access JWT or the session cookie)
+           /api/*        ── Worker: authenticate (Access JWT OR session) → registry lookup → role/tenant/status → permission
+           /ws           ── Worker: same pipeline, then the tenant's own Durable Object
 ```
 
 | Path | Who may reach it | What it serves |
 |---|---|---|
 | `/`, `/assets/*` and every other path not listed below (single-page-app fallback) | **Anyone** (public) | The built SPA: code and static text. **No data, ever.** |
-| `/login` | Passes through **Access**; the Worker also verifies the token | A redirect to `/` for a verified token, otherwise back to `/?signin=unavailable` |
-| `/api/*` | **Access** + Worker JWT check + registry + permission | Every API |
-| `/ws` | **Access** + Worker JWT check + registry + permission | Live sync WebSocket |
+| `/login` | Passes through **Access**; the Worker also verifies the token | A redirect to `/` for a verified token, otherwise the sign-in shell |
+| `/signin` | **Anyone** (the Worker's own password form) | The SPA shell; `POST /api/auth/login` sets the session cookie |
+| `/api/*` | **Access JWT or session** + Worker check + registry + permission | Every API |
+| `/ws` | **Access JWT or session** + Worker check + registry + permission | Live sync WebSocket |
 
-The list `/api/*`, `/ws`, `/login` is the single source of truth in `shared/routes.ts`.
+The list `/api/*`, `/ws`, `/login`, `/signin` is the single source of truth in `shared/routes.ts`.
 `wrangler.jsonc` (`assets.run_worker_first`), the Worker routing and these Access
 destinations are kept identical by a unit test and by the pre-deployment guard (§8).
 
@@ -83,40 +85,29 @@ Super Admin  (configuration: SUPER_ADMIN_EMAILS)        sees workspace metadata 
   are not deactivated or migrated, and the Super Admin console flags them. Removal is
   only through the existing deletion-request → Super Admin approval workflow.
 
-### What Access policy is needed now
+### Who may sign in
 
-Access decides who may **reach** the app. The registry decides who may **use** it. Because the
-registry is the real gate, the Access policy no longer lists individual Users:
+The registry decides who may **use** the app: only a person with an account (created by the
+Super Admin or an SV) can sign in, by **either** of the two doors — a Cloudflare Access
+SSO sign-in (the `/login` path, verified by the Access JWT) or the Worker's own password
+sign-in (the `/signin` path):
 
-| Access policy | Include | Purpose |
-|---|---|---|
-| "Organization" | Emails ending in `@rakuten.com` (One-time PIN) | Any employee can *authenticate*; without a registry account they only see "no account" |
-| "Platform administrators" (today's temporary exact-email policy) | the Super Admin address(es) outside the organization domain | Needed only while a Super Admin or an older Admin is outside `@rakuten.com`. Keep it as small as possible; **not stored in the repository** |
-
-A person outside every Access policy cannot even sign in, so an older Admin on a non-Rakuten
-address (the existing Gmail test workspace) cannot reach the app unless the "Platform
-administrators" policy lists them.
+| Who | How they get a password |
+|---|---|
+| Super Admin | A stored hash in the `SUPER_ADMIN_PASSWORD` secret, set once at setup |
+| Admin / User | The SV who creates the account sets an initial password; the person must choose their own at first sign-in (forced change) |
 
 ### Signing out
 
 Every signed-in person (Super Admin, Admin, User) has a **Logout** control (Platform Administration header; the
 application header for Admin and User, including an Admin in local mode). It signs out **this browser only**.
 
-* **Endpoint:** `<application-domain>/cdn-cgi/access/logout`, i.e. for production
-  `https://ganttchart.damithfdo.workers.dev/cdn-cgi/access/logout`. The page uses the relative path
-  `/cdn-cgi/access/logout`, with no parameters. It is a Cloudflare-managed path, **not** a Worker route: the Worker has no
-  logout API, accepts no user id or email for logging out, and cannot sign anyone else out.
+* **Endpoint:** `POST /api/auth/logout` — a Worker route. It revokes the session **server-side** (the registry deletes
+  the session row, so the cookie becomes worthless at once) and clears the session cookie. It takes no user id or
+  email: the session cookie names the person, and it signs out only the browser that clicked.
 * **What the page does first:** warns if edits are still unsent (Cancel keeps everything running), stops live sync
-  (closes the WebSocket, cancels reconnect/heartbeat timers), saves the device's own copy, clears the signed-in state
-  from memory, then navigates to the endpoint. The device's own data is kept (see below).
-* **Cloudflare limitations** (from Cloudflare's documentation): Access logout is **not per application**; it ends the
-  user's Access session **across every application in the same Zero Trust organization**. The cookie is cleared at once,
-  but already-issued tokens can still be accepted for about **20–30 seconds**, so the page treats the browser as signed out
-  immediately and does not rely on server-side revocation. The endpoint takes **no documented return URL**, so none is
-  used: after logout Cloudflare shows its own page, and the person returns to `/` (the public page) themselves.
-* **Not verified from here:** that `/cdn-cgi/access/logout` is answered by Cloudflare when Access protects only the three
-  paths in §5 (not the whole hostname). Rollout step 7b checks it. If Access does *not* answer, the SPA is served at that URL
-  and says that the sign-out was not completed, instead of looking signed out.
+  (closes the WebSocket, cancels reconnect/heartbeat timers), saves the device's own copy, then calls the endpoint.
+  The device's own data is kept (see below).
 * **Kept on the device (never deleted by logout):** the local database and backups, the device's copy of a shared workspace
   and its link (reused only for the same person in the same workspace; anyone else is treated as foreign), language and
   other per-device preferences. "Clear this device" in Settings is a different, deliberate action.
@@ -125,18 +116,16 @@ application header for Admin and User, including an Admin in local mode). It sig
 
 | Setting | Kind | Where | Why |
 |---|---|---|---|
-| `ACCESS_TEAM_DOMAIN` = `https://qa-internal.cloudflareaccess.com` | non-secret | `worker/wrangler.jsonc` → `vars` | It is public (it appears in the login URL). Committing it means a plain deploy can never blank it. |
 | `MANAGED_USER_EMAIL_DOMAINS` = `rakuten.com` | non-secret | `wrangler.jsonc` → `vars` | Same reasoning. |
 | `HISTORY_RETENTION_DAYS` = `30` | non-secret | `wrangler.jsonc` → `vars` | |
-| `ACCESS_AUD` | **Worker secret** | `wrangler secret put` | Identifies the Access application. Not sensitive on its own, but kept out of `vars` so no config file can overwrite it. |
+| `SESSION_SECRET` | **Worker secret** | `wrangler secret put` | The HMAC key that signs session tokens. Must be at least 32 characters of random data (`openssl rand -base64 32`). If it is lost or rotated, every session ends (everyone signs in again); it cannot decrypt anything else. |
 | `SUPER_ADMIN_EMAILS` | **Worker secret** | `wrangler secret put` | Names the platform administrator(s): personal data, and a high-value setting. |
 
 Why secrets rather than `--var`: **deploying never deletes a Worker secret**, whereas a plain
-deploy replaces every `vars` value with what the file says (the old risk: a plain deploy would
-have blanked `ACCESS_AUD`). `wrangler.jsonc` also declares
+deploy replaces every `vars` value with what the file says. `wrangler.jsonc` also declares
 
 ```jsonc
-"secrets": { "required": ["ACCESS_AUD", "SUPER_ADMIN_EMAILS"] }
+"secrets": { "required": ["SESSION_SECRET", "SUPER_ADMIN_EMAILS"] }
 ```
 
 so a deployment is refused if either is missing, and Wrangler itself rejects a config that
@@ -166,36 +155,43 @@ Queues, Workflows, Hyperdrive, Workers Paid, custom domain, zone or DNS record. 
 **Stage 6 needs no Durable Object migration** (no new class, no schema change) and **no data
 migration**.
 
-## 5. Target Cloudflare Access configuration (*you run*)
+## 5. Sign-in configuration (*you run*)
 
-In Zero Trust → Access → Applications → **GanttChart** (the existing self-hosted application):
+Sign-in is dual. The Worker's own password sign-in needs three secrets, and the Cloudflare
+Access SSO path needs the two (optional) `vars` in `wrangler.jsonc` — `ACCESS_TEAM_DOMAIN`
+and `ACCESS_AUD` — which must be set **as a pair** (both or neither; the guard refuses
+half-configured Access because it fails closed at runtime):
 
-| # | Destination (domain + path) |
-|---|---|
-| 1 | `ganttchart.damithfdo.workers.dev` + path `/login` |
-| 2 | `ganttchart.damithfdo.workers.dev` + path `/api` |
-| 3 | `ganttchart.damithfdo.workers.dev` + path `/ws` |
+```bash
+cd worker
+npx wrangler secret put SESSION_SECRET        # paste at least 32 random characters (e.g. `openssl rand -base64 32`)
+npx wrangler secret put SUPER_ADMIN_EMAILS    # paste e.g. admin@example.com  (several: a@x.com,b@y.com)
+npx wrangler secret put SUPER_ADMIN_PASSWORD  # paste a `hashPassword` output (see below)
+npx wrangler secret list                      # read-only: names only
+```
 
-and **remove** the destination that has an empty path (the whole hostname). Per Cloudflare's
-documentation a path without a wildcard protects that path **and everything under it**, so `/api`
-covers `/api/whoami`, `/api/revisions/3`, … One application keeps **one AUD tag**, so
-`ACCESS_AUD` does not change. (If your dashboard only allows one destination per application, create
-one application per path instead; each has its own AUD. `ACCESS_AUD` accepts a comma-separated list
-and every entry is matched exactly.)
+`ACCESS_TEAM_DOMAIN` is the Zero Trust team domain (`https://<team>.cloudflareaccess.com`)
+and `ACCESS_AUD` the Access application's AUD tag (comma-separated for several). When both
+are absent the deployment is password-only (`/login` then behaves like any other public
+path); when both are set, a valid Access JWT on any Worker route is accepted as-is.
 
-Keep the existing policies attached to the application. Session length and login method are
-unchanged.
+`SUPER_ADMIN_PASSWORD` is the **hash** of the Super Admin's password, not the password itself.
+Generate it once and paste the whole line:
+
+```bash
+cd worker
+npx tsx -e "import { hashPassword } from './src/passwords'; hashPassword('YOUR-PASSWORD').then(h => console.log(h));"
+```
 
 ## 6. Safe rollout sequence
 
 **Principle:** the Worker protects `/api/*`, `/ws` and `/login` by itself, so there is no step at which
-tenant data is public, whichever of the code or the Access change comes first. The order below
-additionally keeps Stage 5's behaviour (whole hostname behind Access) until the new code is verified.
+tenant data is public.
 
 | Order | Result |
 |---|---|
-| **A. code first, then Access** (chosen) | After the deploy Access still covers the whole hostname: nothing is public that was not before. The Access change then opens only `/`, which holds no data. |
-| B. Access first, then code | Safe for data (the old Worker also verifies the token on `/api` and `/ws`) but visitors would reach the *old* app shell with no public page and no `/login`: a broken sign-in for no benefit. |
+| **A. secrets first, then code** (chosen) | The secrets exist before the new Worker runs; nobody is locked out by a missing `SESSION_SECRET`. |
+| B. code first | Every request fails closed (HTTP 500) until the secrets exist; no data is exposed, but sign-in is broken meanwhile. |
 | C. deploy without the secrets | Not possible: the config requires them (`secrets.required`). |
 
 **0. Local (no account access)** — from the repository root:
@@ -206,24 +202,9 @@ cd worker
 npm run validate        # runs the safety guard, then a dry-run deploy that uploads nothing
 ```
 
-**1. Move the two auth settings to secrets (*you run*).** Use the **same values** the Worker has today
-(the AUD tag of the GanttChart Access application, and the Super Admin email list):
+**1. Set the three secrets (*you run*)** as in §5.
 
-```bash
-cd worker
-npx wrangler secret put ACCESS_AUD            # paste the AUD tag when prompted
-npx wrangler secret put SUPER_ADMIN_EMAILS    # paste e.g. admin@example.com  (several: a@x.com,b@y.com)
-npx wrangler secret list                      # read-only: names only
-```
-
-Verify the current site still works for a signed-in Super Admin. *Unverified by me:* whether
-Cloudflare accepts a secret with the same name as the existing plain-text variable. If `secret put`
-refuses, open Workers & Pages → `ganttchart` → Settings → **Variables and secrets**, change each of
-these two entries to type **Secret** (same value), or delete the plain variable and re-run the
-command. The worst case is a few minutes in which every API call fails closed (HTTP 500); no data is
-exposed.
-
-**2. Deploy the new code (*you run*)** — Access is still on the whole hostname:
+**2. Deploy the new code (*you run*)**:
 
 ```bash
 cd worker
@@ -231,27 +212,30 @@ npx wrangler deploy --env=""
 ```
 
 The guard runs automatically before the upload (it is wired as the config's `build` command) and
-aborts the deploy if anything in §8 fails. **Do not** pass `--var ACCESS_AUD…` or
+aborts the deploy if anything in §8 fails. **Do not** pass `--var SESSION_SECRET…` or
 `--var SUPER_ADMIN_EMAILS…`: those names are secrets now.
 
-**3. Verify the deployment (Access unchanged).** Sign in as before; the app, live sync and Platform
-Administration work. Anonymous requests are still stopped by Access.
+**3. Verify the deployment.** Sign in as the Super Admin (email + password); the app, live sync and
+Platform Administration work. Set each tenant user's initial password (the SV flow), sign in as one,
+and confirm the forced password change appears.
 
-**4. Change the Access destinations (*you run*)** as in §5 (add the three path destinations, then
-remove the whole-hostname one).
+**4. Keep the Cloudflare Access application (*you run*)** in Zero Trust → Access → Applications →
+GanttChart, protecting `/login` (and `/api`, `/ws` if desired — the Worker verifies the token
+itself either way). It is the SSO door of the dual sign-in; deleting it would remove SSO and
+leave only the password door (`/signin`).
 
 **5. Anonymous checks** (no cookies; any machine):
 
 ```bash
 BASE=https://ganttchart.damithfdo.workers.dev
 curl -s -o /dev/null -w "root:   %{http_code} %{content_type}\n" $BASE/                    # 200 text/html (the public page)
-curl -s -o /dev/null -w "whoami: %{http_code} %{redirect_url}\n" $BASE/api/whoami          # 302 to cloudflareaccess.com (or 401). NEVER 200
-curl -s -o /dev/null -w "export: %{http_code} %{redirect_url}\n" $BASE/api/export          # 302 or 401
-curl -s -o /dev/null -w "super:  %{http_code} %{redirect_url}\n" $BASE/api/super/tenants   # 302 or 401
-curl -s -o /dev/null -w "login:  %{http_code} %{redirect_url}\n" $BASE/login               # 302 to cloudflareaccess.com
+curl -s -o /dev/null -w "whoami: %{http_code}\n" $BASE/api/whoami                          # 401. NEVER 200
+curl -s -o /dev/null -w "export: %{http_code}\n" $BASE/api/export                          # 401
+curl -s -o /dev/null -w "super:  %{http_code}\n" $BASE/api/super/tenants                   # 401
+curl -s -o /dev/null -w "login:  %{http_code} %{redirect_url}\n" $BASE/login               # 302 to /login (the sign-in page)
 curl -s -o /dev/null -w "ws:     %{http_code}\n" -H "Connection: Upgrade" -H "Upgrade: websocket" \
   -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-  -H "Origin: $BASE" $BASE/ws                                                              # 302 or 401. NEVER 101
+  -H "Origin: $BASE" $BASE/ws                                                              # 401. NEVER 101
 ```
 
 A `302` is Access answering; a `401` is the Worker answering (Access not in front of that path). Either
@@ -281,14 +265,12 @@ once no Super Admin / older Admin needs it.
 
 ## 7. Rollback (all reversible; none touches data)
 
-1. **Access (fastest, no deploy):** set the application's destination back to the **whole hostname** (empty
-   path) and remove the three path destinations. Everything is behind Access again, exactly Stage 5's behaviour; the
-   new Worker works with it (visitors just never see the public page).
-2. **Code:** `npx wrangler rollback` (restores the previous Worker version; Durable Object data is not versioned
-   and is untouched). The secrets of step 1 also work with the previous code (it reads the same names).
-3. **Secrets:** `npx wrangler secret delete` is **not** part of any rollback and would take the app offline (fails
+1. **Code:** `npx wrangler rollback` (restores the previous Worker version; Durable Object data is not
+   versioned and is untouched). The secrets of step 1 also work with the previous code (it reads the same
+   names).
+2. **Secrets:** `npx wrangler secret delete` is **not** part of any rollback and would take the app offline (fails
    closed).
-4. Never `wrangler delete` the Worker: that would delete the Durable Objects and all workspaces.
+3. Never `wrangler delete` the Worker: that would delete the Durable Objects and all workspaces.
 
 ## 8. Pre-deployment guard
 
@@ -296,20 +278,20 @@ once no Super Admin / older Admin needs it.
 `wrangler types`/dry-runs), through the config's `build.command`. It deploys nothing and contacts no account.
 It refuses the deployment when:
 
-* `ACCESS_TEAM_DOMAIN` is not `https://<team>.cloudflareaccess.com` (no path, no trailing slash);
+* `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are not set **as a pair** (both or neither: Access sign-in is optional, but half-configured Access fails closed);
 * `MANAGED_USER_EMAIL_DOMAINS` is empty or contains entries that are not plain domains;
-* `ACCESS_AUD` or `SUPER_ADMIN_EMAILS` appears under `vars`, or is missing from `secrets.required`;
+* `SESSION_SECRET` or `SUPER_ADMIN_EMAILS` appears under `vars`, or is missing from `secrets.required`;
 * any development variable (`ENVIRONMENT`, `DEV_EMAIL`, `ALLOWED_ORIGINS`) is in the production config;
 * the `WORKSPACE`/`REGISTRY` bindings or `ASSETS` are missing;
 * the Durable Object migrations `v1` (`WorkspaceRoom`) and `v2` (`RegistryRoom`) are not intact, or a migration
   deletes/renames/transfers a class;
-* `assets.run_worker_first` differs from `["/api/*", "/ws", "/login"]`, or the SPA fallback is off;
+* `assets.run_worker_first` differs from `["/api/*", "/ws", "/login", "/signin"]`, or the SPA fallback is off;
 * `preview_urls` is not `false`, or `account_id`/routes are committed;
 * `../dist/index.html` (the production SPA) does not exist;
 * observability is off or the sampling rate is invalid;
 * this document no longer mentions the settings above.
 
-It **cannot** see the account, so it reminds you that the two secrets and the Access destinations are manual
+It **cannot** see the account, so it reminds you that the two secrets are manual
 (`npm run check:production` runs it on its own). There is deliberately no deploy script.
 
 ## 9. Observability

@@ -329,3 +329,89 @@ describe('deletion workflow', () => {
     expect(reg.authenticate('ub@example.com', now()).allowed).toBe(true);
   });
 });
+
+describe('passwords (the SV-set initial password and the forced change)', () => {
+  /** A real PBKDF2 verify is slow; a fake one is enough for the store's logic. */
+  const verify = async (password: string, hash: string): Promise<boolean> => hash === `hash:${password}`;
+
+  it('a user without a password cannot sign in; the SV sets one and the forced change is flagged', async () => {
+    const a = webTenant('A', 'admin-a@example.com');
+    const u = mustOk(addUser(a.tenant.id, 'u@example.com'));
+    expect(await reg.checkPassword('u@example.com', 'whatever', now(), verify)).toEqual({ ok: false, reason: 'invalid_credentials' });
+
+    reg.setPassword({ userId: u.id, passwordHash: 'hash:initial-password-1234', mustChange: true, setBy: 'admin-a@example.com', now: now() });
+    expect(reg.mustChangePassword(u.id)).toBe(true);
+    const ok = await reg.checkPassword('u@example.com', 'initial-password-1234', now(), verify);
+    expect(ok).toMatchObject({ ok: true, mustChange: true });
+    expect(ok.ok && ok.user.id).toBe(u.id);
+  });
+
+  it('a reset password clears the lockout and the failed counter', async () => {
+    const a = webTenant('A', 'admin-a@example.com');
+    const u = mustOk(addUser(a.tenant.id, 'u@example.com'));
+    reg.setPassword({ userId: u.id, passwordHash: 'hash:initial-password-1234', mustChange: true, setBy: 'admin-a@example.com', now: now() });
+    for (let i = 0; i < 10; i++) await reg.checkPassword('u@example.com', 'wrong', now(), verify);
+    expect(await reg.checkPassword('u@example.com', 'initial-password-1234', now(), verify)).toMatchObject({ ok: false, reason: 'locked' });
+
+    // The SV resets the password: the lock is gone and the new password works.
+    reg.setPassword({ userId: u.id, passwordHash: 'hash:new-password-5678', mustChange: true, setBy: 'admin-a@example.com', now: now() });
+    expect(await reg.checkPassword('u@example.com', 'new-password-5678', now(), verify)).toMatchObject({ ok: true, mustChange: true });
+  });
+
+  it('the forced change ends the other sessions and clears the flag', async () => {
+    const a = webTenant('A', 'admin-a@example.com');
+    const u = mustOk(addUser(a.tenant.id, 'u@example.com'));
+    reg.setPassword({ userId: u.id, passwordHash: 'hash:initial-password-1234', mustChange: true, setBy: 'admin-a@example.com', now: now() });
+    const s1 = reg.createSession({ id: 'sess-1', userId: u.id, email: u.email, now: now(), ttlMs: 60_000 });
+    const s2 = reg.createSession({ id: 'sess-2', userId: u.id, email: u.email, now: now(), ttlMs: 60_000 });
+    expect(reg.sessionValid(s1.id, now())).toBe(true);
+
+    expect(await reg.changeOwnPassword({ userId: u.id, currentPassword: 'wrong', newPasswordHash: 'hash:x'.padEnd(10, 'y'), now: now() }, verify)).toBe('wrong_password');
+    expect(await reg.changeOwnPassword({ userId: u.id, currentPassword: 'initial-password-1234', newPasswordHash: 'hash:own-password-9999', now: now() }, verify)).toBe('ok');
+    expect(reg.mustChangePassword(u.id)).toBe(false);
+    expect(reg.sessionValid(s1.id, now())).toBe(false);
+    expect(reg.sessionValid(s2.id, now())).toBe(false);
+    expect(await reg.checkPassword('u@example.com', 'own-password-9999', now(), verify)).toMatchObject({ ok: true, mustChange: false });
+  });
+
+  it('disabling a user revokes their sessions so the next request is refused', async () => {
+    const a = webTenant('A', 'admin-a@example.com');
+    const u = mustOk(addUser(a.tenant.id, 'u@example.com'));
+    const s = reg.createSession({ id: 'sess-d', userId: u.id, email: u.email, now: now(), ttlMs: 60_000 });
+    expect(reg.sessionValid(s.id, now())).toBe(true);
+
+    mustOk(reg.updateUser({ tenantId: a.tenant.id, userId: u.id, status: 'disabled', actor: ACTOR, now: now() }));
+    expect(reg.sessionValid(s.id, now())).toBe(false);
+    expect(reg.authenticate('u@example.com', now())).toEqual({ allowed: false, reason: 'disabled' });
+  });
+
+  it('changing a user\'s access level revokes their sessions', async () => {
+    const a = webTenant('A', 'admin-a@example.com');
+    const u = mustOk(addUser(a.tenant.id, 'u@example.com'));
+    const s = reg.createSession({ id: 'sess-a', userId: u.id, email: u.email, now: now(), ttlMs: 60_000 });
+    expect(reg.sessionValid(s.id, now())).toBe(true);
+
+    mustOk(reg.updateUser({ tenantId: a.tenant.id, userId: u.id, access: 'viewer', actor: ACTOR, now: now() }));
+    expect(reg.sessionValid(s.id, now())).toBe(false);
+  });
+
+  it('changing a user\'s role (SV <-> Tester) revokes their sessions', async () => {
+    const a = webTenant('A', 'admin-a@example.com');
+    const u = mustOk(addUser(a.tenant.id, 'u@example.com'));
+    const s = reg.createSession({ id: 'sess-r', userId: u.id, email: u.email, now: now(), ttlMs: 60_000 });
+    expect(reg.sessionValid(s.id, now())).toBe(true);
+
+    mustOk(reg.changeRole({ tenantId: a.tenant.id, userId: u.id, role: 'admin', actor: ACTOR, now: now() }));
+    expect(reg.sessionValid(s.id, now())).toBe(false);
+  });
+
+  it('a no-op update (same status, same access) does not revoke sessions', async () => {
+    const a = webTenant('A', 'admin-a@example.com');
+    const u = mustOk(addUser(a.tenant.id, 'u@example.com'));
+    const s = reg.createSession({ id: 'sess-n', userId: u.id, email: u.email, now: now(), ttlMs: 60_000 });
+    expect(reg.sessionValid(s.id, now())).toBe(true);
+
+    mustOk(reg.updateUser({ tenantId: a.tenant.id, userId: u.id, status: 'enabled', access: 'editor', actor: ACTOR, now: now() }));
+    expect(reg.sessionValid(s.id, now())).toBe(true);
+  });
+});

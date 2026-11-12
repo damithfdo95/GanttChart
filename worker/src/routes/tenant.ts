@@ -21,6 +21,7 @@ import {
   type UserAccess,
 } from '../../../shared/tenancy';
 import { actorOf, json, member, memberProblem, need, notificationProblem, problem, readJson, registryProblem, revisionParam, roomFor, type Ctx } from '../http';
+import { hashPassword, MIN_PASSWORD_LENGTH, validatePasswordPolicy } from '../passwords';
 import { workspaceRoleOf, type MemberPrincipal } from '../permissions';
 import { isDateString } from '../../../shared/notifications';
 
@@ -507,6 +508,30 @@ export async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
       }
     }
     return json({ user: result.value, disconnected });
+  }
+
+  // ---- SV sets (or resets) a user's initial password ----
+  // The password travels in the POST body over the same-origin TLS connection, is hashed
+  // (PBKDF2) before it is stored, and never appears in logs or the audit trail. The person
+  // must choose their own at the next sign-in (must_change), and any session they had is
+  // revoked: a reset password ends the old sign-ins.
+  const passwordRoute = /^\/api\/tenant\/users\/([^/]+)\/password$/.exec(path);
+  if (passwordRoute !== null && method === 'POST') {
+    const denial = need(ctx, 'users.manage');
+    if (denial !== null) return denial;
+    if (!isUserId(passwordRoute[1])) return problem(400, 'invalid_user_id');
+    const body = await readJson(ctx);
+    if (!body.ok) return body.response;
+    const password = typeof body.body.password === 'string' ? body.body.password : '';
+    if (validatePasswordPolicy(password) !== 'ok') return problem(400, 'password_too_short', { min: MIN_PASSWORD_LENGTH });
+    const user = await ctx.registry.getUser(p.tenantId, passwordRoute[1]);
+    if (user === null) return problem(404, 'not_found');
+    if (user.status === 'disabled') return problem(409, 'user_disabled');
+    const hash = await hashPassword(password);
+    await ctx.registry.setPassword({ userId: user.id, passwordHash: hash, mustChange: true, setBy: p.email });
+    const revoked = await ctx.registry.revokeSessionsOfUser(user.id);
+    await ctx.registry.recordMemberEvent({ tenantId: p.tenantId, action: 'user.password_set', actor: actorOf(p), userId: user.id });
+    return json({ ok: true, revokedSessions: revoked });
   }
 
   // ---- ownership (the Owner SV only) ----

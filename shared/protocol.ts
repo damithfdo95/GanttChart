@@ -32,6 +32,18 @@ export const RECORD_KINDS = [
   'notificationAck',
   'branding',
   'settings',
+  // Team Management (TM-00 Phase 1): teams, memberships, supervisors, skills,
+  // schedules, leave, holiday calendars and capacity allocations.
+  'team',
+  'teamMembership',
+  'teamSupervisor',
+  'skill',
+  'memberSkill',
+  'workSchedule',
+  'memberSchedule',
+  'leaveRequest',
+  'holidayCalendar',
+  'capacityAllocation',
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 

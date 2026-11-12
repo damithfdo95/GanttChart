@@ -14,6 +14,7 @@ export type ScreenId =
   | 'review'
   | 'reports'
   | 'team'
+  | 'teamManagement'
   | 'history'
   | 'settings'
   | 'jira';
