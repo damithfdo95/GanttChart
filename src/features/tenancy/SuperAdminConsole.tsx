@@ -189,6 +189,8 @@ export function SuperAdminConsole({ initialLang, principal, api }: { initialLang
               lang={lang}
               who={principal.email}
               deps={{
+                authSource: principal.authSource ?? 'access',
+                origin: typeof window === 'undefined' ? 'http://localhost' : window.location.origin,
                 unsentChanges: () => 0,
                 saveLocal: () => Promise.resolve(),
                 stopSync: () => undefined,

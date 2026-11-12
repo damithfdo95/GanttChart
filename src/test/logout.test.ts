@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LOGOUT_API_PATH, completeLogout, startLogout, type LogoutDeps } from '../lib/auth/logout';
+import { ACCESS_LOGOUT_PATH, LOGOUT_API_PATH, accessLogoutUrl, completeLogout, startLogout, type LogoutDeps } from '../lib/auth/logout';
 import { phaseAfterEnd } from '../app/sessionEnd';
 import { LogoutButton, SignedOutScreen } from '../features/tenancy/LogoutButton';
 import { SuperAdminConsole } from '../features/tenancy/SuperAdminConsole';
@@ -21,10 +21,12 @@ interface Rig {
   navigated: string[];
 }
 
-function rig(opts: { unsent?: number; saveFails?: boolean } = {}): Rig {
+function rig(opts: { unsent?: number; saveFails?: boolean; authSource?: 'access' | 'password'; revokeOk?: boolean } = {}): Rig {
   const calls: string[] = [];
   const navigated: string[] = [];
   const deps: LogoutDeps = {
+    authSource: opts.authSource ?? 'password',
+    origin: 'https://gantt.example.com',
     unsentChanges: () => {
       calls.push('unsent?');
       return opts.unsent ?? 0;
@@ -39,6 +41,7 @@ function rig(opts: { unsent?: number; saveFails?: boolean } = {}): Rig {
       calls.push('navigate');
       navigated.push(path);
     },
+    fetchFn: async () => new Response(null, { status: opts.revokeOk === false ? 503 : 204 }),
   };
   return { deps, calls, navigated };
 }
@@ -51,6 +54,15 @@ describe('logout flow', () => {
     expect(LOGOUT_API_PATH.startsWith('/')).toBe(true);
     expect(LOGOUT_API_PATH).not.toMatch(/[?#:]|\/\//); // no query, no fragment, no host, no redirect parameter
     expect(logoutSource).not.toMatch(/workers\.dev|https?:\/\//);
+  });
+
+  it('builds an Access logout with only a fixed same-origin return destination', () => {
+    expect(ACCESS_LOGOUT_PATH).toBe('/cdn-cgi/access/logout');
+    expect(accessLogoutUrl('https://gantt.example.com', false)).toBe(
+      '/cdn-cgi/access/logout?returnTo=https%3A%2F%2Fgantt.example.com%2Fsignin',
+    );
+    expect(() => accessLogoutUrl('https://gantt.example.com/path', false)).toThrow();
+    expect(() => accessLogoutUrl('javascript:alert(1)', false)).toThrow();
   });
 
   it('with nothing unsent: signs out immediately — stop sync, save the device copy, end the session, leave', async () => {
@@ -98,6 +110,33 @@ describe('logout flow', () => {
     expect(r.calls).toContain('endSession');
   });
 
+  it('password sign-out never invokes Access logout', async () => {
+    const r = rig({ authSource: 'password' });
+    await completeLogout(r.deps);
+    expect(r.navigated).toEqual(['/signin']);
+    expect(r.navigated[0]).not.toContain('cdn-cgi');
+  });
+
+  it('Access sign-out revokes the app session before leaving for Access logout', async () => {
+    const r = rig({ authSource: 'access' });
+    r.deps.fetchFn = async () => {
+      r.calls.push('revoke');
+      return new Response(null, { status: 204 });
+    };
+    await completeLogout(r.deps);
+    expect(r.calls.indexOf('revoke')).toBeLessThan(r.calls.indexOf('endSession'));
+    expect(r.navigated[0]).toContain('/cdn-cgi/access/logout?returnTo=');
+  });
+
+  it('reports an incomplete application revoke without leaving authenticated UI visible', async () => {
+    for (const authSource of ['password', 'access'] as const) {
+      const r = rig({ authSource, revokeOk: false });
+      await completeLogout(r.deps);
+      expect(r.calls).toContain('endSession');
+      expect(decodeURIComponent(r.navigated[0] ?? '')).toContain('/signin?logout=incomplete');
+    }
+  });
+
   it('is the same path for every role: Super Admin, Admin and User', async () => {
     for (const role of ['super_admin', 'admin', 'user']) {
       const r = rig();
@@ -108,21 +147,21 @@ describe('logout flow', () => {
   });
 
   it('is SELF sign-out only: nothing about a person, tenant or account is an input, and the only API called is the sign-out', async () => {
-    const fetchSpy = vi.fn();
-    vi.stubGlobal('fetch', fetchSpy);
+    const fetchSpy = vi.fn(async (_input: string, _init?: RequestInit) => new Response(null, { status: 204 }));
     const r = rig({ unsent: 0 });
+    r.deps.fetchFn = fetchSpy;
     await startLogout(r.deps);
     expect(fetchSpy).toHaveBeenCalledTimes(1); // exactly the sign-out call
     expect(fetchSpy.mock.calls[0]?.[0]).toBe(LOGOUT_API_PATH); // no user id, email or tenant id in it
     expect(r.navigated[0]).toBe('/signin');
     // The dependency surface has no parameter that could carry an identity.
-    expect(Object.keys(r.deps).sort()).toEqual(['endSession', 'navigate', 'saveLocal', 'stopSync', 'unsentChanges']);
+    expect(Object.keys(r.deps).sort()).toEqual(['authSource', 'endSession', 'fetchFn', 'navigate', 'origin', 'saveLocal', 'stopSync', 'unsentChanges']);
   });
 
   it('never touches the device’s own data: no clearing, no unlinking, no preference or storage writes', () => {
     const forbidden = /clearAllLocalData|clearAll|deleteDatabase|localStorage|sessionStorage|indexedDB|removeItem|\.clear\(|unlinkDevice|writeLink|writeMirror|persistWorkspace|setLanguage/;
     for (const [name, src] of Object.entries({ logout: logoutSource, button: buttonSource })) expect(src, name).not.toMatch(forbidden);
-    // The shell wiring passes only these five actions.
+    // The shell wiring passes only sign-out orchestration and server-authenticated source metadata.
     const wiring = appSource.slice(appSource.indexOf('function ShellLogout'), appSource.indexOf('function Shell()'));
     expect(wiring).toContain('persistence.saveNow'); // saves, never clears
     // ... and wires every step of the flow to the real thing.
@@ -157,6 +196,7 @@ describe('how a session ends (one place for sign-out and expiry)', () => {
 describe('what each role sees', () => {
   const deps = rig().deps;
   const principal = (role: PrincipalDto['role']): PrincipalDto => ({
+    authSource: 'password',
     email: 'someone@rakuten.com',
     userId: role === 'super_admin' ? null : 'usr_someone',
     isOwner: role === 'admin',
@@ -171,13 +211,13 @@ describe('what each role sees', () => {
 
   it('the Super Admin console shows Logout', () => {
     const html = renderToStaticMarkup(createElement(SuperAdminConsole, { initialLang: 'en', principal: principal('super_admin'), api }));
-    expect(html).toContain('Logout');
+    expect(html).toContain('Sign out');
   });
 
   it('the shared Logout control is what Admin and User shells render, in both languages', () => {
     for (const lang of ['en', 'ja'] as const) {
       const html = renderToStaticMarkup(createElement(LogoutButton, { lang, deps, who: principal('admin').email }));
-      expect(html).toContain(lang === 'en' ? 'Logout' : 'サインアウト');
+      expect(html).toContain(lang === 'en' ? 'Sign out' : 'サインアウト');
       expect(html).not.toContain('role="alertdialog"'); // the warning appears only when there is something to warn about
     }
     // The Admin/User shell mounts it for every signed-in non-Super-Admin principal; the console mounts the same component.

@@ -52,10 +52,11 @@ async function session(email: string, opts: { secret?: string; exp?: number; sid
 describe('authenticate (session cookie) — answers "who", never "what may they do"', () => {
   it('accepts a valid session and returns the normalized email, the session end and the session id', async () => {
     const id = await authenticate(req(`${SESSION_COOKIE}=${await session('Alice@Example.com')}`), ENV, async () => true);
-    expect(Object.keys(id).sort()).toEqual(['email', 'expiresAt', 'sessionId']);
+    expect(Object.keys(id).sort()).toEqual(['email', 'expiresAt', 'sessionId', 'source']);
     expect(id.email).toBe('alice@example.com');
     expect(id.expiresAt).toBeGreaterThan(Date.now());
     expect(id.sessionId).toBe('sid-1');
+    expect(id.source).toBe('password');
   });
 
   it('rejects requests without a cookie (401)', async () => {
@@ -119,6 +120,15 @@ describe('authenticate (Cloudflare Access JWT, the second sign-in method)', () =
   it('a valid Access token works even without a session cookie (either method alone is enough)', async () => {
     const id = await authenticate(reqWithJwt(await accessToken({ email: 'sso.user@example.com' })), DUAL_ENV, async () => false, jwks);
     expect(id.email).toBe('sso.user@example.com');
+    expect(id.source).toBe('access');
+  });
+
+  it('reports Access as authoritative when both valid authentication methods are present', async () => {
+    const request = req(`${SESSION_COOKIE}=${await session('password.user@example.com')}`, 'https://gantt.example.com/api/whoami', {
+      'cf-access-jwt-assertion': await accessToken({ email: 'access.user@example.com' }),
+    });
+    const id = await authenticate(request, DUAL_ENV, async () => true, jwks);
+    expect(id).toMatchObject({ email: 'access.user@example.com', source: 'access', sessionId: null });
   });
 });
 
@@ -146,7 +156,7 @@ describe('development identities (local testing of every role)', () => {
   const local = 'http://localhost:8787/api/whoami';
 
   it('works only for ENVIRONMENT=development on a loopback host', async () => {
-    expect(await authenticate(req(undefined, local), dev)).toEqual({ email: 'default@dev.test', expiresAt: null, sessionId: null });
+    expect(await authenticate(req(undefined, local), dev)).toEqual({ email: 'default@dev.test', source: 'development', expiresAt: null, sessionId: null });
     expect((await failure(authenticate(req(undefined, 'https://gantt.example.com/api/whoami'), dev))).status).toBe(403);
   });
 

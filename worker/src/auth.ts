@@ -18,7 +18,7 @@
  */
 
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
-import { normalizeEmail } from '../../shared/tenancy';
+import { normalizeEmail, type AuthSource } from '../../shared/tenancy';
 import { readCookie, SESSION_COOKIE, verifySession } from './sessions';
 
 export interface AuthEnv {
@@ -39,6 +39,7 @@ export interface AuthEnv {
 /** A verified email plus when its session ends (ms epoch; null for a local dev identity). */
 export interface VerifiedIdentity {
   email: string;
+  source: AuthSource;
   expiresAt: number | null;
   /** The session id (the registry's revocation handle; null for a local dev identity). */
   sessionId: string | null;
@@ -97,7 +98,7 @@ export async function authenticate(request: Request, env: AuthEnv, sessionValid?
     const chosen = request.headers.get('x-dev-email') ?? cookie(request, DEV_IDENTITY_COOKIE) ?? env.DEV_EMAIL ?? 'super@dev.test';
     const email = normalizeEmail(chosen);
     if (email === null) throw new AuthError(403, 'Invalid development identity');
-    return { email, expiresAt: null, sessionId: null };
+    return { email, source: 'development', expiresAt: null, sessionId: null };
   }
 
   // Method 1: Cloudflare Access. When the team domain is configured, a valid
@@ -135,7 +136,7 @@ export async function authenticate(request: Request, env: AuthEnv, sessionValid?
       throw new AuthError(403, 'Access token has no user identity');
     }
     const expiresAt = typeof exp === 'number' && Number.isFinite(exp) ? exp * 1000 : null;
-    return { email: normalized, expiresAt, sessionId: null };
+    return { email: normalized, source: 'access', expiresAt, sessionId: null };
   }
 
   // Method 2: the Worker's own session cookie.
@@ -161,5 +162,5 @@ export async function authenticate(request: Request, env: AuthEnv, sessionValid?
   }
   // verifySession already rejected expired tokens; keep the expiry so a long-lived
   // WebSocket can be closed when the session ends.
-  return { email: normalized, expiresAt: claims.exp, sessionId: claims.sid };
+  return { email: normalized, source: 'password', expiresAt: claims.exp, sessionId: claims.sid };
 }

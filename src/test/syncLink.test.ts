@@ -174,7 +174,7 @@ describe('detectServer', () => {
   const run = (f: FetchLike) => detectServer(f);
 
   const tenant = { id: 'ten_x', name: 'Acme QA', storageMode: 'web', status: 'active', createdAt: 't', deletionRequestedAt: null };
-  const member = { email: 'a@b.c', role: 'user', tenant, access: 'editor', workspaceRole: 'editor', sharedWorkspace: true };
+  const member = { email: 'a@b.c', authSource: 'password', role: 'user', tenant, access: 'editor', workspaceRole: 'editor', sharedWorkspace: true };
 
   it('recognises the shared backend and reads who the principal is', async () => {
     const got = await run(async () => json(member));
@@ -187,12 +187,12 @@ describe('detectServer', () => {
   });
 
   it('a local-storage admin has a principal but no shared workspace identity', async () => {
-    const admin = { email: 'ad@b.c', role: 'admin', tenant: { ...tenant, storageMode: 'local' }, access: 'editor', workspaceRole: null, sharedWorkspace: false };
+    const admin = { email: 'ad@b.c', authSource: 'password', role: 'admin', tenant: { ...tenant, storageMode: 'local' }, access: 'editor', workspaceRole: null, sharedWorkspace: false };
     expect(await run(async () => json(admin))).toEqual({ mode: 'server', principal: { ...admin, displayName: null }, identity: null });
   });
 
   it('a super admin has no tenant', async () => {
-    const sa = { email: 's@b.c', role: 'super_admin', tenant: null, access: null, workspaceRole: null, sharedWorkspace: false };
+    const sa = { email: 's@b.c', authSource: 'access', role: 'super_admin', tenant: null, access: null, workspaceRole: null, sharedWorkspace: false };
     expect(await run(async () => json(sa))).toEqual({ mode: 'server', principal: { ...sa, displayName: null }, identity: null });
   });
 

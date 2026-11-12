@@ -7,7 +7,7 @@
  */
 
 import { RECORD_KINDS, type Identity, type RecordPut, type Role } from '../../../shared/protocol';
-import type { AppRole, DenyReason, PrincipalDto } from '../../../shared/tenancy';
+import type { AppRole, AuthSource, DenyReason, PrincipalDto } from '../../../shared/tenancy';
 
 export type ServerDetection =
   /** A signed-in, REGISTERED person. `identity` is the live-workspace identity, or null when there is no shared workspace for them. */
@@ -33,6 +33,7 @@ function isRole(v: unknown): v is Role {
 
 const APP_ROLES: ReadonlySet<string> = new Set<AppRole>(['super_admin', 'admin', 'user']);
 const DENY_REASONS: ReadonlySet<string> = new Set<DenyReason>(['unregistered', 'disabled', 'tenant_inactive', 'workspace_not_shared']);
+const AUTH_SOURCES: ReadonlySet<string> = new Set<AuthSource>(['access', 'password', 'development']);
 
 /** Shape check of /api/whoami. A response that does not look like a principal is treated as "no backend". */
 export function isPrincipalDto(v: unknown): v is PrincipalDto {
@@ -40,6 +41,7 @@ export function isPrincipalDto(v: unknown): v is PrincipalDto {
   const p = v as Record<string, unknown>;
   if (typeof p.email !== 'string' || p.email === '' || typeof p.role !== 'string' || !APP_ROLES.has(p.role)) return false;
   if (typeof p.sharedWorkspace !== 'boolean') return false;
+  if (typeof p.authSource !== 'string' || !AUTH_SOURCES.has(p.authSource)) return false;
   if (p.workspaceRole !== null && !isRole(p.workspaceRole as string)) return false;
   if (p.role === 'super_admin') return p.tenant === null;
   const t = p.tenant as Record<string, unknown> | null;

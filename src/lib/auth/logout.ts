@@ -2,11 +2,9 @@
  * Self-service sign-out, as plain orchestration over injected dependencies so every
  * path is unit-tested.
  *
- * The sign-in session is the Worker's own (a session cookie), so signing out
- * means: tell the Worker to revoke the session (POST /api/auth/logout, which
- * also clears the cookie), stop this page's own use of the session, and show
- * the sign-in page. Nothing here names a person or a workspace: it signs out
- * the browser that clicked, never anybody else.
+ * The Worker tells the browser which verified authentication method is active.
+ * Password sessions end at the Worker. Access sessions additionally visit
+ * Cloudflare's same-origin logout endpoint after the local UI is gone.
  *
  * What it never does: delete or change any server data, change any account/tenant,
  * or touch this device's own data (local database, backups, device link and copy,
@@ -14,9 +12,16 @@
  */
 
 /** The Worker's sign-out endpoint (revokes the session server-side and clears the cookie). */
+import type { AuthSource } from '../../../shared/tenancy';
+
 export const LOGOUT_API_PATH = '/api/auth/logout';
+export const ACCESS_LOGOUT_PATH = '/cdn-cgi/access/logout';
 
 export interface LogoutDeps {
+  /** Server-verified source returned by /api/whoami. */
+  authSource: AuthSource;
+  /** Current application origin, used only for a fixed same-origin return URL. */
+  origin: string;
   /** Edits not yet on the shared server (0 in local mode / when nothing is pending). */
   unsentChanges(): number;
   /** Write any pending edit to THIS device's own database (never throws away anything). */
@@ -32,6 +37,13 @@ export interface LogoutDeps {
 }
 
 export type LogoutStart = { kind: 'done' } | { kind: 'confirm'; unsent: number };
+
+export function accessLogoutUrl(origin: string, incomplete: boolean): string {
+  const parsed = new URL(origin);
+  if (parsed.origin !== origin || (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')) throw new Error('Invalid application origin');
+  const destination = new URL(incomplete ? '/signin?logout=incomplete' : '/signin', parsed.origin).href;
+  return `${ACCESS_LOGOUT_PATH}?returnTo=${encodeURIComponent(destination)}`;
+}
 
 /**
  * The user asked to sign out. With unsent shared changes nothing happens yet: the
@@ -56,16 +68,19 @@ export async function completeLogout(deps: LogoutDeps): Promise<void> {
   }
   // 3. Revoke the session server-side (the cookie is cleared with the answer).
   //    A failure must not trap anyone in the app either: the local stop below still happens.
+  let revokeFailed = false;
   try {
-    await (deps.fetchFn ?? ((i: string, init?: RequestInit) => fetch(i, init)))(LOGOUT_API_PATH, {
+    const response = await (deps.fetchFn ?? ((i: string, init?: RequestInit) => fetch(i, init)))(LOGOUT_API_PATH, {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'x-gc-intent': 'logout' },
     });
+    revokeFailed = !response.ok;
   } catch {
-    /* the session ends with the cookie when the browser closes; nothing else to do */
+    revokeFailed = true;
   }
   // 4. Nothing authenticated may stay on screen, then leave for the sign-in page.
   deps.endSession();
-  deps.navigate('/signin');
+  if (deps.authSource === 'access') deps.navigate(accessLogoutUrl(deps.origin, revokeFailed));
+  else deps.navigate(revokeFailed ? '/signin?logout=incomplete' : '/signin');
 }

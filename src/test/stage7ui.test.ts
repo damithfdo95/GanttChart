@@ -183,14 +183,14 @@ describe('Team / Users', () => {
 });
 
 describe('Platform administration', () => {
-  it('has the four sections, the role, and Logout; and no QA navigation', () => {
+  it('has the four sections, the role, and Sign out; and no QA navigation', () => {
     const html = render(createElement(SuperAdminConsole, { initialLang: 'en', principal: principal('super_admin', { email: 'boss@example.org' }), api: fakeApi }));
     expect(CONSOLE_TABS).toEqual(['overview', 'workspaces', 'deletions', 'audit']);
     for (const label of ['Overview', 'Workspaces', 'Deletion requests', 'Audit log']) expect(html).toContain(label);
     expect(html).toContain('role="tablist"');
     expect(html.match(/role="tab"/g)?.length).toBe(4);
     expect(html).toContain('Super Admin');
-    expect(html).toContain('Logout');
+    expect(html).toContain('Sign out');
     for (const qa of ['Gantt', 'Daily Report', 'Dashboard', 'Reports &amp; Export', 'Test Executions']) expect(html).not.toContain(qa);
   });
 

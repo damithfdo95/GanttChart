@@ -165,7 +165,7 @@ async function whoami(ctx: Ctx): Promise<Response> {
   const tenant = p === null ? null : await ctx.registry.getTenant(p.tenantId);
   // A member whose password was set by an SV must change it before using the app.
   const mustChangePassword = p === null ? false : await ctx.registry.mustChangePassword(p.userId);
-  return json({ ...toPrincipalDto(ctx.principal, tenant), mustChangePassword });
+  return json({ ...toPrincipalDto(ctx.principal, tenant), authSource: ctx.identity.source, mustChangePassword });
 }
 
 // ---- WebSocket ------------------------------------------------------------------

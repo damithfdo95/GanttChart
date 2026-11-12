@@ -13,8 +13,9 @@
 import { useState } from 'react';
 import { t } from '../../i18n';
 import type { Language } from '../../types';
+import type { LandingNotice } from '../../app/sessionEnd';
 
-export function LoginForm({ lang, initialEmail = '' }: { lang: Language; initialEmail?: string }) {
+export function LoginForm({ lang, initialEmail = '', notice = null }: { lang: Language; initialEmail?: string; notice?: LandingNotice }) {
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -54,6 +55,7 @@ export function LoginForm({ lang, initialEmail = '' }: { lang: Language; initial
         <p className="landing-tagline">
           <strong>{t(lang, 'landing.tagline')}</strong>
         </p>
+        {notice === 'logoutIncomplete' ? <p role="alert">{t(lang, 'landing.logoutIncomplete')}</p> : null}
         {error === 'invalid' ? (
           <p role="alert">{t(lang, 'login.invalid')}</p>
         ) : error === 'locked' ? (

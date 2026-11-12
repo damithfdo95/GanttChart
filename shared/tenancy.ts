@@ -19,6 +19,7 @@ export type TenantStatus = 'active' | 'deactivated' | 'deletion_requested' | 'de
 export type UserStatus = 'invited' | 'active' | 'disabled';
 /** What a `user` may do inside the workspace (the former "read-only" concept). */
 export type UserAccess = 'editor' | 'viewer';
+export type AuthSource = 'access' | 'password' | 'development';
 
 export const TENANT_ID_PREFIX = 'ten_';
 export const USER_ID_PREFIX = 'usr_';
@@ -271,6 +272,8 @@ export interface AdminAuditDto {
 
 /** What `/api/whoami` tells the signed-in person about themselves. */
 export interface PrincipalDto {
+  /** Authentication method verified by the Worker for this request. */
+  authSource?: AuthSource;
   email: string;
   /** The person's own stable account id (null for the Super Admin). It is what links their Team Member profile to them. */
   userId: string | null;

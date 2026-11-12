@@ -151,7 +151,7 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
   if (phase.kind === 'signed-out') return <SignedOutScreen lang={lang} />;
   if (phase.kind === 'landing') {
     // /signin is the password form's own URL; anywhere else the public page with both sign-in options.
-    if (window.location.pathname === '/signin') return <LoginForm lang={lang} />;
+    if (window.location.pathname === '/signin') return <LoginForm lang={lang} notice={phase.notice} />;
     return <PublicLanding initialLang={lang} notice={phase.notice} />;
   }
   if (phase.kind === 'must-change-password') return <ChangePasswordScreen lang={lang} />;
@@ -206,11 +206,12 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
 }
 
 /**
- * What the public page should say. The old Cloudflare Access logout path is
- * gone; only the Worker's own sign-in exists now.
+ * What the signed-out page should say, without exposing authentication details.
  */
 function landingNotice(): LandingNotice {
-  return new URLSearchParams(window.location.search).get('signin') === 'unavailable' ? 'signInFailed' : null;
+  const query = new URLSearchParams(window.location.search);
+  if (query.get('logout') === 'incomplete') return 'logoutIncomplete';
+  return query.get('signin') === 'unavailable' ? 'signInFailed' : null;
 }
 
 /** Execute a validated choice: returns the workspace the app starts with and how the client must treat the first server state. */

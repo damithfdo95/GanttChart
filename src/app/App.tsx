@@ -211,6 +211,8 @@ function ShellLogout() {
       lang={state.language}
       who={principal.email}
       deps={{
+        authSource: principal.authSource ?? 'access',
+        origin: typeof window === 'undefined' ? 'http://localhost' : window.location.origin,
         unsentChanges: sharedSync.unsentChanges,
         saveLocal: persistence.saveNow,
         stopSync: sharedSync.stopForSignOut,
