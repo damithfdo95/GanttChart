@@ -5,6 +5,9 @@ The product version is `package.json`; formal releases are tagged `v` + that ver
 
 ## Unreleased
 
+### Added
+- **The Super Admin can reset an SV account's password.** From Platform Administration → Workspaces, "SV passwords…" opens a workspace's SV (admin) accounts and sets (or resets) one's initial password (`POST /api/super/tenants/:id/users/:userId/password`). The recovery path when a workspace has no functioning SV (for example, the only one is locked out). The person must choose their own at the next sign-in (forced change), their sessions are revoked, and the reset is audited in that workspace's administrative history as `user.password_set`. Tester accounts stay the tenant's own SVs' responsibility.
+
 ## 0.10.0-pilot.8 - reliable sign-out and stable Shared History dates (future tag `v0.10.0-pilot.8`)
 
 ### Fixed

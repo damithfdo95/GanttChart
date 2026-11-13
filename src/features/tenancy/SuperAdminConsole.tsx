@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { t, LANGUAGES, type TranslationKey } from '../../i18n';
 import { useConfirm } from '../../components/ConfirmDialog';
 import type { DeletionAudit, TenancyApi } from '../../lib/tenancy/api';
-import type { PrincipalDto, TenantListQuery, TenantSummaryDto } from '../../../shared/tenancy';
+import type { PrincipalDto, TenantListQuery, TenantSummaryDto, UserDto } from '../../../shared/tenancy';
 import type { Language } from '../../types';
 import { errorMessage, isSessionEnded, whenText } from './format';
 import { LogoutButton } from './LogoutButton';
@@ -230,7 +230,7 @@ export function SuperAdminConsole({ initialLang, principal, api }: { initialLang
         <div role="tabpanel" id={`console-panel-${tab}`} aria-labelledby={`console-tab-${tab}`}>
           {tab === 'overview' ? <Overview lang={lang} all={all} total={allTotal} onGo={setTab} /> : null}
           {tab === 'workspaces' ? (
-            <Workspaces lang={lang} api={api} busy={busy} refreshKey={refreshKey} onToggle={toggleStatus} onReview={() => setTab('deletions')} onCreated={(text) => void run(async () => text)} onError={fail} />
+            <Workspaces lang={lang} api={api} busy={busy} refreshKey={refreshKey} onToggle={toggleStatus} onReview={() => setTab('deletions')} onCreated={(text) => void run(async () => text)} onError={fail} onMessage={(text) => void run(async () => text)} />
           ) : null}
           {tab === 'deletions' ? <Deletions lang={lang} rows={all === null ? null : deletions} busy={busy} onApprove={approve} onReject={reject} /> : null}
           {tab === 'audit' ? (
@@ -313,8 +313,10 @@ function Workspaces(props: {
   onReview: () => void;
   onCreated: (text: string) => void;
   onError: (e: unknown) => void;
+  onMessage: (text: string) => void;
 }) {
   const { lang, api } = props;
+  const [pwTenant, setPwTenant] = useState<TenantSummaryDto | null>(null);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<NonNullable<TenantListQuery['status']>>('all');
   const [mode, setMode] = useState<NonNullable<TenantListQuery['mode']>>('all');
@@ -480,9 +482,14 @@ function Workspaces(props: {
                           {t(lang, 'tenancy.super.review')}
                         </button>
                       ) : tn.status === 'active' || tn.status === 'deactivated' ? (
-                        <button type="button" className="btn" disabled={props.busy} onClick={() => void props.onToggle(tn)}>
-                          {t(lang, tn.status === 'active' ? 'tenancy.super.deactivate' : 'tenancy.super.activate')}
-                        </button>
+                        <>
+                          <button type="button" className="btn" disabled={props.busy} onClick={() => void props.onToggle(tn)}>
+                            {t(lang, tn.status === 'active' ? 'tenancy.super.deactivate' : 'tenancy.super.activate')}
+                          </button>
+                          <button type="button" className="btn btn-ghost" disabled={props.busy} onClick={() => setPwTenant(tn)}>
+                            {t(lang, 'super.pw.action')}
+                          </button>
+                        </>
                       ) : null}
                     </td>
                   </tr>
@@ -501,7 +508,171 @@ function Workspaces(props: {
           <p className="link-help">{t(lang, 'tenancy.lastActivityNote')}</p>
         </>
       )}
+
+      {pwTenant !== null ? <SvPasswords lang={lang} api={api} tenant={pwTenant} onClose={() => setPwTenant(null)} onMessage={props.onMessage} onError={props.onError} /> : null}
     </section>
+  );
+}
+
+/** The Super Admin's SV password dialog: list a workspace's SV accounts and set one's initial password. */
+function SvPasswords({ lang, api, tenant, onClose, onMessage, onError }: { lang: Language; api: TenancyApi; tenant: TenantSummaryDto; onClose: () => void; onMessage: (text: string) => void; onError: (e: unknown) => void }) {
+  const MIN_PASSWORD_LENGTH = 10;
+  const [admins, setAdmins] = useState<UserDto[] | null>(null);
+  const [pwFor, setPwFor] = useState<UserDto | null>(null);
+  const [pw1, setPw1] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .superListTenantAdmins(tenant.id)
+      .then((r) => !cancelled && setAdmins(r))
+      .catch((e) => {
+        if (!cancelled) {
+          onError(e);
+          onClose();
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, tenant.id]);
+
+  const openPassword = (user: UserDto): void => {
+    setPwFor(user);
+    setPw1('');
+    setPw2('');
+    setPwError(null);
+  };
+
+  const submitPassword = async (): Promise<void> => {
+    if (pwFor === null || busy) return;
+    setPwError(null);
+    if (pw1.length < MIN_PASSWORD_LENGTH) {
+      setPwError(t(lang, 'pwchange.short', { min: String(MIN_PASSWORD_LENGTH) }));
+      return;
+    }
+    if (pw1 !== pw2) {
+      setPwError(t(lang, 'pwchange.mismatch'));
+      return;
+    }
+    const user = pwFor;
+    setBusy(true);
+    try {
+      const done = await api.superSetUserPassword(tenant.id, user.id, pw1);
+      setPwFor(null);
+      setBusy(false);
+      onMessage(done.revokedSessions > 0 ? t(lang, 'super.pw.setDoneEnded', { email: user.email, count: done.revokedSessions }) : t(lang, 'super.pw.setDone', { email: user.email }));
+    } catch (e) {
+      setBusy(false);
+      onError(e);
+    }
+  };
+
+  return (
+    <div className="confirm-backdrop" role="presentation" onClick={onClose}>
+      <div
+        className="confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="super-pw-title"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onClose();
+        }}
+      >
+        <h2 id="super-pw-title">{t(lang, 'super.pw.title', { name: tenant.name })}</h2>
+        <p>{t(lang, 'super.pw.body')}</p>
+        {admins === null ? (
+          <p role="status">{t(lang, 'tenancy.working')}</p>
+        ) : admins.length === 0 ? (
+          <p>{t(lang, 'super.pw.empty')}</p>
+        ) : (
+          <ul className="tenancy-cards">
+            {admins.map((u) => (
+              <li key={u.id} className="tenancy-card">
+                <h3>{u.displayName ?? u.email}</h3>
+                <dl>
+                  <dt>{t(lang, 'tenancy.users.colEmail')}</dt>
+                  <dd>{u.email}</dd>
+                  <dt>{t(lang, 'tenancy.users.colStatus')}</dt>
+                  <dd>
+                    <StatusBadge lang={lang} status={u.status} />
+                  </dd>
+                </dl>
+                <div className="dr-button-row">
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={busy || u.status === 'disabled'}
+                    onClick={() => openPassword(u)}
+                    title={u.status === 'disabled' ? t(lang, 'super.pw.disabled') : undefined}
+                  >
+                    {t(lang, 'dir.pw.setAction')}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="confirm-actions">
+          <button type="button" className="btn" onClick={onClose}>
+            {t(lang, 'tenancy.cancel')}
+          </button>
+        </div>
+
+        {pwFor !== null ? (
+          <div className="confirm-backdrop" role="presentation" onClick={() => setPwFor(null)}>
+            <div
+              className="confirm-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="super-pw-set-title"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setPwFor(null);
+              }}
+            >
+              <h2 id="super-pw-set-title">{t(lang, 'dir.pw.title', { name: pwFor.displayName ?? pwFor.email })}</h2>
+              <p>{t(lang, 'dir.pw.body', { email: pwFor.email })}</p>
+              <p className="link-help">{t(lang, 'super.pw.rules', { min: String(MIN_PASSWORD_LENGTH) })}</p>
+              <form
+                className="tenancy-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void submitPassword();
+                }}
+              >
+                <label className="form-field">
+                  <span>{t(lang, 'pwchange.new')}</span>
+                  <input type="password" autoComplete="new-password" required minLength={MIN_PASSWORD_LENGTH} value={pw1} onChange={(e) => setPw1(e.target.value)} autoFocus />
+                </label>
+                <label className="form-field">
+                  <span>{t(lang, 'pwchange.confirm')}</span>
+                  <input type="password" autoComplete="new-password" required value={pw2} onChange={(e) => setPw2(e.target.value)} />
+                </label>
+                {pwError === null ? null : (
+                  <p role="alert" className="link-help">
+                    {pwError}
+                  </p>
+                )}
+                <div className="confirm-actions">
+                  <button type="button" className="btn" onClick={() => setPwFor(null)}>
+                    {t(lang, 'tenancy.cancel')}
+                  </button>
+                  <button type="submit" className="btn" disabled={busy || pw1.length < MIN_PASSWORD_LENGTH || pw1 !== pw2}>
+                    {t(lang, 'super.pw.submit')}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

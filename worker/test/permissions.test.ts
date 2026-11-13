@@ -4,7 +4,7 @@ import { isSuperAdminEmail, parseEmailList, principalFromAuth, resolvePrincipal 
 import type { AuthResult, TenantRow, UserRow } from '../src/registry';
 
 const ACTIONS: Action[] = [
-  'registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'audit.platform', 'legacy.adopt',
+  'registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'audit.platform', 'legacy.adopt', 'users.resetPassword',
   'tenant.view', 'tenant.requestDeletion', 'storage.migrate', 'users.manage', 'audit.tenant', 'team.view', 'assignments.manage',
   'data.read', 'data.write', 'data.restore', 'data.replace', 'history.read', 'tenant.transferOwnership',
 ];
@@ -22,7 +22,7 @@ describe('permission matrix (default deny)', () => {
   });
 
   it('Super Admin: control-plane actions ONLY, never tenant QA data or tenant internals', () => {
-    expect(allowedFor(SUPER)).toEqual(['audit.platform', 'legacy.adopt', 'registry.view', 'tenant.approveDeletion', 'tenant.create', 'tenant.rejectDeletion', 'tenant.setStatus']);
+    expect(allowedFor(SUPER)).toEqual(['audit.platform', 'legacy.adopt', 'registry.view', 'tenant.approveDeletion', 'tenant.create', 'tenant.rejectDeletion', 'tenant.setStatus', 'users.resetPassword']);
     for (const a of ['data.read', 'data.write', 'data.restore', 'data.replace', 'users.manage', 'storage.migrate', 'tenant.view'] as const) {
       expect(can(SUPER, a)).toBe(false);
     }
@@ -65,7 +65,7 @@ describe('permission matrix (default deny)', () => {
 
   it('an Admin can never perform a Super Admin action', () => {
     for (const storageMode of ['web', 'local'] as const) {
-      for (const a of ['registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'audit.platform', 'legacy.adopt'] as const) {
+      for (const a of ['registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'audit.platform', 'legacy.adopt', 'users.resetPassword'] as const) {
         expect(can(member({ role: 'admin', storageMode }), a)).toBe(false);
       }
     }

@@ -7,10 +7,12 @@
 import {
   CLOSE_CODES,
   isTenantId,
+  isUserId,
   normalizeEmail,
   type TenantListQuery,
 } from '../../../shared/tenancy';
 import { json, need, problem, readJson, registryProblem, revisionParam, type Ctx } from '../http';
+import { hashPassword, MIN_PASSWORD_LENGTH, validatePasswordPolicy } from '../passwords';
 import { LEGACY_WORKSPACE_NAME } from '../workspaceRoom';
 
 export async function superRoutes(ctx: Ctx): Promise<Response | null> {
@@ -64,6 +66,51 @@ export async function superRoutes(ctx: Ctx): Promise<Response | null> {
     const body = await readJson(ctx);
     if (!body.ok) return body.response;
     return adoptLegacy(ctx, body.body.tenantId);
+  }
+
+  // ---- SV account passwords (the platform's recovery path) ----
+  //
+  // A tenant's SVs set their own people's passwords; the Super Admin is the
+  // last resort when a workspace has no functioning SV (the only one is locked
+  // out). Only SV (admin) accounts: a Tester's password stays the tenant's own
+  // responsibility. The flow is the same as the SV's: the password travels in
+  // the POST body over the same-origin TLS connection, is hashed before it is
+  // stored, never appears in logs or the audit trail, the person must choose
+  // their own at the next sign-in (must_change), and their sessions are revoked.
+
+  const adminsRoute = /^\/api\/super\/tenants\/([^/]+)\/users$/.exec(path);
+  if (adminsRoute !== null && method === 'GET') {
+    const denial = need(ctx, 'registry.view');
+    if (denial !== null) return denial;
+    const tenantId = adminsRoute[1] ?? '';
+    if (!isTenantId(tenantId)) return problem(400, 'invalid_tenant_id');
+    const tenant = await ctx.registry.getTenant(tenantId);
+    if (tenant === null) return problem(404, 'not_found');
+    const admins = (await ctx.registry.listUsers(tenantId)).filter((u) => u.role === 'admin');
+    return json({ users: admins });
+  }
+
+  const passwordRoute = /^\/api\/super\/tenants\/([^/]+)\/users\/([^/]+)\/password$/.exec(path);
+  if (passwordRoute !== null && method === 'POST') {
+    const denial = need(ctx, 'users.resetPassword');
+    if (denial !== null) return denial;
+    const tenantId = passwordRoute[1] ?? '';
+    const userId = passwordRoute[2] ?? '';
+    if (!isTenantId(tenantId)) return problem(400, 'invalid_tenant_id');
+    if (!isUserId(userId)) return problem(400, 'invalid_user_id');
+    const body = await readJson(ctx);
+    if (!body.ok) return body.response;
+    const password = typeof body.body.password === 'string' ? body.body.password : '';
+    if (validatePasswordPolicy(password) !== 'ok') return problem(400, 'password_too_short', { min: MIN_PASSWORD_LENGTH });
+    const user = await ctx.registry.getUser(tenantId, userId);
+    if (user === null) return problem(404, 'not_found');
+    if (user.role !== 'admin') return problem(403, 'forbidden', { reason: 'role' });
+    if (user.status === 'disabled') return problem(409, 'user_disabled');
+    const hash = await hashPassword(password);
+    await ctx.registry.setPassword({ userId: user.id, passwordHash: hash, mustChange: true, setBy: actor });
+    const revoked = await ctx.registry.revokeSessionsOfUser(user.id);
+    await ctx.registry.recordMemberEvent({ tenantId, action: 'user.password_set', actor: { userId: null, email: actor, role: 'super_admin' }, userId: user.id });
+    return json({ ok: true, revokedSessions: revoked });
   }
 
   const one = /^\/api\/super\/tenants\/([^/]+)(\/delete|\/reject-deletion)?$/.exec(path);

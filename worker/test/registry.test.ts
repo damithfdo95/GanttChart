@@ -414,4 +414,23 @@ describe('passwords (the SV-set initial password and the forced change)', () => 
     mustOk(reg.updateUser({ tenantId: a.tenant.id, userId: u.id, status: 'enabled', access: 'editor', actor: ACTOR, now: now() }));
     expect(reg.sessionValid(s.id, now())).toBe(true);
   });
+
+  it('the Super Admin\'s reset of an SV password forces the change, revokes the sessions and lands in the tenant audit', async () => {
+    const a = webTenant('A', 'admin-a@example.com');
+    const sv = mustOk(addUser(a.tenant.id, 'sv2@example.com'));
+    mustOk(reg.changeRole({ tenantId: a.tenant.id, userId: sv.id, role: 'admin', actor: ACTOR, now: now() }));
+    const s = reg.createSession({ id: 'sess-sv', userId: sv.id, email: sv.email, now: now(), ttlMs: 60_000 });
+    expect(reg.sessionValid(s.id, now())).toBe(true);
+
+    // The Super Admin (a super_admin actor, no user id) sets the initial password.
+    reg.setPassword({ userId: sv.id, passwordHash: 'hash:recovery-1234', mustChange: true, setBy: 'super@example.com', now: now() });
+    expect(reg.mustChangePassword(sv.id)).toBe(true);
+    expect(await reg.checkPassword('sv2@example.com', 'recovery-1234', now(), verify)).toMatchObject({ ok: true, mustChange: true });
+    expect(reg.revokeSessionsOfUser(sv.id, now())).toBe(1); // the route revokes the sessions after setting the password
+    expect(reg.sessionValid(s.id, now())).toBe(false);
+
+    reg.recordMemberEvent({ tenantId: a.tenant.id, action: 'user.password_set', actor: { userId: null, email: 'super@example.com', role: 'super_admin' }, userId: sv.id, now: now() });
+    const trail = reg.listAdminAudit({ kind: 'tenant', tenantId: a.tenant.id });
+    expect(trail.some((e) => e.action === 'user.password_set' && e.actorEmail === 'super@example.com' && e.actorRole === 'super_admin' && e.targetEmail === 'sv2@example.com')).toBe(true);
+  });
 });

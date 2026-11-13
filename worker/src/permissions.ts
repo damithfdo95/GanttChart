@@ -47,6 +47,7 @@ export type Action =
   | 'tenant.rejectDeletion'
   | 'audit.platform'
   | 'legacy.adopt'
+  | 'users.resetPassword'
   // the caller's own tenant
   | 'tenant.view'
   | 'tenant.requestDeletion'
@@ -68,7 +69,7 @@ export type Action =
   | 'data.restore'
   | 'data.replace';
 
-const SUPER_ONLY: ReadonlySet<Action> = new Set<Action>(['registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'audit.platform', 'legacy.adopt']);
+const SUPER_ONLY: ReadonlySet<Action> = new Set<Action>(['registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'audit.platform', 'legacy.adopt', 'users.resetPassword']);
 
 /** A shared workspace exists for this person right now. */
 function workspaceIsShared(p: MemberPrincipal): boolean {

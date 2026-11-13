@@ -365,6 +365,7 @@ Browser --> Worker --> Access JWT verify (email only)
 | Read / write QA data, live sync | no | yes (web mode) | yes (web mode; write only if access = editor) |
 | Restore history, replace workspace, reset/delete project for everyone | no | yes | no |
 | Create / disable users, change a user's access level | no | yes (web mode) | no |
+| Reset an SV account's password (recovery when a workspace has no functioning SV) | yes (SV accounts only) | yes (any account, own tenant) | no |
 | Switch storage mode, migrate | no | yes | no |
 | Request / cancel deletion of own tenant | no | yes | no |
 

@@ -120,6 +120,10 @@ export interface TenancyApi {
   platformAudit(limit?: number): Promise<AdminAuditDto[]>;
   approveDeletion(tenantId: string, confirmTenantId: string, confirmAdminEmail: string): Promise<{ usersDeleted: number }>;
   audit(): Promise<DeletionAudit[]>;
+  /** The SV (admin) accounts of one workspace (Super Admin): the recovery path when a workspace has no functioning SV. */
+  superListTenantAdmins(tenantId: string): Promise<UserDto[]>;
+  /** Set (or reset) an SV account's initial password (Super Admin). The person must choose their own at the next sign-in; their sessions end. */
+  superSetUserPassword(tenantId: string, userId: string, password: string): Promise<{ ok: true; revokedSessions: number }>;
 }
 
 export interface DeletionAudit {
@@ -205,5 +209,8 @@ export function createTenancyApi(fetchFn: FetchLike = (i, init) => fetch(i, init
     approveDeletion: (tenantId, confirmTenantId, confirmAdminEmail) =>
       call('POST', `/api/super/tenants/${encodeURIComponent(tenantId)}/delete`, { confirmTenantId, confirmAdminEmail }),
     audit: async () => (await call<{ audit: DeletionAudit[] }>('GET', '/api/super/audit')).audit,
+    superListTenantAdmins: async (tenantId) => (await call<{ users: UserDto[] }>('GET', `/api/super/tenants/${encodeURIComponent(tenantId)}/users`)).users,
+    superSetUserPassword: (tenantId, userId, password) =>
+      call('POST', `/api/super/tenants/${encodeURIComponent(tenantId)}/users/${encodeURIComponent(userId)}/password`, { password }),
   };
 }
