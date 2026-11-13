@@ -5,10 +5,15 @@ The product version is `package.json`; formal releases are tagged `v` + that ver
 
 ## Unreleased
 
-### Added
-- **The Super Admin can reset an SV account's password.** From Platform Administration → Workspaces, "SV passwords…" opens a workspace's SV (admin) accounts and sets (or resets) one's initial password (`POST /api/super/tenants/:id/users/:userId/password`). The recovery path when a workspace has no functioning SV (for example, the only one is locked out). The person must choose their own at the next sign-in (forced change), their sessions are revoked, and the reset is audited in that workspace's administrative history as `user.password_set`. Tester accounts stay the tenant's own SVs' responsibility.
+## 0.10.0-pilot.9 - production login transport fix (future tag `v0.10.0-pilot.9`)
+
+### Fixed
+- **Password sign-in no longer follows a Cloudflare Access redirect as XHR.** Access SSO remains a top-level same-origin navigation through `/login`, while password authentication uses public same-origin `POST /signin`. No Access or CORS policy changed; fresh identity detection, dual-auth Sign Out, and target-only SV-session revocation during Super Admin password reset are preserved.
 
 ## 0.10.0-pilot.8 - reliable sign-out and stable Shared History dates (future tag `v0.10.0-pilot.8`)
+
+### Added
+- **The Super Admin can reset an SV account's password.** From Platform Administration → Workspaces, "SV passwords…" opens a workspace's SV (admin) accounts and sets (or resets) one's initial password (`POST /api/super/tenants/:id/users/:userId/password`). The recovery path when a workspace has no functioning SV (for example, the only one is locked out). The person must choose their own at the next sign-in (forced change), their sessions are revoked, and the reset is audited in that workspace's administrative history as `user.password_set`. Tester accounts stay the tenant's own SVs' responsibility.
 
 ### Fixed
 - **Sign Out now reliably ends the active authentication session.** Password sessions are revoked server-side; Access SSO uses the application-domain logout endpoint after revoking any coexisting application session. Live sync and WebSockets stop immediately, authenticated client state is removed, redirects stay on the application origin, and device-local JIRA/TestRail settings remain untouched.
