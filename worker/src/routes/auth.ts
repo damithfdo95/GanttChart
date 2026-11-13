@@ -2,7 +2,7 @@
  * Sign-in / sign-out / password routes: the Worker's own authentication
  * (replaces Cloudflare Access).
  *
- *   POST /api/auth/login           email + password -> session cookie
+ *   POST /signin                   email + password -> session cookie
  *   POST /api/auth/logout          revoke the session, clear the cookie
  *   POST /api/auth/change-password change one's own password (old one required)
  *
@@ -21,6 +21,7 @@ import { hashPassword, MIN_PASSWORD_LENGTH, randomToken, validatePasswordPolicy,
 import { clearSessionCookie, readCookie, SESSION_COOKIE, SESSION_TTL_MS, sessionCookie, signSession, verifySession } from '../sessions';
 import { json, originAllowed, problem, type Ctx } from '../http';
 import { logEvent } from '../log';
+import { PASSWORD_LOGIN_PATH } from '../../../shared/routes';
 
 /** The registry surface the auth routes need (satisfied by the real RegistryRoom stub). */
 export interface AuthRegistry {
@@ -57,7 +58,7 @@ export async function authRoutes(request: Request, env: AuthEnvLike, registry: A
   const path = new URL(request.url).pathname;
   const method = request.method;
 
-  if (path === '/api/auth/login' && method === 'POST') {
+  if (path === PASSWORD_LOGIN_PATH && method === 'POST') {
     // Same-origin only: a cross-site form must not be able to log a person in.
     if (!originAllowed(request, env as never, true)) return problem(403, 'Origin not allowed');
     let body: { email?: unknown; password?: unknown };

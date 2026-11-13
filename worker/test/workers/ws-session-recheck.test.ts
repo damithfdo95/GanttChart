@@ -15,7 +15,7 @@ import { commitMsg, identityHeaders, join, newWorkspace, rec } from './helpers';
 
 const registry = () => env.REGISTRY.getByName('registry');
 
-/** Seed a real session row in the registry (what POST /api/auth/login does), with the tenant + user it references. */
+/** Seed a real session row in the registry (what POST /signin does), with the tenant + user it references. */
 async function seedSession(id: string, userId: string, email: string): Promise<void> {
   const tenantId = `ten_${userId.slice(0, 24)}`;
   const now = new Date().toISOString();

@@ -2,7 +2,7 @@
  * The sign-in form (the Worker's own password sign-in, which replaced
  * Cloudflare Access).
  *
- * It posts to /api/auth/login. On success the Worker has set the session
+ * It posts to /signin. On success the Worker has set the session
  * cookie and the browser is sent to "/" (the app). A `mustChangePassword`
  * answer means the password was set by an SV and must be replaced now.
  *
@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { t } from '../../i18n';
 import type { Language } from '../../types';
 import type { LandingNotice } from '../../app/sessionEnd';
+import { ACCESS_LOGIN_PATH, PASSWORD_LOGIN_PATH } from '../../../shared/routes';
 
 export function LoginForm({ lang, initialEmail = '', notice = null }: { lang: Language; initialEmail?: string; notice?: LandingNotice }) {
   const [email, setEmail] = useState(initialEmail);
@@ -27,7 +28,7 @@ export function LoginForm({ lang, initialEmail = '', notice = null }: { lang: La
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(PASSWORD_LOGIN_PATH, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json', 'x-gc-intent': 'signin' },
@@ -94,7 +95,7 @@ export function LoginForm({ lang, initialEmail = '', notice = null }: { lang: La
           </button>
         </div>
         <p className="link-help">
-          <a href="/login">{t(lang, 'login.ssoInstead')}</a>
+          <a href={ACCESS_LOGIN_PATH}>{t(lang, 'login.ssoInstead')}</a>
         </p>
         <p className="link-help">{t(lang, 'login.noAccountHelp')}</p>
       </form>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { t, LANGUAGES } from '../../i18n';
 import type { LandingNotice } from '../../app/sessionEnd';
 import type { Language } from '../../types';
+import { ACCESS_LOGIN_PATH, PASSWORD_LOGIN_PATH } from '../../../shared/routes';
 
 /**
  * The public page: what anyone sees at the site address before signing in.
@@ -39,10 +40,10 @@ export function PublicLanding({ initialLang, notice }: { initialLang: Language; 
         {notice === 'sessionEnded' ? <p role="status">{t(lang, 'landing.sessionEnded')}</p> : null}
         {notice === 'logoutIncomplete' ? <p role="alert">{t(lang, 'landing.logoutIncomplete')}</p> : null}
         <div className="link-actions">
-          <a className="btn btn-primary" href="/login">
+          <a className="btn btn-primary" href={ACCESS_LOGIN_PATH}>
             {t(lang, 'landing.signInSso')}
           </a>
-          <a className="btn" href="/signin">
+          <a className="btn" href={PASSWORD_LOGIN_PATH}>
             {t(lang, 'landing.signInPassword')}
           </a>
         </div>

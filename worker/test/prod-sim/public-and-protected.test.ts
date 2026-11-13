@@ -13,7 +13,7 @@ import { hashPassword } from '../../src/passwords';
  * reaches the Worker directly — and the Worker must still refuse everything
  * protected.
  *
- * Sign-in is DUAL: either the Worker's own password sign-in (POST /api/auth/login
+ * Sign-in is DUAL: either the Worker's own password sign-in (POST /signin
  * with email + password; the Super Admin's password is a HASH in configuration,
  * SUPER_ADMIN_PASSWORD, the production setup step; tenant users' passwords are
  * set by the SV who creates them) or a Cloudflare Access JWT (the SSO path —
@@ -56,7 +56,7 @@ async function send(method: string, path: string, opts: { cookie?: string; heade
 /** Sign in; returns the status and the session cookie (null when refused). */
 async function signIn(email: string, password: string): Promise<{ status: number; cookie: string | null }> {
   const res = await exports.default.fetch(
-    new Request(BASE + '/api/auth/login', {
+    new Request(BASE + '/signin', {
       method: 'POST',
       headers: { Origin: BASE, 'x-gc-intent': 'test', 'content-type': 'application/json' },
       body: JSON.stringify({ email, password }),
@@ -221,14 +221,14 @@ describe('SIGN-IN: the Worker\'s own password authentication', () => {
     const unknown = await signIn('nobody@rakuten.com', 'whatever-password');
     expect(unknown.status).toBe(401);
     expect(unknown.cookie).toBeNull();
-    const empty = await send('POST', '/api/auth/login', { body: {} });
+    const empty = await send('POST', '/signin', { body: {} });
     expect(empty.status).toBe(400);
   });
 
   it('a cross-site form cannot log anyone in (no Origin, foreign Origin)', async () => {
     for (const headers of [{}, { Origin: 'https://evil.example' }]) {
       const res = await exports.default.fetch(
-        new Request(BASE + '/api/auth/login', { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ email: SUPER, password: SUPER_PASSWORD }) }),
+        new Request(BASE + '/signin', { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ email: SUPER, password: SUPER_PASSWORD }) }),
       );
       expect(res.status).toBe(403);
     }
@@ -430,6 +430,38 @@ describe('AUTHENTICATED: the password proves who you are; the registry decides w
       expect([401, 403, 404], `${method} ${path}`).toContain(r.status);
     }
     expect(await registryCounts()).toEqual(before);
+  });
+});
+
+describe('SUPER ADMIN SV PASSWORD RESET: caller and target sessions stay separate', () => {
+  it('revokes only the target SV sessions and leaves the Super Admin principal authenticated', async () => {
+    const superIn = await signIn(SUPER, SUPER_PASSWORD);
+    expect(superIn.cookie).not.toBeNull();
+    const adminEmail = 'super-reset-sv@rakuten.com';
+    const created = await send('POST', '/api/super/tenants', {
+      cookie: superIn.cookie ?? undefined,
+      body: { name: 'Super Reset QA', adminEmail },
+    });
+    expect(created.status).toBe(201);
+    const tenant = created.json.tenant as { id: string };
+    const admin = created.json.admin as { id: string };
+    await seedPassword(adminEmail, 'old-sv-password-1234');
+    const svIn = await signIn(adminEmail, 'old-sv-password-1234');
+    expect(svIn.cookie).not.toBeNull();
+
+    const reset = await send('POST', `/api/super/tenants/${tenant.id}/users/${admin.id}/password`, {
+      cookie: superIn.cookie ?? undefined,
+      body: { password: 'new-sv-password-5678' },
+    });
+    expect(reset.status).toBe(200);
+    expect(reset.json).toMatchObject({ ok: true, revokedSessions: 1 });
+    expect((await send('GET', '/api/whoami', { cookie: svIn.cookie ?? undefined })).status).toBe(403);
+    const superWho = await send('GET', '/api/whoami', { cookie: superIn.cookie ?? undefined });
+    expect(superWho.status).toBe(200);
+    expect(superWho.json).toMatchObject({ email: SUPER, role: 'super_admin', tenant: null });
+    const targetIn = await signIn(adminEmail, 'new-sv-password-5678');
+    expect(targetIn.status).toBe(200);
+    expect((await send('GET', '/api/whoami', { cookie: targetIn.cookie ?? undefined })).json).toMatchObject({ mustChangePassword: true });
   });
 });
 

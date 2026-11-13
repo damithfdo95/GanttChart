@@ -9,9 +9,9 @@
  *   6. act           -> on the tenant taken from the PRINCIPAL, never from the request
  *
  * Static assets (the built SPA) are PUBLIC and served by the platform; `run_worker_first`
- * sends only the routes in shared/routes.ts (/api/*, /ws, /login) here. Those
- * are the only routes that matter for security, and each one verifies the
- * Cloudflare Access token ITSELF - the Worker never assumes Access was in front.
+ * sends only the routes in shared/routes.ts (/api/*, /ws, /login, /signin) here.
+ * Protected routes verify the identity themselves; `/signin` is the explicit
+ * same-origin password entry and is never an Access/XHR login mechanism.
  *
  * Route handlers live in routes/ (tenant-scoped and Super Admin); the shared
  * HTTP plumbing (responses, body reading, permission checks) is in http.ts.
@@ -19,7 +19,7 @@
 
 import { normalizeEmail } from '../../shared/tenancy';
 import { AuthError, DEV_IDENTITY_COOKIE, authenticate } from './auth';
-import { isWorkerPath } from '../../shared/routes';
+import { ACCESS_LOGIN_PATH, PASSWORD_LOGIN_PATH, isWorkerPath } from '../../shared/routes';
 import { toPrincipalDto, workspaceRoleOf } from './permissions';
 import { parseEmailList, resolvePrincipal } from './principal';
 import { authRoutes, changePasswordRoute } from './routes/auth';
@@ -81,7 +81,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     return env.ASSETS.fetch(request);
   }
 
-  if (path === '/login' || path === '/signin') return login(request, env);
+  if (path === ACCESS_LOGIN_PATH || (path === PASSWORD_LOGIN_PATH && (method === 'GET' || method === 'HEAD'))) return login(request, env);
 
   // The registry stub, used by the auth routes and the pipeline below.
   const registry = env.REGISTRY.getByName(REGISTRY_NAME);

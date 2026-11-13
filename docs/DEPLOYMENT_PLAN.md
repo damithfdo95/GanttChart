@@ -20,7 +20,7 @@ anyone ──► https://ganttchart.damithfdo.workers.dev/        PUBLIC  (stati
                 ▼                                            ▼
            /login  (Access in front)                   /signin  (the SPA's password form)
                 │ Access JWT on every request                  │
-                │                                              └─► POST /api/auth/login ──► session cookie ──► "/"
+                │                                              └─► POST /signin ──► session cookie ──► "/"
                 ▼ the app calls (same origin, with the Access JWT or the session cookie)
            /api/*        ── Worker: authenticate (Access JWT OR session) → registry lookup → role/tenant/status → permission
            /ws           ── Worker: same pipeline, then the tenant's own Durable Object
@@ -30,7 +30,7 @@ anyone ──► https://ganttchart.damithfdo.workers.dev/        PUBLIC  (stati
 |---|---|---|
 | `/`, `/assets/*` and every other path not listed below (single-page-app fallback) | **Anyone** (public) | The built SPA: code and static text. **No data, ever.** |
 | `/login` | Passes through **Access**; the Worker also verifies the token | A redirect to `/` for a verified token, otherwise the sign-in shell |
-| `/signin` | **Anyone** (the Worker's own password form) | The SPA shell; `POST /api/auth/login` sets the session cookie |
+| `/signin` | **Anyone** (the Worker's own password form) | The SPA shell; same-origin `POST /signin` sets the session cookie |
 | `/api/*` | **Access JWT or session** + Worker check + registry + permission | Every API |
 | `/ws` | **Access JWT or session** + Worker check + registry + permission | Live sync WebSocket |
 
