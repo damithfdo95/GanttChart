@@ -5,6 +5,19 @@ The product version is `package.json`; formal releases are tagged `v` + that ver
 
 ## Unreleased
 
+## 0.10.0-pilot.10 - production authentication and session reliability (future tag `v0.10.0-pilot.10`)
+
+### Fixed
+- **Dual-auth Sign Out is reliable.** Password sessions are revoked in the application, Access SSO exits through the Access logout endpoint after any coexisting application session is revoked, live WebSocket/sync activity stops, and stale client identity is cleared without removing device-local integration settings.
+- **Shared History filtering is stable at Asia/Tokyo date boundaries.** Inclusive business dates remain represented as `[00:00 JST, next-day 00:00 JST)` using the shared date helper.
+- **Production sign-in transport is separated by authentication method.** Password login uses public same-origin `POST /signin`; Access SSO uses top-level same-origin navigation through `/login`. The corrected external Cloudflare Access application protects `/login`, while `/api/*` and `/ws` reach the Worker for its own authentication and authorization checks.
+
+### Added
+- **Super Admin account recovery.** A Super Admin can reset an SV password while revoking only the target SV's sessions. Super Admin password authentication uses the hashed `SUPER_ADMIN_PASSWORD` Worker secret; plaintext passwords are never stored in Git.
+
+### Changed
+- Release metadata now identifies the already-deployed production fixes as pilot.10. This release-only change introduces no additional business-domain semantic changes; Cloudflare Access path scope remains external account configuration rather than tracked repository state.
+
 ## 0.10.0-pilot.9 - production login transport fix (future tag `v0.10.0-pilot.9`)
 
 ### Fixed
