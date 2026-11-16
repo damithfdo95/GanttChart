@@ -42,7 +42,7 @@ import { checkLogo, type BrandingRecord } from '../../shared/branding';
 import { DEFAULT_PLAN_RETENTION_DAYS, RETENTION_CHOICES, retentionCutoff } from '../../shared/meeting';
 import { TM_KINDS, authorizedScopeIds, filterForTester, testerMaySee } from '../../shared/testManagementAccess';
 import { CLOSE_CODES, canonicalRecordsHash, isTenantId, recordsHaveData, summarizeRecords, validateImportRecords } from '../../shared/tenancy';
-import { WorkspaceStore, type CommitResult, type RevisionFilter, type RevisionInfo } from './store';
+import { WorkspaceStore, type CommitResult, type IntegrationConnectionRow, type RevisionFilter, type RevisionInfo } from './store';
 import {
   ACCOUNT_FIELDS,
   DAY_MS,
@@ -118,6 +118,27 @@ export class WorkspaceRoom extends DurableObject<Env> {
   /** Every RPC passes the tenant it believes it is talking to; a mismatch is an error, never data. */
   private assertTenant(claimed: string): void {
     if (claimed !== this.ownTenantId()) throw new Error('tenant mismatch');
+  }
+
+  // Integration credentials live in dedicated SQL, never in records/revisions/snapshots/WebSockets.
+  async getIntegration(tenantId: string, kind: 'jira'): Promise<IntegrationConnectionRow | null> {
+    this.assertTenant(tenantId);
+    return this.store.integration(kind);
+  }
+
+  async putIntegration(tenantId: string, input: Omit<IntegrationConnectionRow, 'created_at'>): Promise<IntegrationConnectionRow> {
+    this.assertTenant(tenantId);
+    return this.store.putIntegration(input);
+  }
+
+  async setIntegrationVerified(tenantId: string, kind: 'jira', status: 'verified' | 'invalid'): Promise<void> {
+    this.assertTenant(tenantId);
+    this.store.setIntegrationVerified(kind, new Date().toISOString(), status);
+  }
+
+  async deleteIntegration(tenantId: string, kind: 'jira'): Promise<boolean> {
+    this.assertTenant(tenantId);
+    return this.store.deleteIntegration(kind);
   }
 
   // ---- WebSocket entry (called by the Worker with verified identity headers) ----

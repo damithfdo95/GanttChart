@@ -57,6 +57,27 @@ describe('basics', () => {
   });
 });
 
+describe('integration credential isolation', () => {
+  it('migrates idempotently and keeps encrypted connections outside workspace snapshots', () => {
+    store.init();
+    const row = store.putIntegration({
+      kind: 'jira', jira_type: 'cloud', base_url: 'https://acme.atlassian.net', encryption_version: 1,
+      key_version: 'v1', nonce: 'nonce', ciphertext: 'ciphertext', credential_version: 1,
+      updated_at: '2026-11-16T00:00:00.000Z', updated_by: 'usr_1', last_verified_at: null, credential_status: 'configured',
+    });
+    expect(row).toMatchObject({ kind: 'jira', credential_version: 1, ciphertext: 'ciphertext' });
+    expect(store.snapshot()).toEqual({ revision: 0, records: [] });
+    expect(store.deleteIntegration('jira')).toBe(true);
+    expect(store.integration('jira')).toBeNull();
+  });
+
+  it('rejects a stale credential version so concurrent replacement cannot break AES-GCM AAD', () => {
+    const base = { kind: 'jira' as const, jira_type: 'cloud' as const, base_url: 'https://acme.atlassian.net', encryption_version: 1, key_version: 'v1', nonce: 'n', ciphertext: 'c', updated_at: '2026-11-16T00:00:00.000Z', updated_by: 'usr_1', last_verified_at: null, credential_status: 'configured' as const };
+    store.putIntegration({ ...base, credential_version: 1 });
+    expect(() => store.putIntegration({ ...base, credential_version: 1 })).toThrow('integration_conflict');
+  });
+});
+
 describe('revision business-day filtering', () => {
   it('uses inclusive-start/exclusive-end JST bounds at fixed historical instants', () => {
     const day = businessDayRangeIso('2026-10-08');

@@ -167,8 +167,14 @@ npx wrangler secret put SESSION_SECRET        # paste at least 32 random charact
 npx wrangler secret put SUPER_ADMIN_EMAILS    # paste e.g. admin@example.com  (several: a@x.com,b@y.com)
 npx wrangler secret put SUPER_ADMIN_PASSWORD  # paste a `hashPassword` output (see below)
 npx wrangler secret put ACCESS_AUD            # existing deployments normally already have this
+npx wrangler secret put INTEGRATION_CREDENTIAL_KEY # base64 for exactly 32 random bytes; required before saving Jira credentials
 npx wrangler secret list                      # read-only: names only
 ```
+
+`INTEGRATION_CREDENTIAL_KEY` encrypts tenant-scoped Jira credentials with AES-256-GCM. It is optional while no
+workspace uses the secure Jira connector: Jira configuration and connector routes fail closed when it is absent,
+while unrelated application features continue to work. Never place it under `vars`, pass it with `--var`, or commit
+its value. Changing it without a key-rotation migration makes existing Jira credentials unreadable.
 
 `ACCESS_TEAM_DOMAIN` is the Zero Trust team domain (`https://<team>.cloudflareaccess.com`)
 and the `ACCESS_AUD` secret is the Access application's AUD tag (comma-separated for several).
@@ -202,7 +208,7 @@ cd worker
 npm run validate        # runs the safety guard, then a dry-run deploy that uploads nothing
 ```
 
-**1. Set the three secrets (*you run*)** as in §5.
+**1. Set the authentication secrets and, before enabling Jira, `INTEGRATION_CREDENTIAL_KEY` (*you run*)** as in §5.
 
 **2. Deploy the new code (*you run*)**:
 
@@ -213,7 +219,7 @@ npx wrangler deploy --env=""
 
 The guard runs automatically before the upload (it is wired as the config's `build` command) and
 aborts the deploy if anything in §8 fails. **Do not** pass `--var SESSION_SECRET…` or
-`--var SUPER_ADMIN_EMAILS…`: those names are secrets now.
+`--var SUPER_ADMIN_EMAILS…`: those names are secrets now. Do not pass `--var INTEGRATION_CREDENTIAL_KEY…` either.
 
 **3. Verify the deployment.** Sign in as the Super Admin (email + password); the app, live sync and
 Platform Administration work. Set each tenant user's initial password (the SV flow), sign in as one,

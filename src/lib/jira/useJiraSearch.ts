@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useReportsStateCtx } from '../../app/state-contexts';
 import type { JiraClientError, JiraIssue } from '../../../shared/jira';
-import { createJiraClient } from './client';
+import { createServerJiraClient } from './client';
 
 /**
  * Shared JIRA search used by every import entry point (Test Case import,
@@ -55,7 +55,7 @@ export function useJiraSearch(): JiraSearch {
       setLoading(true);
       setError(null);
       try {
-        return await createJiraClient(jira).search({ jql, maxTotal: SEARCH_MAX_TOTAL });
+        return await createServerJiraClient().search({ jql, maxTotal: SEARCH_MAX_TOTAL });
       } catch (e) {
         const err = e as JiraClientError;
         setError(err);

@@ -9,7 +9,7 @@ A high-level map. Details: [CLOUD_ARCHITECTURE.md](CLOUD_ARCHITECTURE.md) (desig
  │ screens ── domain (pure selectors)│◄────────────►│ Worker (index.ts): Access JWT → registry │
  │ local DB (IndexedDB) / sync client│              │  → principal → permission → tenant room  │
  └───────────────┬───────────────────┘              │ RegistryRoom (DO): accounts, tenants     │
-                 │ opt-in, device-local credentials  │ WorkspaceRoom (DO, one per tenant):      │
+                 │ authenticated connector requests  │ WorkspaceRoom (DO, one per tenant):      │
                  ▼                                  │  SQLite record store + revisions         │
         jira-proxy / testrail-proxy ──► JIRA / TestRail └──────────────────────────────────────────┘
 ```

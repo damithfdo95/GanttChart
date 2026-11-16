@@ -24,6 +24,7 @@ import { actorOf, json, member, memberProblem, need, notificationProblem, proble
 import { hashPassword, MIN_PASSWORD_LENGTH, validatePasswordPolicy } from '../passwords';
 import { workspaceRoleOf, type MemberPrincipal } from '../permissions';
 import { isDateString } from '../../../shared/notifications';
+import { integrationRoutes } from './integrations';
 
 export async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
   const { path, method, url } = ctx;
@@ -31,9 +32,12 @@ export async function tenantRoutes(ctx: Ctx): Promise<Response | null> {
   const p = member(ctx);
 
   // Tenant-scoped routes exist for members only.
-  const tenantPath = path === '/api/tenant' || path.startsWith('/api/tenant/') || path === '/api/export' || path === '/api/stats' || path === '/api/revisions' || path.startsWith('/api/revisions/');
+  const tenantPath = path === '/api/tenant' || path.startsWith('/api/tenant/') || path.startsWith('/api/integrations/') || path === '/api/export' || path === '/api/stats' || path === '/api/revisions' || path.startsWith('/api/revisions/');
   if (!tenantPath) return null;
   if (p === null) return problem(403, 'forbidden', { reason: 'role' }); // a Super Admin has no tenant
+
+  const integration = await integrationRoutes(ctx, p);
+  if (integration !== null) return integration;
 
   if (path === '/api/tenant' && isRead) {
     const denial = need(ctx, 'tenant.view');

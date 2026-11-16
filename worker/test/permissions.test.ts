@@ -7,6 +7,7 @@ const ACTIONS: Action[] = [
   'registry.view', 'tenant.create', 'tenant.setStatus', 'tenant.approveDeletion', 'tenant.rejectDeletion', 'audit.platform', 'legacy.adopt', 'users.resetPassword',
   'tenant.view', 'tenant.requestDeletion', 'storage.migrate', 'users.manage', 'audit.tenant', 'team.view', 'assignments.manage',
   'teams.manage', 'transfers.approve', 'transfers.cancel', 'leave.submit', 'leave.approve', 'capacity.manage',
+  'integrations.view', 'integrations.manage', 'integrations.use',
   'data.read', 'data.write', 'data.restore', 'data.replace', 'history.read', 'tenant.transferOwnership',
 ];
 
@@ -31,13 +32,13 @@ describe('permission matrix (default deny)', () => {
 
   it('Owner SV of a WEB workspace: everything inside their tenant, nothing in the control plane', () => {
     expect(allowedFor(member({ role: 'admin', isOwner: true }))).toEqual(
-      ['assignments.manage', 'audit.tenant', 'capacity.manage', 'data.read', 'data.replace', 'data.restore', 'data.write', 'history.read', 'leave.approve', 'leave.submit', 'storage.migrate', 'team.view', 'teams.manage', 'tenant.requestDeletion', 'tenant.transferOwnership', 'tenant.view', 'transfers.approve', 'transfers.cancel', 'users.manage'],
+      ['assignments.manage', 'audit.tenant', 'capacity.manage', 'data.read', 'data.replace', 'data.restore', 'data.write', 'history.read', 'integrations.manage', 'integrations.use', 'integrations.view', 'leave.approve', 'leave.submit', 'storage.migrate', 'team.view', 'teams.manage', 'tenant.requestDeletion', 'tenant.transferOwnership', 'tenant.view', 'transfers.approve', 'transfers.cancel', 'users.manage'],
     );
   });
 
   it('a non-owner SV manages the workspace but can neither delete it nor hand it over', () => {
     expect(allowedFor(member({ role: 'admin', isOwner: false }))).toEqual(
-      ['assignments.manage', 'audit.tenant', 'capacity.manage', 'data.read', 'data.replace', 'data.restore', 'data.write', 'history.read', 'leave.approve', 'leave.submit', 'storage.migrate', 'team.view', 'teams.manage', 'tenant.view', 'transfers.approve', 'transfers.cancel', 'users.manage'],
+      ['assignments.manage', 'audit.tenant', 'capacity.manage', 'data.read', 'data.replace', 'data.restore', 'data.write', 'history.read', 'integrations.manage', 'integrations.use', 'integrations.view', 'leave.approve', 'leave.submit', 'storage.migrate', 'team.view', 'teams.manage', 'tenant.view', 'transfers.approve', 'transfers.cancel', 'users.manage'],
     );
   });
 
@@ -46,7 +47,7 @@ describe('permission matrix (default deny)', () => {
   });
 
   it('User (editor) in a web workspace: read + write only', () => {
-    expect(allowedFor(member({ role: 'user', access: 'editor' }))).toEqual(['data.read', 'data.write', 'leave.approve', 'leave.submit', 'tenant.view', 'transfers.approve']);
+    expect(allowedFor(member({ role: 'user', access: 'editor' }))).toEqual(['data.read', 'data.write', 'integrations.use', 'leave.approve', 'leave.submit', 'tenant.view', 'transfers.approve']);
   });
 
   it('User (viewer): read only; the former "read-only" concept maps here', () => {

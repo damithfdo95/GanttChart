@@ -1,4 +1,7 @@
-# jira-proxy
+# jira-proxy (legacy)
+
+New shared-mode Jira connections use the authenticated same-origin connector in the main Worker. This public CORS
+relay is retained only for controlled legacy compatibility and must not be used for external commercial tenants.
 
 A one-file Cloudflare Worker that lets the TestPulse app talk to a JIRA
 instance from the browser. JIRA sends no CORS headers, so direct browser calls

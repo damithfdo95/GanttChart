@@ -12,7 +12,7 @@ A full backup is one JSON file (`ganttchart-backup-<date>.json`):
   tickets), daily reports (including finalized snapshots and **publication metadata**), attendance, topics, Team Members and
   assignments, Test Management (scopes - with QA **work type** -, cases, results, the append-only `caseExecutions` history), cycles,
   meeting plans/notes, notification definitions, the workspace logo and QA policy.
-- **Never included:** JIRA / TestRail connections and credentials (device-local), and notification acknowledgments (per-person state).
+- **Never included:** Jira's encrypted server-side credential row, device-local TestRail credentials, and notification acknowledgments (per-person state).
 - **Daily execution provenance** (`source`: manual / caseExecution / testrail) travels with each daily entry.
 
 ## Compatibility rules

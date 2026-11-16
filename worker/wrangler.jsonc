@@ -66,6 +66,8 @@
   // them; listing them here makes a deploy refuse to go ahead if they are missing, and the
   // guard below refuses to let them reappear under "vars" (where a deploy WOULD overwrite them).
   "secrets": { "required": ["ACCESS_AUD", "SESSION_SECRET", "SUPER_ADMIN_EMAILS"] },
+  // Optional until Jira is configured: INTEGRATION_CREDENTIAL_KEY is a base64-encoded 32-byte AES key.
+  // Jira management/connector routes fail closed when it is absent. Never place it under vars.
 
   // Runs before EVERY `wrangler deploy` of this config (and its --dry-run). It deploys nothing;
   // it only stops a deployment whose production safety settings are incomplete.

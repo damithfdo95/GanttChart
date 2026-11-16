@@ -41,6 +41,45 @@ export interface JiraClient {
   testConnection(): Promise<JiraIssue[]>;
 }
 
+function serverKind(code: string): JiraClientErrorKind {
+  if (code === 'integration_not_configured') return 'notConfigured';
+  if (code === 'invalid_credentials') return 'auth';
+  if (code === 'rate_limited') return 'rateLimit';
+  if (code === 'unreachable') return 'network';
+  if (code === 'forbidden') return 'forbidden';
+  if (code === 'invalid_configuration' || code === 'unsupported_jira_type' || code === 'forbidden_jira_target') return 'badRequest';
+  return 'server';
+}
+
+async function serverCall<T>(fetchLike: FetchLike, path: string, body: unknown): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetchLike(path, {
+      method: 'POST', credentials: 'same-origin', redirect: 'manual', cache: 'no-store',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-GC-Intent': 'ui' },
+      body: JSON.stringify(body),
+    });
+  } catch { throw clientError('network', 'The JIRA connector could not be reached.'); }
+  let payload: Record<string, unknown> = {};
+  try { payload = await response.json() as Record<string, unknown>; } catch { /* sanitized below */ }
+  if (!response.ok) {
+    const code = typeof payload.error === 'string' ? payload.error : 'jira_error';
+    throw clientError(serverKind(code), code, response.status);
+  }
+  return payload as T;
+}
+
+/** Production browser client: same-origin Worker owns credentials and upstream access. */
+export function createServerJiraClient(fetchLike: FetchLike = (input, init) => fetch(input, init)): JiraClient {
+  return {
+    search: async (request) => (await serverCall<{ issues: JiraIssue[] }>(fetchLike, '/api/integrations/jira/search', { jql: request.jql, maxTotal: request.maxTotal })).issues,
+    testConnection: async () => {
+      const result = await serverCall<{ count: number }>(fetchLike, '/api/integrations/jira/test', {});
+      return Array.from({ length: result.count }, () => ({ id: '', key: '', summary: '', statusName: '', typeName: '', labels: [], affectedVersions: [], descriptionPlain: '' }));
+    },
+  };
+}
+
 function clientError(kind: JiraClientErrorKind, message: string, status?: number): JiraClientError {
   return { kind, message, ...(status === undefined ? {} : { status }) };
 }

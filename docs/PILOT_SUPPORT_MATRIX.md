@@ -35,7 +35,7 @@ What the pilot supports today. "Verified" means someone actually ran it; anythin
 |---|---|
 | JIRA | Data Center (Personal Access Token) and Cloud (email + API token) are handled by the client; the pilot is expected to use the configured instance through a proxy. Cloud has had less real-world use |
 | TestRail | Case import uses `get_cases/{project_id}&suite_id={suite_id}`; run/test sync; custom statuses are not configurable (counted as "in progress") |
-| Proxies | HTTPS required (localhost excepted); read-only; credentials stay on the device |
+| Jira connector | Jira Cloud HTTPS `*.atlassian.net`; encrypted tenant credential in Worker; Data Center deferred |
 | Cloudflare Access | Required for the shared workspace; the app verifies the Access token itself |
 
 See also [SECURITY.md](../SECURITY.md) and Settings -> Support & Pilot -> Known Limitations.

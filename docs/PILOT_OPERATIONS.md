@@ -30,7 +30,7 @@ Do this once before the pilot and after major releases, in a **separate browser 
 1. Export a full backup from the real workspace.
 2. In the clean profile open the app (local mode), Reports & Export -> Restore, choose the file, confirm.
 3. Check: project count and names; a project's daily execution and Gantt; Test Management scopes (work types), cases and a case's history; the Daily Report list (a finalized and a published report keep their status); QA policy in Settings; Team Members.
-4. Check that **no JIRA/TestRail credentials** came with the file (they are device-local) and re-enter them if needed.
+4. Check that **no Jira/TestRail credentials** came with the file. Jira credentials are excluded encrypted server state; TestRail remains device-local.
 5. Note date, file, result. A failed drill is a Bug/Data issue: report it.
 
 ## Rollback drill (written down; do not rehearse on production)

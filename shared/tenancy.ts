@@ -225,6 +225,10 @@ export const AUDIT_ACTIONS = [
   'user.reactivated',
   'user.access_changed',
   'user.password_set',
+  'integration.jira_configured',
+  'integration.jira_replaced',
+  'integration.jira_removed',
+  'integration.jira_tested',
   'owner.transferred',
   // Stage 8D: Team Member profiles and the accounts linked to them (workspace-level; never shown to the Super Admin).
   'member.created',
@@ -248,7 +252,7 @@ export const AUDIT_ACTIONS = [
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 /** What the Super Admin sees: platform-level events only. Account events inside a workspace stay with that workspace's Admin. */
-export const PLATFORM_AUDIT_ACTIONS: readonly AuditAction[] = AUDIT_ACTIONS.filter((a) => !a.startsWith('user.') && !a.startsWith('member.') && !a.startsWith('notification.') && !a.startsWith('branding.') && a !== 'owner.transferred');
+export const PLATFORM_AUDIT_ACTIONS: readonly AuditAction[] = AUDIT_ACTIONS.filter((a) => !a.startsWith('user.') && !a.startsWith('member.') && !a.startsWith('notification.') && !a.startsWith('branding.') && !a.startsWith('integration.') && a !== 'owner.transferred');
 
 export interface AuditActor {
   userId: string | null;

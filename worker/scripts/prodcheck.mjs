@@ -13,6 +13,7 @@ export const EXPECTED_WORKER_ROUTES = ['/api/*', '/ws', '/login', '/signin'];
 
 /** Secrets that must never appear under "vars": a deploy would overwrite a secret-like var with whatever the file says. */
 export const SECRET_NAMES = ['ACCESS_AUD', 'SESSION_SECRET', 'SUPER_ADMIN_EMAILS'];
+export const OPTIONAL_SECRET_NAMES = ['INTEGRATION_CREDENTIAL_KEY'];
 
 /** Variables that switch on development behaviour and must never be in the production config. */
 export const DEV_ONLY_VARS = ['ENVIRONMENT', 'DEV_EMAIL', 'ALLOWED_ORIGINS'];
@@ -100,6 +101,9 @@ export function checkProduction(config, context) {
   for (const name of SECRET_NAMES) {
     if (Object.prototype.hasOwnProperty.call(vars, name)) errors.push(`vars.${name} must NOT be in the config: it is a Worker secret, and a plain deploy would overwrite it with the file's value.`);
   }
+  for (const name of OPTIONAL_SECRET_NAMES) {
+    if (Object.prototype.hasOwnProperty.call(vars, name)) errors.push(`vars.${name} must NOT be in the config: it is a Worker secret.`);
+  }
   const required = Array.isArray(config.secrets?.required) ? config.secrets.required : [];
   for (const name of SECRET_NAMES) {
     if (!required.includes(name)) errors.push(`secrets.required must list ${name} so a deployment without it is refused.`);
@@ -145,11 +149,11 @@ export function checkProduction(config, context) {
   if (typeof sampling !== 'number' || !(sampling > 0 && sampling <= 1)) errors.push('observability.head_sampling_rate must be a number in (0, 1].');
 
   // ---- documentation of the expectations ----
-  for (const needle of [...SECRET_NAMES, 'MANAGED_USER_EMAIL_DOMAINS', '/login', '/signin', '/api', '/ws']) {
+  for (const needle of [...SECRET_NAMES, ...OPTIONAL_SECRET_NAMES, 'MANAGED_USER_EMAIL_DOMAINS', '/login', '/signin', '/api', '/ws']) {
     if (!context.docsText.includes(needle)) errors.push(`docs/DEPLOYMENT_PLAN.md must document ${needle}.`);
   }
 
   // What this guard cannot see.
-  notes.push('Not verifiable from here: the secrets SESSION_SECRET and SUPER_ADMIN_EMAILS exist on the Worker (SESSION_SECRET must be at least 32 characters); when Access is configured, its only destination is /login (docs/DEPLOYMENT_PLAN.md).');
+  notes.push('Not verifiable from here: the secrets SESSION_SECRET and SUPER_ADMIN_EMAILS exist; INTEGRATION_CREDENTIAL_KEY is required before configuring Jira; when Access is configured, its only destination is /login (docs/DEPLOYMENT_PLAN.md).');
   return { errors, notes };
 }

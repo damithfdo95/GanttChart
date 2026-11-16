@@ -40,7 +40,7 @@ Replacing a workspace from a backup is one revision and is itself restorable fro
    a JIRA token / TestRail API key: revoke it in JIRA/TestRail and create a new one, then paste it again in Settings on each SV device.
 2. If it reached Git: removing the file does not remove it from history; treat the value as public and rotate. Rewriting history is a
    separate, deliberate decision.
-3. Integration credentials are device-local, so an exposed backup or sync record cannot contain them - but verify with a search.
+3. Jira credentials are held in a dedicated encrypted tenant table and TestRail credentials are device-local; neither can enter backup or sync records. Verify with a search.
 
 ## Integration outage (JIRA / TestRail / proxy)
 

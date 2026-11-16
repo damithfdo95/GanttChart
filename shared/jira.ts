@@ -26,7 +26,7 @@ export interface JiraConnection {
   flavor?: JiraFlavor;
   /** Cloud only: Atlassian account email (Basic auth user). */
   email?: string;
-  /** Cloud: API token. DC: Personal Access Token (Bearer). Stored locally, never synced. */
+  /** Legacy only: Cloud API token / DC PAT. New shared-mode configuration stores credentials encrypted in the Worker. */
   token?: string;
   /**
    * Optional CORS-friendly proxy root. When set, ALL requests go to

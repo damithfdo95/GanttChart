@@ -64,6 +64,9 @@ export type Action =
   | 'leave.submit'
   | 'leave.approve'
   | 'capacity.manage'
+  | 'integrations.view'
+  | 'integrations.manage'
+  | 'integrations.use'
   // Stage 8E
   | 'notifications.manage'
   | 'notifications.ack'
@@ -120,6 +123,11 @@ export function can(principal: Principal | null, action: Action): boolean {
     case 'transfers.cancel':
     case 'capacity.manage':
       return p.role === 'admin' && p.storageMode === 'web' && p.tenantStatus === 'active';
+    case 'integrations.view':
+    case 'integrations.manage':
+      return p.role === 'admin' && p.storageMode === 'web' && p.tenantStatus === 'active';
+    case 'integrations.use':
+      return workspaceIsShared(p) && (p.role === 'admin' || p.access === 'editor');
     case 'transfers.approve':
     case 'leave.approve':
       return workspaceIsShared(p) && (p.role === 'admin' || p.access === 'editor');

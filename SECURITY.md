@@ -46,21 +46,23 @@ implemented in the application; see "Known limitations".
 
 ## Secrets
 
-- Worker secrets: `ACCESS_AUD`, `SESSION_SECRET`, `SUPER_ADMIN_EMAILS` (set with `wrangler secret put`; **never** in the repository). Non-secret
+- Worker secrets: `ACCESS_AUD`, `SESSION_SECRET`, `SUPER_ADMIN_EMAILS`, and optional-until-Jira-use `INTEGRATION_CREDENTIAL_KEY` (set with `wrangler secret put`; **never** in the repository). Non-secret
   settings live in `worker/wrangler.jsonc`. Local `.dev.vars`, `.env*`, key files and backups are git-ignored.
 - **Passwords**: sign-in is the Worker's own (email + password). Passwords are stored only as salted PBKDF2-SHA-256 hashes
   (100,000 iterations, per-password salt) in the registry Durable Object; the hash format carries its own algorithm and iteration
   count so it can be raised later. A wrong password, an unknown email and an account without a password all return the same
   generic error (no account enumeration). Ten consecutive failures lock an account for 15 minutes. The Super Admin's password
   is a stored hash in the `SUPER_ADMIN_PASSWORD` secret (configuration, not data).
-- **Integration credentials (JIRA token, TestRail API key) are stored in the user's browser on that device only.** They are excluded
-  from shared sync records, from full backups and from history backups (tests: `jiraDeviceLocal`, `testrailDeviceLocal`,
-  `securityBaseline`). They are sent only to the configured address, which must be `https://` (plain `http://` only for localhost).
+- **Jira credentials in shared mode are tenant-scoped and AES-256-GCM encrypted in a dedicated Workspace Durable Object SQL table.**
+  The table is outside ordinary records, revisions, WebSocket sync and backup/export payloads. APIs return only redacted configuration.
+  Existing device-local Jira tokens are never silently uploaded: an SV must re-enter and save one, after which legacy secret fields are removed.
+- **TestRail credentials remain device-local in this slice.** They remain excluded from sync and backups and are not migrated yet.
 - A credential typed into Settings is write-only: it is never displayed again and never placed in an error message.
 
 ## Integration proxies
 
-`jira-proxy` and `testrail-proxy` are small Cloudflare Workers with a **fixed upstream origin**, read-only methods, path allow-lists,
+`jira-proxy` is legacy; the secure commercial Jira path is browser → authenticated same-origin main Worker → Jira Cloud and never uses it.
+`testrail-proxy` remains unchanged in this slice. The legacy proxies have a **fixed upstream origin**, read-only methods, path allow-lists,
 rejection of encoded traversal, a minimal forwarded-header set (no cookies) and a per-isolate best-effort rate limit.
 **CORS is a browser policy, not authentication**: it stops other websites from using a visitor's browser as a relay, but anyone who
 can reach the proxy URL directly (curl) can use it with *their own* upstream credentials. The proxies hold no secrets and relay the
@@ -83,7 +85,7 @@ text or memos.
 ## Known limitations
 
 - No application-level request rate limiting (use Cloudflare Rate Limiting / WAF rules; not configured by this repository).
-- Integration credentials live in browser storage (device-local), not in an encrypted backend vault.
+- TestRail credentials still live in browser storage; Jira Data Center private-network connectivity and encryption-key rotation are deferred.
 - GitHub secret scanning, push protection, code scanning and Dependabot alerts are **repository settings** that must be enabled by the
   owner; this repository ships the workflows/config but cannot turn them on.
 - Root and Worker production and development dependency trees currently have no npm advisories. CI audits both lockfiles; keep

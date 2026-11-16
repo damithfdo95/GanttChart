@@ -128,7 +128,30 @@ const SCHEMA = [
      summary          TEXT NOT NULL,
      client_commit_id TEXT
    )`,
+  `CREATE TABLE IF NOT EXISTS app_schema_migrations (
+     version    INTEGER PRIMARY KEY,
+     name       TEXT NOT NULL,
+     applied_at TEXT NOT NULL
+   )`,
 ];
+
+const CURRENT_SCHEMA_VERSION = 1;
+
+export interface IntegrationConnectionRow {
+  kind: 'jira';
+  jira_type: 'cloud' | 'dc';
+  base_url: string;
+  encryption_version: number;
+  key_version: string;
+  nonce: string;
+  ciphertext: string;
+  credential_version: number;
+  created_at: string;
+  updated_at: string;
+  updated_by: string;
+  last_verified_at: string | null;
+  credential_status: 'configured' | 'verified' | 'invalid';
+}
 
 const META_FLOOR = 'history_floor';
 
@@ -148,6 +171,64 @@ export class WorkspaceStore {
   init(): void {
     // Reads only once the schema exists: this runs on every wake from hibernation.
     for (const statement of SCHEMA) this.storage.sql.exec(statement);
+    const future = this.storage.sql.exec<{ version: number }>(`SELECT version FROM app_schema_migrations WHERE version > ? ORDER BY version LIMIT 1`, CURRENT_SCHEMA_VERSION).toArray()[0];
+    if (future !== undefined) throw new Error('workspace schema is newer than this Worker');
+    const applied = this.storage.sql.exec<{ version: number }>(`SELECT version FROM app_schema_migrations WHERE version = 1`).toArray()[0];
+    if (applied === undefined) {
+      this.storage.transactionSync(() => {
+        this.storage.sql.exec(`CREATE TABLE IF NOT EXISTS integration_connections (
+          kind               TEXT PRIMARY KEY CHECK (kind IN ('jira')),
+          jira_type          TEXT NOT NULL CHECK (jira_type IN ('cloud', 'dc')),
+          base_url           TEXT NOT NULL,
+          encryption_version INTEGER NOT NULL,
+          key_version        TEXT NOT NULL,
+          nonce              TEXT NOT NULL,
+          ciphertext         TEXT NOT NULL,
+          credential_version INTEGER NOT NULL,
+          created_at         TEXT NOT NULL,
+          updated_at         TEXT NOT NULL,
+          updated_by         TEXT NOT NULL,
+          last_verified_at   TEXT,
+          credential_status  TEXT NOT NULL CHECK (credential_status IN ('configured', 'verified', 'invalid'))
+        )`);
+        this.storage.sql.exec(`INSERT INTO app_schema_migrations (version, name, applied_at) VALUES (1, 'integration_credentials', ?)`, new Date().toISOString());
+      });
+    }
+  }
+
+  integration(kind: 'jira'): IntegrationConnectionRow | null {
+    return (this.storage.sql.exec<Record<string, SqlValue>>(`SELECT * FROM integration_connections WHERE kind = ?`, kind).toArray()[0] as unknown as IntegrationConnectionRow | undefined) ?? null;
+  }
+
+  putIntegration(input: Omit<IntegrationConnectionRow, 'created_at'>): IntegrationConnectionRow {
+    return this.storage.transactionSync(() => {
+      const previous = this.integration(input.kind);
+      const version = (previous?.credential_version ?? 0) + 1;
+      if (input.credential_version !== version) throw new Error('integration_conflict');
+      const created = previous?.created_at ?? input.updated_at;
+      this.storage.sql.exec(
+        `INSERT INTO integration_connections
+          (kind, jira_type, base_url, encryption_version, key_version, nonce, ciphertext, credential_version, created_at, updated_at, updated_by, last_verified_at, credential_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(kind) DO UPDATE SET jira_type=excluded.jira_type, base_url=excluded.base_url,
+           encryption_version=excluded.encryption_version, key_version=excluded.key_version, nonce=excluded.nonce,
+           ciphertext=excluded.ciphertext, credential_version=excluded.credential_version, updated_at=excluded.updated_at,
+           updated_by=excluded.updated_by, last_verified_at=excluded.last_verified_at, credential_status=excluded.credential_status`,
+        input.kind, input.jira_type, input.base_url, input.encryption_version, input.key_version, input.nonce,
+        input.ciphertext, version, created, input.updated_at, input.updated_by, input.last_verified_at, input.credential_status,
+      );
+      return this.integration(input.kind)!;
+    });
+  }
+
+  setIntegrationVerified(kind: 'jira', at: string, status: 'verified' | 'invalid'): void {
+    this.storage.sql.exec(`UPDATE integration_connections SET last_verified_at = ?, credential_status = ?, updated_at = ? WHERE kind = ?`, at, status, at, kind);
+  }
+
+  deleteIntegration(kind: 'jira'): boolean {
+    const existed = this.integration(kind) !== null;
+    this.storage.sql.exec(`DELETE FROM integration_connections WHERE kind = ?`, kind);
+    return existed;
   }
 
   /** Small string flags kept with the workspace (e.g. "frozen" while archived). Written rarely. */

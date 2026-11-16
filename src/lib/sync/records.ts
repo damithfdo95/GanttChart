@@ -10,7 +10,7 @@
  *            and the shared report settings
  *   local    ReportsState.activeProjectId, ReportsState.schemaVersion,
  *            settings.autoBackup (a per-device folder handle),
- *            settings.jira (the JIRA credentials: never leave the device), and everything
+ *            settings.jira (legacy Jira secrets and non-sync preferences), and everything
  *            in AppState that is a UI preference (language, dashboardView)
  *
  * Pure functions, no I/O, no React — fully unit-testable and importable from
@@ -117,7 +117,7 @@ function sortKind<T extends Identified>(kind: Exclude<RecordKind, 'settings'>, i
   });
 }
 
-/** The settings fields that never leave the device (a folder handle, JIRA/TestRail credentials). */
+/** Settings fields that never enter workspace sync (folder handle, legacy Jira settings, and TestRail credentials). */
 type DeviceSettingKey = 'autoBackup' | 'jira' | 'testrail';
 
 /** Settings without the per-device fields. */

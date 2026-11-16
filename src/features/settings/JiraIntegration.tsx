@@ -1,10 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppStateCtx, useReportsStateCtx } from '../../app/state-contexts';
 import { t } from '../../i18n';
-import { createJiraClient, resolveJiraFlavor } from '../../lib/jira/client';
-import type { JiraClientError, JiraConnection, JiraFlavor } from '../../../shared/jira';
+import { createServerJiraClient, resolveJiraFlavor } from '../../lib/jira/client';
+import type { JiraClientError, JiraFlavor } from '../../../shared/jira';
 import {
-  connectionFromDraft,
   EMPTY_JIRA_DRAFT,
   isInsecureProxy,
   jiraDraftProblems,
@@ -13,9 +12,7 @@ import {
 
 /**
  * Settings → JIRA Integration (SV only, like the whole Settings screen).
- * The connection (including the token) is stored with the local settings —
- * the warning line below says so explicitly, and the token field is
- * write-only: a saved token is never echoed back into the input.
+ * Credentials are write-only and stored encrypted by the tenant Worker.
  */
 
 export function JiraIntegration() {
@@ -35,48 +32,66 @@ export function JiraIntegration() {
     proxyUrl: saved?.proxyUrl ?? '',
   });
   const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [serverConfigured, setServerConfigured] = useState(false);
+  const [lastVerifiedAt, setLastVerifiedAt] = useState<string | null>(null);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
-  // The last token seen, so emptying the base URL (feature off) and typing it again does not lose it.
-  const tokenStash = useRef<string | undefined>(saved?.token);
-  if (saved?.token !== undefined) tokenStash.current = saved.token;
-
-  const currentJiraOf = (d: JiraDraft): JiraConnection | undefined => connectionFromDraft(d, tokenStash.current);
-  const currentJira = (): JiraConnection | undefined => currentJiraOf(draft);
+  useEffect(() => {
+    void fetch('/api/tenant/integrations/jira', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } })
+      .then(async (r) => r.ok ? r.json() as Promise<{ configured?: boolean; baseUrl?: string; jiraType?: JiraFlavor; lastVerifiedAt?: string | null }> : null)
+      .then((status) => {
+        if (status === null) return;
+        setServerConfigured(status.configured === true);
+        setLastVerifiedAt(status.lastVerifiedAt ?? null);
+        if (status.configured && status.baseUrl) setDraft((d) => ({ ...d, baseUrl: status.baseUrl ?? d.baseUrl, flavor: status.jiraType ?? d.flavor, proxyUrl: '' }));
+      }).catch(() => undefined);
+  }, []);
 
   const commit = (patch: Partial<JiraDraft>): void => {
     const next = { ...draft, ...patch };
     setDraft(next);
-    // An unfinished (invalid) base URL is not saved; the previous connection stays until it is valid.
-    if (jiraDraftProblems(next).baseUrl) return;
-    reports.updateSettings({ jira: currentJiraOf(next) });
   };
 
   const clear = (): void => {
     setDraft(EMPTY_JIRA_DRAFT);
-    tokenStash.current = undefined;
     setMessage(null);
-    reports.updateSettings({ jira: undefined });
+    void removeServer();
   };
 
-  const removeToken = (): void => {
-    tokenStash.current = undefined;
-    const next = { ...draft, token: '' };
-    setDraft(next);
-    reports.updateSettings({ jira: connectionFromDraft(next, undefined) });
-    setMessage({ kind: 'ok', text: t(lang, 'jira.tokenRemoved') });
+  const removeServer = async (): Promise<void> => {
+    const response = await fetch('/api/tenant/integrations/jira', { method: 'DELETE', credentials: 'same-origin', headers: { Accept: 'application/json', 'X-GC-Intent': 'ui' } });
+    if (response.ok) { setServerConfigured(false); setLastVerifiedAt(null); reports.updateSettings({ jira: undefined }); }
+  };
+
+  const save = async (): Promise<void> => {
+    const problems = jiraDraftProblems(draft);
+    if (problems.baseUrl || draft.baseUrl.trim() === '' || draft.token.trim() === '') { setMessage({ kind: 'error', text: t(lang, 'jira.testMissingBase') }); return; }
+    setSaving(true); setMessage(null);
+    try {
+      const response = await fetch('/api/tenant/integrations/jira', {
+        method: 'PUT', credentials: 'same-origin', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-GC-Intent': 'ui' },
+        body: JSON.stringify({ baseUrl: draft.baseUrl, jiraType: draft.flavor, email: draft.email, token: draft.token }),
+      });
+      if (!response.ok) throw new Error('save_failed');
+      setServerConfigured(true);
+      setDraft((d) => ({ ...d, token: '', proxyUrl: '' }));
+      // Non-secret compatibility marker keeps existing navigation/import surfaces enabled; legacy token/proxy are removed.
+      reports.updateSettings({ jira: { baseUrl: draft.baseUrl.trim(), flavor: draft.flavor, ...(draft.email.trim() === '' ? {} : { email: draft.email.trim() }) } });
+      setMessage({ kind: 'ok', text: t(lang, 'jira.tokenSaved') });
+    } catch { setMessage({ kind: 'error', text: t(lang, 'jira.error.server') }); }
+    finally { setSaving(false); }
   };
 
   const runTest = async (): Promise<void> => {
-    const connection = currentJira();
-    if (connection === undefined) {
+    if (!serverConfigured) {
       setMessage({ kind: 'error', text: t(lang, jiraDraftProblems(draft).baseUrl ? 'jira.baseUrlInvalid' : 'jira.testMissingBase') });
       return;
     }
     setTesting(true);
     setMessage(null);
     try {
-      const client = createJiraClient(connection);
+      const client = createServerJiraClient();
       const issues = await client.testConnection();
       setMessage({ kind: 'ok', text: t(lang, 'jira.testOk', { count: issues.length }) });
     } catch (e) {
@@ -89,17 +104,16 @@ export function JiraIntegration() {
     }
   };
 
-  const effective = currentJira();
-  const resolvedFlavor = effective === undefined ? 'dc' : resolveJiraFlavor(effective, effective.baseUrl);
-  const tokenSaved = (saved?.token ?? '') !== '';
+  const resolvedFlavor = resolveJiraFlavor({ baseUrl: draft.baseUrl, flavor: draft.flavor }, draft.baseUrl);
+  const legacyToken = (saved?.token ?? '') !== '';
   const problems = jiraDraftProblems(draft);
 
   return (
     <section className="dr-section" aria-labelledby="jira-title">
       <div className="dr-button-row">
         <h2 id="jira-title">{t(lang, 'jira.title')}</h2>
-        <span className={`config-status${saved !== undefined ? ' config-status-ok' : ''}`}>
-          {saved !== undefined ? `✓ ${t(lang, 'common.configured')}` : t(lang, 'common.notConfigured')}
+        <span className={`config-status${serverConfigured ? ' config-status-ok' : ''}`}>
+          {serverConfigured ? `✓ ${t(lang, 'common.configured')}` : t(lang, 'common.notConfigured')}
         </span>
         <button
           type="button"
@@ -159,13 +173,13 @@ export function JiraIntegration() {
           type="password"
           autoComplete="new-password"
           value={draft.token}
-          placeholder={tokenSaved ? '••••••••' : ''}
+          placeholder={serverConfigured ? '••••••••' : ''}
           onChange={(e) => commit({ token: e.target.value })}
         />
       </label>
       <p className="dr-summary">
         {t(lang, 'jira.tokenHint')}
-        {tokenSaved ? ` ${t(lang, 'jira.tokenSaved')}` : ''}
+        {serverConfigured ? ` ${t(lang, 'jira.tokenSaved')}` : ''}
       </p>
 
       <label className="settings-field">
@@ -184,14 +198,19 @@ export function JiraIntegration() {
 
       <p className="dr-summary" role="note">
         {t(lang, 'jira.warning')}
+        {legacyToken ? ` ${t(lang, 'jira.secureReconnect')}` : ''}
+        {lastVerifiedAt ? ` ${t(lang, 'jira.lastVerified')}: ${lastVerifiedAt}` : ''}
       </p>
 
       <div className="dr-button-row">
+        <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void save()}>
+          {saving ? t(lang, 'save.saving') : t(lang, serverConfigured ? 'jira.replaceCredential' : 'jira.saveCredential')}
+        </button>
         <button type="button" className="btn btn-primary" disabled={testing} onClick={() => void runTest()}>
           {testing ? t(lang, 'jira.testing') : t(lang, 'jira.test')}
         </button>
-        {tokenSaved ? (
-          <button type="button" className="btn btn-ghost" onClick={removeToken}>
+        {serverConfigured ? (
+          <button type="button" className="btn btn-ghost" onClick={() => void removeServer()}>
             {t(lang, 'jira.removeToken')}
           </button>
         ) : null}
