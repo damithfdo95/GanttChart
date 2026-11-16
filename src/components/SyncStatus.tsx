@@ -29,6 +29,10 @@ export function SyncStatusIndicator() {
   const lang = state.language;
   if (!shared.enabled || shared.sync === null) return null;
   const { status, pending } = shared.sync;
+  // Silent while healthy: the chip appears only when work is at risk (offline
+  // with unsent changes) or something failed. Full banners cover the rest.
+  const HIDDEN: readonly Status[] = ['connecting', 'synced', 'syncing', 'readonly', 'stopped'];
+  if (HIDDEN.includes(status)) return null;
   const entry = STATUS[status];
   const label =
     status === 'syncing' && pending > 0

@@ -49,7 +49,7 @@ export function buildManagementReportRow(
     workEndTimeMinutes: WORK_DAY_END,
   };
   return {
-    project: state.projectNameEn !== '' || state.projectNameJa !== '' ? state.projectNameEn || state.projectNameJa : 'GanttChart',
+    project: state.projectNameEn !== '' || state.projectNameJa !== '' ? state.projectNameEn || state.projectNameJa : 'TestPulse',
     dueDate: state.targetCompletionDate,
     dueDateEpoch: state.targetCompletionDate !== null ? parseDate(state.targetCompletionDate) : null,
     remainingTestCases: casesRemaining,

@@ -47,7 +47,7 @@ describe('diagnostics', () => {
   const text = buildDiagnostics(base);
 
   it('contains version, commit, build, mode, integration state, sync state and the last Error ID', () => {
-    for (const line of ['GanttChart Diagnostics', 'Version: 1.2.3', 'Commit: abc1234def56', 'Build: 2026-10-25T01:02:03.000Z', 'Channel: pilot', 'Mode: Shared workspace', 'Role: SV', 'JIRA: Configured', 'TestRail: Not configured', 'Sync: synced', 'Last successful sync: 2026-10-25T02:00:00.000Z', 'Last automatic backup: 2026-10-24T09:00:00.000Z']) expect(text, line).toContain(line);
+    for (const line of ['TestPulse Diagnostics', 'Version: 1.2.3', 'Commit: abc1234def56', 'Build: 2026-10-25T01:02:03.000Z', 'Channel: pilot', 'Mode: Shared workspace', 'Role: SV', 'JIRA: Configured', 'TestRail: Not configured', 'Sync: synced', 'Last successful sync: 2026-10-25T02:00:00.000Z', 'Last automatic backup: 2026-10-24T09:00:00.000Z']) expect(text, line).toContain(line);
     expect(text).toContain('Last Error ID: a1b2c3d4-e5f6-4789-a012-b3c4d5e6f708 · forbidden · HTTP 403');
     expect(text).toContain('Browser: Edge 130 on Windows');
     expect(text).not.toContain('Mozilla/5.0');

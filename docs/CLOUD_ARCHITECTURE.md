@@ -1,4 +1,4 @@
-# GanttChart — shared web deployment (Cloudflare)
+# TestPulse — shared web deployment (Cloudflare)
 
 Status: **design (Stages 1–2), revised for Workers Free + `workers.dev`**. Nothing here is deployed.
 The concrete, reviewable deployment proposal is in [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md). No Cloudflare

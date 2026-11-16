@@ -79,7 +79,7 @@ const yesNo = (state: 'configured' | 'notConfigured'): string => (state === 'con
 export function buildDiagnostics(input: DiagnosticsInput): string {
   const b = input.build;
   const lines = [
-    'GanttChart Diagnostics',
+    'TestPulse Diagnostics',
     `Generated: ${input.now.toISOString()}`,
     `Version: ${b.version}`,
     `Release: ${b.release === '' ? 'not tagged' : b.release}`,

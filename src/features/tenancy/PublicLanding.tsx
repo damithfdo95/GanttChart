@@ -22,20 +22,22 @@ export function PublicLanding({ initialLang, notice }: { initialLang: Language; 
   }, [lang]);
 
   return (
-    <main className="link-screen">
+    <main className="link-screen auth-screen">
+      <div className="landing-brand">
+        <span className="landing-brand-mark" aria-hidden="true" />
+        <span className="landing-brand-name">{t(lang, 'landing.title')}</span>
+        <span className="landing-brand-tagline">{t(lang, 'landing.tagline')}</span>
+      </div>
       <div className="link-card landing-card">
-        <div className="dr-button-row" role="group" aria-label={t(lang, 'landing.language')}>
+        <div className="landing-lang" role="group" aria-label={t(lang, 'landing.language')}>
           {LANGUAGES.map((option) => (
-            <button key={option.code} type="button" className={`btn ${option.code === lang ? 'btn-primary' : ''}`} aria-pressed={option.code === lang} onClick={() => setLang(option.code)}>
+            <button key={option.code} type="button" aria-pressed={option.code === lang} onClick={() => setLang(option.code)}>
               {option.short}
             </button>
           ))}
         </div>
-        <h1>{t(lang, 'landing.title')}</h1>
-        <p className="landing-tagline">
-          <strong>{t(lang, 'landing.tagline')}</strong>
-        </p>
-        <p>{t(lang, 'landing.description')}</p>
+        <h1>{t(lang, 'landing.signIn')}</h1>
+        <p className="landing-tagline">{t(lang, 'landing.description')}</p>
         {notice === 'signInFailed' ? <p role="alert">{t(lang, 'landing.signInFailed')}</p> : null}
         {notice === 'sessionEnded' ? <p role="status">{t(lang, 'landing.sessionEnded')}</p> : null}
         {notice === 'logoutIncomplete' ? <p role="alert">{t(lang, 'landing.logoutIncomplete')}</p> : null}

@@ -1,5 +1,5 @@
 {
-  // GanttChart shared workspace: Worker + Durable Object (SQLite) + static SPA.
+  // TestPulse shared workspace: Worker + Durable Object (SQLite) + static SPA.
   // Nothing here creates or changes anything in your Cloudflare account until
   // `wrangler deploy` is run — see docs/CLOUD_ARCHITECTURE.md §10.
   "$schema": "node_modules/wrangler/config-schema.json",

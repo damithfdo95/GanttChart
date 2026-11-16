@@ -50,5 +50,5 @@ export function hasCorruptionEvents(): boolean {
   return events.length > 0;
 }
 
-/** All localStorage keys managed by GanttChart (used by the full local reset). */
+/** All localStorage keys managed by TestPulse (used by the full local reset). */
 export const RECOVERY_KEY_PREFIX_EXPORT: string = RECOVERY_KEY_PREFIX;

@@ -1,4 +1,4 @@
-# GanttChart — QA management for test execution
+# TestPulse — QA management for test execution
 
 A QA-management dashboard for a test-execution team. It answers one question:
 **"Are we going to finish testing on time?"** - and, over time, **"how can we run QA better?"**
@@ -95,8 +95,8 @@ Administration (accounts, workspaces, audit trail, storage modes) is described i
 
 How it is organized in short: the site address shows a **public sign-in page** (static, no
 data); **Sign in** goes through Cloudflare Access; the application then looks the verified email
-up in its own registry. **Cloudflare authentication is not GanttChart authorization:** a verified
-person with no GanttChart account sees "no account" and is never added automatically. Accounts
+up in its own registry. **Cloudflare authentication is not TestPulse authorization:** a verified
+person with no TestPulse account sees "no account" and is never added automatically. Accounts
 are created only top-down: the configured Super Admin creates Admins, an Admin creates Users
 (both limited to the managed organization domains). There is no public registration.
 

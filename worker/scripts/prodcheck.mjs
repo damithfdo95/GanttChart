@@ -150,6 +150,6 @@ export function checkProduction(config, context) {
   }
 
   // What this guard cannot see.
-  notes.push('Not verifiable from here: the secrets SESSION_SECRET and SUPER_ADMIN_EMAILS exist on the Worker (SESSION_SECRET must be at least 32 characters); when Access is configured, its destinations are /login, /api and /ws (docs/DEPLOYMENT_PLAN.md).');
+  notes.push('Not verifiable from here: the secrets SESSION_SECRET and SUPER_ADMIN_EMAILS exist on the Worker (SESSION_SECRET must be at least 32 characters); when Access is configured, its only destination is /login (docs/DEPLOYMENT_PLAN.md).');
   return { errors, notes };
 }

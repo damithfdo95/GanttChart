@@ -1,6 +1,6 @@
 # jira-proxy
 
-A one-file Cloudflare Worker that lets the GanttChart app talk to a JIRA
+A one-file Cloudflare Worker that lets the TestPulse app talk to a JIRA
 instance from the browser. JIRA sends no CORS headers, so direct browser calls
 are blocked; this worker forwards every request (with the caller's
 Authorization header) to the JIRA root configured in `wrangler.toml` and adds

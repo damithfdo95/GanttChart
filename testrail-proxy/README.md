@@ -1,6 +1,6 @@
 # testrail-proxy
 
-A one-file Cloudflare Worker that lets the GanttChart app talk to a TestRail
+A one-file Cloudflare Worker that lets the TestPulse app talk to a TestRail
 instance from the browser. TestRail never sends CORS headers, so direct
 browser calls are blocked; this worker forwards API requests (with the
 caller's Basic-auth Authorization header) to the TestRail root configured in

@@ -96,7 +96,7 @@ export function writePersistedWorkspace(appState: AppState, reportsState: Report
 }
 
 /**
- * Remove every GanttChart-persisted key, including recovery payloads and UX
+ * Remove every TestPulse-persisted key, including recovery payloads and UX
  * metadata (V6.3 §13). The caller resets the in-memory canonical state to
  * the initial state afterwards.
  */

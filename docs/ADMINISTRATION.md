@@ -4,8 +4,8 @@ How accounts and workspaces are administered in the shared (web) version, and wh
 as a record. For the security design see [CLOUD_ARCHITECTURE.md](CLOUD_ARCHITECTURE.md) (§13–§15);
 for deployment see [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md).
 
-> **Cloudflare authentication is not GanttChart authorization.** Cloudflare Access proves who
-> a person is. GanttChart's own registry decides whether they may use the application. Nobody is
+> **Cloudflare authentication is not TestPulse authorization.** Cloudflare Access proves who
+> a person is. TestPulse's own registry decides whether they may use the application. Nobody is
 > ever added automatically, and there is no public registration.
 
 ## 1. Who creates whom

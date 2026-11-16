@@ -13,7 +13,7 @@ import type { ExecutionStatusTotals } from '../../lib/calculations/dailyExecuted
 /**
  * TestRail import domain (Stage: TestRail import) — pure, no network, no
  * Date.now(), no DOM. The fetch lane (`src/lib/testrail/client.ts`) delivers
- * raw result rows; this module decides what they MEAN for GanttChart:
+ * raw result rows; this module decides what they MEAN for TestPulse:
  *
  * - a result URL (plan or run) parses into a stable link target
  * - results are grouped to one Asia/Tokyo DAY and one TESTER each
@@ -79,7 +79,7 @@ export function tokyoDayStartUnix(date: string): number | null {
 
 // ---- Status mapping ------------------------------------------------------------------
 
-/** The GanttChart execution categories a TestRail status can map to. */
+/** The TestPulse execution categories a TestRail status can map to. */
 export type TestRailStatusCategory =
   | 'pass'
   | 'fail'

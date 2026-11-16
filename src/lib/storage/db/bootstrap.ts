@@ -64,7 +64,7 @@ export interface PersistenceBoot {
   revision: number;
 }
 
-/** True when localStorage holds a GanttChart workspace copy at all. */
+/** True when localStorage holds a TestPulse workspace copy at all. */
 function hasLocalStorageWorkspace(): boolean {
   return hasLegacyLocalStorageData();
 }

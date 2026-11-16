@@ -81,7 +81,7 @@ function columnIndex(table: CsvTable, field: keyof typeof ALIASES): number {
   return -1;
 }
 
-/** TestRail status name/id → GanttChart category (mirrors DEFAULT_TESTRAIL_STATUS_MAP). */
+/** TestRail status name/id → TestPulse category (mirrors DEFAULT_TESTRAIL_STATUS_MAP). */
 const STATUS_BY_NAME: Readonly<Record<string, TestRailStatusCategory>> = {
   passed: 'pass',
   pass: 'pass',

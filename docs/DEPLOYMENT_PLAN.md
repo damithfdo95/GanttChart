@@ -1,4 +1,4 @@
-# GanttChart — production operations plan (Cloudflare Free, `workers.dev`)
+# TestPulse — production operations plan (Cloudflare Free, `workers.dev`)
 
 Status: **Stage 5 is deployed.** This document describes the **Stage 6 target state**
 (public sign-in page, protected application routes, safer configuration) and the
@@ -7,9 +7,9 @@ development tooling:** no deployment, no secret, no Access change, no DNS change
 Every step marked *you run* is performed manually by the owner.
 
 > **Sign-in is dual: Cloudflare Access SSO *or* the Worker's own password sign-in — either is enough.**
-> The Worker proves **who** a person is (a verified Access JWT or a verified session). GanttChart's own
+> The Worker proves **who** a person is (a verified Access JWT or a verified session). TestPulse's own
 > registry decides **whether** that person may use the application, as which role,
-> in which workspace. An authenticated `@rakuten.com` employee who has no GanttChart
+> in which workspace. An authenticated `@rakuten.com` employee who has no TestPulse
 > account is shown "no account" and is never added automatically.
 
 ## 1. Model
@@ -19,24 +19,24 @@ anyone ──► https://ganttchart.damithfdo.workers.dev/        PUBLIC  (stati
                 │  "Sign in with SSO"                        "Sign in with a password"
                 ▼                                            ▼
            /login  (Access in front)                   /signin  (the SPA's password form)
-                │ Access JWT on every request                  │
-                │                                              └─► POST /signin ──► session cookie ──► "/"
-                ▼ the app calls (same origin, with the Access JWT or the session cookie)
-           /api/*        ── Worker: authenticate (Access JWT OR session) → registry lookup → role/tenant/status → permission
+                │ Access challenges, then the Worker                    │
+                │ exchanges the Access JWT for its own session          └─► POST /signin ──► session cookie ──► "/"
+                ▼ the app calls (same origin, with the session cookie)
+           /api/*        ── Worker: authenticate (session OR Access JWT) → registry lookup → role/tenant/status → permission
            /ws           ── Worker: same pipeline, then the tenant's own Durable Object
 ```
 
 | Path | Who may reach it | What it serves |
 |---|---|---|
 | `/`, `/assets/*` and every other path not listed below (single-page-app fallback) | **Anyone** (public) | The built SPA: code and static text. **No data, ever.** |
-| `/login` | Passes through **Access**; the Worker also verifies the token | A redirect to `/` for a verified token, otherwise the sign-in shell |
+| `/login` | Passes through **Access**; the Worker also verifies the token | A redirect to `/` **with a session cookie** for a verified token, otherwise the sign-in shell |
 | `/signin` | **Anyone** (the Worker's own password form) | The SPA shell; same-origin `POST /signin` sets the session cookie |
-| `/api/*` | **Access JWT or session** + Worker check + registry + permission | Every API |
-| `/ws` | **Access JWT or session** + Worker check + registry + permission | Live sync WebSocket |
+| `/api/*` | **Session or Access JWT** + Worker check + registry + permission | Every API |
+| `/ws` | **Session or Access JWT** + Worker check + registry + permission | Live sync WebSocket |
 
 The list `/api/*`, `/ws`, `/login`, `/signin` is the single source of truth in `shared/routes.ts`.
-`wrangler.jsonc` (`assets.run_worker_first`), the Worker routing and these Access
-destinations are kept identical by a unit test and by the pre-deployment guard (§8).
+`wrangler.jsonc` (`assets.run_worker_first`), the Worker routing and the Access
+destination (`/login` only) are kept identical by a unit test and by the pre-deployment guard (§8).
 
 ### Why this design (audit findings)
 
@@ -44,20 +44,19 @@ destinations are kept identical by a unit test and by the pre-deployment guard (
   files are code, so serving them publicly is safe; everything with data is behind the
   Worker.
 * **Access is defence in depth, not the only gate.** The Worker verifies the Access
-  token (RS256, exact issuer, exact AUD, expiry) on **every** `/api/*`, `/ws` and
-  `/login` request and fails closed. This is tested with Access *absent*: an anonymous
-  request that reaches the Worker directly still gets `401` and no information
-  (`worker/test/prod-sim`). So even a wrong or missing Access destination cannot expose
-  tenant data; it can only make sign-in fail.
+  token (RS256, exact issuer, exact AUD, expiry) itself and fails closed. This is
+  tested with Access *absent*: an anonymous request that reaches the Worker directly
+  still gets `401` and no information (`worker/test/prod-sim`). So even a wrong or
+  missing Access destination cannot expose tenant data; it can only make sign-in fail.
 * **The SPA stays one bundle at `/`.** A separate `/app` route would need a second HTML
   entry, client-side routing changes and a redirect back from Access for no security
   gain: the data lives behind `/api` and `/ws`, not behind a page URL. `/login` is the
   smallest thing that gives "Sign in" a URL Access can protect.
-* **Same origin, so WebSockets just work.** Access sets its `CF_Authorization` cookie
-  for the hostname, so after sign-in the browser sends it on `/api/*` and on the
-  `/ws` upgrade, exactly as it did when Access covered the whole hostname. *This is the
-  one Cloudflare behaviour the documentation does not state explicitly;* rollout step 8
-  verifies it, and a failure there fails closed (you see the sign-in page again), never open.
+* **One credential for every request.** Access protects **only `/login`**: when it
+  lets a person through, the Worker exchanges the Access JWT for its own session
+  cookie, so `/api/*` and `/ws` are guarded by the Worker (session cookie or Access
+  JWT) and must NOT sit behind Access — a password-session browser has no Access
+  cookie and would be redirected away from the API before the Worker ever sees it.
 * **Path matching quirks cannot expose data.** Case changes, `//api`, `%61pi`,
   `/api/../`, trailing slashes: whatever Access decides about such a path, the Worker
   only treats `/api/…` and `/ws` as data routes and refuses them without a token; all
@@ -221,9 +220,10 @@ Platform Administration work. Set each tenant user's initial password (the SV fl
 and confirm the forced password change appears.
 
 **4. Keep the Cloudflare Access application (*you run*)** in Zero Trust → Access → Applications →
-GanttChart, protecting `/login` (and `/api`, `/ws` if desired — the Worker verifies the token
-itself either way). It is the SSO door of the dual sign-in; deleting it would remove SSO and
-leave only the password door (`/signin`).
+TestPulse, protecting **only `/login`** (remove any `/api` or `/ws` destinations — a
+password-session browser has no Access cookie, so Access in front of the API would redirect
+its calls away before the Worker ever sees the session). It is the SSO door of the dual
+sign-in; deleting it would remove SSO and leave only the password door (`/signin`).
 
 **5. Anonymous checks** (no cookies; any machine):
 
@@ -239,25 +239,25 @@ curl -s -o /dev/null -w "ws:     %{http_code}\n" -H "Connection: Upgrade" -H "Up
   -H "Origin: $BASE" $BASE/ws                                                              # 401. NEVER 101
 ```
 
-A `302` is Access answering; a `401` is the Worker answering (Access not in front of that path). Either
-is correct. **Any `200` from an `/api` path, or `101` from `/ws`, means stop and roll back (§7).**
+A `302` on `/login` is Access answering (the only path where it does); a `401` on the `/api`
+paths is the Worker answering. **Any `200` from an `/api` path, or `101` from `/ws`, means
+stop and roll back (§7).**
 
 **6. Browser checks.** Open the site in a private window: the public page shows (EN/日本語, Sign in,
 no Register). Sign in as the Super Admin → Platform Administration opens.
 
 **7. Account checks.** (a) Sign in with an `@rakuten.com` address that has **no** account → "Your identity
-was verified, but you do not have a GanttChart account." (b) Create an Admin with a `@rakuten.com` address as
+was verified, but you do not have a TestPulse account." (b) Create an Admin with a `@rakuten.com` address as
 Super Admin; creating one with a Gmail address must fail with a clear message. (c) Sign in as that Admin; as
 Admin, create a User (managed domain only); sign in as the User.
 
-**7b. Sign-out check.** Sign in, click **Logout**: the browser goes to Cloudflare's sign-out page; open the site address again:
-the public page shows, and `/api/whoami` (in the same browser) is refused. If the browser stays signed in, or the public page
-shows "Cloudflare Access did not complete the sign-out", Access is not handling `/cdn-cgi/access/logout` for this hostname:
-tell the developer; nothing is exposed (the Worker still checks every token), but Logout is not effective until fixed.
-Remember that this ends the person's Access session for **all** applications in the organization.
+**7b. Sign-out check.** Sign in, click **Logout**: the browser goes to the signed-out page; open the site
+address again: the public page shows, and `/api/whoami` (in the same browser) is refused. (A person who
+signed in via SSO still has a Cloudflare Access session — that is expected: the Worker's session is what
+was revoked, and the app never relies on the Access cookie. Signing in again via SSO is then instant.)
 
 **8. WebSocket check.** As a web-mode Admin/User, edit in two browsers: the header shows "synced" and the edit
-appears in the other browser. (Verifies the Access cookie is sent on the `/ws` upgrade.) If you are sent
+appears in the other browser. (Verifies the session cookie is sent on the `/ws` upgrade.) If you are sent
 back to the sign-in page after signing in, or sync never connects: roll back the Access change (§7), nothing
 else.
 
@@ -310,9 +310,10 @@ the logs exist for: `access_denied` (an authenticated person with no account; lo
   is made or needed.
 * **Zero Trust Free:** $0. Cloudflare's current free user limit was not confirmed from documentation; stop if a
   payment method is requested.
-* Static files (the public page) are free and unlimited. A flood of anonymous `/api` requests that Access does not
-  intercept would count against the Worker's 100,000 requests/day (availability, not billing). With `/api` behind
-  Access, anonymous requests are stopped at Cloudflare's edge before reaching the Worker.
+* Static files (the public page) are free and unlimited. Anonymous `/api` requests reach the
+  Worker (Access is only in front of `/login`) and count against the Worker's 100,000
+  requests/day (availability, not billing); the Worker's `401` is the defence, and it leaks
+  no information.
 
 ## 11. Free-plan limits and the operating budget
 
@@ -334,7 +335,6 @@ editing all day, a save every ~20 s each): 43,200 rows written (43%), ≈720 DO 
 ## 12. Known limits and open questions
 
 * Whether `wrangler secret put` can replace a same-named plain variable (step 1 has a dashboard fallback).
-* The Access cookie reaching `/api` and `/ws` when only those paths are protected (step 8 verifies it).
 * The Cloudflare Zero Trust Free user limit.
 * A second Access application per path would create separate AUDs (handled by a comma-separated `ACCESS_AUD`).
 

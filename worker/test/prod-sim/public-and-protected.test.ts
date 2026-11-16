@@ -192,6 +192,8 @@ describe('PUBLIC: an anonymous visitor gets the sign-in shell and nothing else',
     const signedIn = await send('GET', '/login', { cookie: cookie ?? undefined });
     expect(signedIn.status).toBe(302);
     expect(signedIn.headers.get('location')).toBe('/');
+    // A session-cookie identity is NOT re-minted: no new session, no new cookie.
+    expect(signedIn.headers.get('set-cookie')).toBeNull();
   });
 
   it('path tricks (case, encoding, double slashes, dot segments) never reach data without a session', async () => {
@@ -383,6 +385,55 @@ describe('SSO: the Cloudflare Access JWT is the second sign-in method (either al
     const who = await send('GET', '/api/whoami', { cookie: cookie ?? undefined, headers: { 'cf-access-jwt-assertion': jwt } });
     expect(who.status).toBe(200);
     expect(who.json).toMatchObject({ role: 'super_admin' });
+  });
+
+  it('GET /login with a valid Access JWT mints a session cookie that then works WITHOUT the JWT', async () => {
+    const jwt = await accessToken(SUPER);
+    const res = await send('GET', '/login', { headers: { 'cf-access-jwt-assertion': jwt } });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/');
+    const setCookie = res.headers.get('set-cookie');
+    expect(setCookie).not.toBeNull();
+    expect(setCookie).toMatch(/^gc_session=/);
+    // The minted session alone (no Access JWT) authenticates the API.
+    const cookie = setCookie!.split(';')[0]!;
+    const who = await send('GET', '/api/whoami', { cookie });
+    expect(who.status).toBe(200);
+    expect(who.json).toMatchObject({ role: 'super_admin', authSource: 'password' });
+  });
+
+  it('the session minted at /login is revocable like any other (logout ends it)', async () => {
+    const jwt = await accessToken(SUPER);
+    const res = await send('GET', '/login', { headers: { 'cf-access-jwt-assertion': jwt } });
+    expect(res.status).toBe(302);
+    const cookie = res.headers.get('set-cookie')!.split(';')[0]!;
+    const out = await send('POST', '/api/auth/logout', { cookie });
+    expect(out.status).toBe(200);
+    const who = await send('GET', '/api/whoami', { cookie });
+    expect(who.status).toBe(403);
+  });
+
+  it('an Access JWT for an unregistered person still mints a session, but the API answers "no account"', async () => {
+    const jwt = await accessToken('stranger@rakuten.com');
+    const res = await send('GET', '/login', { headers: { 'cf-access-jwt-assertion': jwt } });
+    expect(res.status).toBe(302);
+    const cookie = res.headers.get('set-cookie')!.split(';')[0]!;
+    const who = await send('GET', '/api/whoami', { cookie });
+    expect(who.status).toBe(403);
+    expect(who.json).toMatchObject({ reason: 'unregistered' });
+  });
+
+  it('a tenant user\'s /login-minted session carries their user id (the registry decides access)', async () => {
+    const { cookie: svCookie } = await signIn(SUPER, SUPER_PASSWORD);
+    const created = await send('POST', '/api/super/tenants', { cookie: svCookie ?? undefined, body: { name: 'Mint Tenant', adminEmail: 'mint.admin@rakuten.com' } });
+    expect(created.status).toBe(201);
+    const jwt = await accessToken('mint.admin@rakuten.com');
+    const res = await send('GET', '/login', { headers: { 'cf-access-jwt-assertion': jwt } });
+    expect(res.status).toBe(302);
+    const cookie = res.headers.get('set-cookie')!.split(';')[0]!;
+    const who = await send('GET', '/api/whoami', { cookie });
+    expect(who.status).toBe(200);
+    expect(who.json).toMatchObject({ role: 'admin' });
   });
 });
 

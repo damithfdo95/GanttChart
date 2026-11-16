@@ -1,5 +1,5 @@
 /*
- * GanttChart — local-only QA schedule tool.
+ * TestPulse — local-only QA schedule tool.
  * System font stack only: no external fonts, images, CSS, or scripts (§6).
  */
 
@@ -169,6 +169,19 @@ body.mt-presenting .gantt-lang-slot {
 
 .btn-danger:hover:not(:disabled) {
   background: var(--bad-bg);
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #164bb3;
+  border-color: #164bb3;
+  color: #fff;
 }
 
 button:focus-visible,
@@ -3934,6 +3947,277 @@ input[type='checkbox'] {
 .link-error {
   color: #b42318;
   margin-top: 12px;
+}
+
+/* ---- Sign-in screens (public landing, password form, forced password change) ---- */
+
+/* Full-page backdrop: a calm gradient that reads as "outside the app". */
+.link-screen {
+  background:
+    radial-gradient(1100px 520px at 85% -10%, rgba(26, 86, 219, 0.12), transparent 60%),
+    radial-gradient(900px 460px at -10% 110%, rgba(13, 71, 161, 0.10), transparent 55%),
+    var(--bg, #f4f6f8);
+}
+
+/* The auth pages stack the brand above the card (the shared link screens keep their row layout). */
+.link-screen.auth-screen {
+  flex-direction: column;
+}
+
+/* Auth cards are narrow and focused, unlike the wide workspace link cards. */
+.link-card.landing-card,
+.link-card.login-card {
+  width: min(400px, 100%);
+  padding: 32px 32px 26px;
+  border-radius: 16px;
+  border-color: #e2e8f0;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 24px rgba(15, 23, 42, 0.08),
+    0 24px 48px -16px rgba(15, 23, 42, 0.1);
+}
+
+.link-card.landing-card h1,
+.link-card.login-card h1 {
+  font-size: 1.4rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 0 0 6px;
+  text-align: center;
+}
+
+/* Brand: a CSS-only Gantt mark, the product name and the tagline, centered above the card. */
+.landing-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 18px;
+  text-align: center;
+}
+.landing-brand-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #2563eb 0%, #1a56db 55%, #0d47a1 100%);
+  box-shadow: 0 6px 16px rgba(26, 86, 219, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  margin-bottom: 8px;
+  position: relative;
+}
+/* Three staggered bars: the smallest possible Gantt chart. */
+.landing-brand-mark::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 22px;
+  height: 18px;
+  background-image: linear-gradient(#fff, #fff), linear-gradient(#fff, #fff), linear-gradient(#fff, #fff);
+  background-repeat: no-repeat;
+  background-size: 100% 4px, 68% 4px, 42% 4px;
+  background-position: 0 0, 0 7px, 0 14px;
+  border-radius: 1px;
+}
+.landing-brand-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: var(--text);
+}
+.landing-brand-tagline {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Language: a segmented pill control, centered above the heading. */
+.landing-lang {
+  display: flex;
+  width: fit-content;
+  margin: 0 auto 18px;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border, #d7dee6);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.04);
+}
+.landing-lang button {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 4px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s, background-color 0.15s, box-shadow 0.15s;
+}
+.landing-lang button:hover {
+  color: var(--text);
+}
+.landing-lang button[aria-pressed='true'] {
+  background: var(--surface, #fff);
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.landing-tagline {
+  margin: 0 0 20px;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  text-align: center;
+}
+
+/* Sign-in form fields: label above a full-width input (44px touch target). */
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+.login-field span {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151;
+}
+.login-field input {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 11px 14px;
+  font-size: 15px;
+  font-family: inherit;
+  background: var(--surface, #fff);
+  color: var(--text);
+  width: 100%;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.login-field input:hover:not(:disabled) {
+  border-color: #94a3b8;
+}
+.login-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(26, 86, 219, 0.15);
+}
+/* Keep the browser's autofill paint inside the field's own radius. */
+.login-field input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #fff inset;
+  -webkit-text-fill-color: var(--text);
+}
+
+/* One primary action per card; buttons stack full-width (the standard auth layout). */
+.link-card.login-card .link-actions,
+.link-card.landing-card .link-actions {
+  margin-top: 20px;
+  flex-direction: column;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+.link-card.login-card .link-actions .btn,
+.link-card.landing-card .link-actions .btn,
+.link-card.login-card a.btn {
+  width: 100%;
+  padding: 11px 16px;
+  font-size: 14px;
+  border-radius: 8px;
+  text-align: center;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.link-card.login-card .btn-primary:hover:not(:disabled),
+.link-card.landing-card .btn-primary:hover:not(:disabled) {
+  box-shadow: 0 4px 12px rgba(26, 86, 219, 0.28);
+}
+.link-card.login-card .btn:hover:not(:disabled):not(.btn-primary),
+.link-card.landing-card .btn:hover:not(:disabled):not(.btn-primary) {
+  background: rgba(26, 86, 219, 0.04);
+}
+
+/* A quiet divider between the password form and the SSO alternative. */
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 0;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border, #d7dee6);
+}
+.link-card.login-card a.btn.login-sso {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+/* Notices (errors, sign-out warnings): callouts with a coloured left edge. */
+.link-card.login-card [role='alert'],
+.link-card.login-card [role='status'],
+.link-card.landing-card [role='alert'],
+.link-card.landing-card [role='status'] {
+  margin: 0 0 16px;
+  padding: 10px 12px 10px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(198, 40, 40, 0.25);
+  border-left: 3px solid var(--bad-border);
+  background: var(--bad-bg);
+  color: var(--bad-fg);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.link-card.landing-card [role='status'] {
+  border-color: rgba(21, 101, 192, 0.25);
+  border-left-color: var(--info-border);
+  background: var(--info-bg);
+  color: var(--info-fg);
+}
+
+/* Footer help lines. */
+.link-card.login-card .link-help,
+.link-card.landing-card .link-help {
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 0.83rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.link-card.login-card .link-help a,
+.link-card.landing-card .link-help a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+.link-card.login-card .link-help a:hover,
+.link-card.landing-card .link-help a:hover {
+  text-decoration: underline;
+}
+
+/* Respect the visitor's motion preference: states change, nothing animates. */
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .login-field input,
+  .landing-lang button {
+    transition: none;
+  }
+}
+
+/* Small screens: keep the auth card inside the viewport with comfortable padding. */
+@media (max-width: 480px) {
+  .link-screen.auth-screen {
+    padding: 20px 16px;
+  }
+  .link-card.landing-card,
+  .link-card.login-card {
+    padding: 24px 20px 20px;
+  }
 }
 .shared-history table {
   width: 100%;

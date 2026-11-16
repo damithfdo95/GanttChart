@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Shared-workspace backend for GanttChart: Worker + Durable Object (SQLite) behind Cloudflare Access.",
+  "description": "Shared-workspace backend for TestPulse: Worker + Durable Object (SQLite) behind Cloudflare Access.",
   "scripts": {
     "dev": "wrangler dev",
     "types": "wrangler types",

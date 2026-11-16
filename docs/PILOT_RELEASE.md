@@ -1,6 +1,6 @@
 # Pilot release baseline
 
-The pilot is the first sustained real-world use of GanttChart by a QA Supervisor and a Delivery QA team. It is a **stability and
+The pilot is the first sustained real-world use of TestPulse by a QA Supervisor and a Delivery QA team. It is a **stability and
 learning** phase, not a feature phase: only fixes, support improvements and documentation go in.
 
 ## The baseline rule

@@ -1,7 +1,7 @@
 # Team Management — Phase 0 Implementation Map (TM-00)
 
 **Status:** Architecture and migration baseline (produced 2026-11-05). **Phase 1 foundation implemented 2026-11-05** (see §10).
-**Scope:** Reconciles the Team Management specification with the existing GanttChart architecture.
+**Scope:** Reconciles the Team Management specification with the existing TestPulse architecture.
 **Backlog items covered:** TM-001 (member/team models), TM-002 (roles/permissions), TM-003 (assignment/reporting dependencies), TM-004 (migration design), TM-005 (domain services and API conventions).
 
 ---

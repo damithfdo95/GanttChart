@@ -14,7 +14,7 @@ describe('the public page', () => {
 
   it('shows the product, a short description, the language choice and TWO sign-in links: SSO (/login) and password (/signin)', () => {
     const en = html('en');
-    expect(en).toContain('GanttChart');
+    expect(en).toContain('TestPulse');
     expect(en).toContain('Internal QA test-execution management');
     expect(en).toContain('EN');
     expect(en).toContain('日本語');
@@ -70,7 +70,7 @@ describe('the "no account" screen for an authenticated but unregistered identity
 
   it('says the identity was verified but there is no account, and who creates accounts', () => {
     const en = markup('en');
-    expect(en).toContain('Your identity was verified, but you do not have a GanttChart account.');
+    expect(en).toContain('Your identity was verified, but you do not have a TestPulse account.');
     expect(en).toContain('Accounts are added by an SV of your workspace');
     expect(markup('ja')).toContain('アカウントがありません');
   });

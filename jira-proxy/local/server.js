@@ -1,5 +1,5 @@
 /**
- * Local HTTPS CORS forwarder for the GanttChart app's JIRA integration.
+ * Local HTTPS CORS forwarder for the TestPulse app's JIRA integration.
  *
  * This is the "Option A" deployment: run this server on a machine INSIDE the
  * corporate network (so it can reach the internal JIRA host), expose it over

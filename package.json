@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.10.0-pilot.9",
   "type": "module",
-  "description": "Local-first QA test execution schedule tracker (GanttChart). No server and no default network use; the opt-in JIRA integration and shared sync mode run only when an SV configures them.",
+  "description": "Local-first QA test execution schedule tracker (TestPulse). No server and no default network use; the opt-in JIRA integration and shared sync mode run only when an SV configures them.",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

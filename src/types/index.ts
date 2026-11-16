@@ -828,7 +828,7 @@ export interface AutoBackupSettings {
   enabled: boolean;
   /** Display name of the chosen folder (informational; the handle lives in IndexedDB). */
   folderName: string | null;
-  /** GanttChart's own dated backup files older than this are pruned on write. */
+  /** TestPulse's own dated backup files older than this are pruned on write. */
   retentionDays: number;
 }
 

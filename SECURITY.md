@@ -1,6 +1,6 @@
 # Security
 
-This document describes how GanttChart is secured today, what it does **not** yet protect against, and how to report a problem.
+This document describes how TestPulse is secured today, what it does **not** yet protect against, and how to report a problem.
 It is a description of the current system, not a certification. The honest gap list for a commercial service is in
 [docs/SAAS_READINESS.md](docs/SAAS_READINESS.md).
 

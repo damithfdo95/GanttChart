@@ -6,7 +6,7 @@ import { parseImportPayload } from '../jsonio/jsonio';
 
 /**
  * Unified import dispatcher (V6.3 §10). One entry point accepts every
- * GanttChart JSON file kind:
+ * TestPulse JSON file kind:
  *   - full workspace backups  ({ kind: 'backup' })
  *   - single-project backups  ({ kind: 'project' })
  *   - legacy app-state exports ({ version: 1 | 2, data: AppState })

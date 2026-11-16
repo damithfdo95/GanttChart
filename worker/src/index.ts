@@ -36,6 +36,8 @@ import { RegistryRoom } from './registryRoom';
 import { emailDomain, type DenyReason } from '../../shared/tenancy';
 import { forgedTenant, json, member, need, originAllowed, problem, roomFor, SECURITY_HEADERS, type Ctx } from './http';
 import { logEvent, newRequestId, safeError, withRequestId } from './log';
+import { randomToken } from './passwords';
+import { SESSION_TTL_MS, sessionCookie, signSession } from './sessions';
 import { tenantRoutes } from './routes/tenant';
 import { superRoutes } from './routes/super';
 
@@ -145,12 +147,36 @@ function denied(reason: DenyReason, email: string): Response {
  * With a VALID identity — an Access JWT or a session cookie — the person goes
  * straight to "/". Without one the SPA shell is served: the login form lives
  * there, so this can never loop.
+ *
+ * Access protects ONLY this path. When Access lets a person through, the JWT
+ * it injects is exchanged here for the Worker's own session cookie, so every
+ * later request (/api/*, /ws) carries the same credential as a password
+ * sign-in — Access never needs to sit in front of them.
  */
 async function login(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'GET' && request.method !== 'HEAD') return problem(405, 'method_not_allowed');
   try {
     const registry = env.REGISTRY.getByName(REGISTRY_NAME);
-    await authenticate(request, env, (sid) => registry.sessionValid(sid));
+    const identity = await authenticate(request, env, (sid) => registry.sessionValid(sid));
+    if (identity.source === 'access') {
+      // Exchange the Access JWT for the Worker's own session cookie. The session
+      // carries only the identity; the per-request pipeline still resolves the
+      // principal, so an unregistered person gets the same "no account" screen
+      // as with a password sign-in.
+      const superAdmins = parseEmailList(env.SUPER_ADMIN_EMAILS);
+      let userId: string | null = null;
+      if (!superAdmins.includes(identity.email)) {
+        const check = await registry.authenticate(identity.email);
+        if (check.allowed) userId = check.user.id;
+      }
+      const secret = env.SESSION_SECRET;
+      if (secret === undefined || secret.length < 32) throw new AuthError(500, 'Sessions are not configured');
+      const sid = randomToken();
+      await registry.createSession({ id: sid, userId, email: identity.email, ttlMs: SESSION_TTL_MS });
+      const token = await signSession({ sub: userId, email: identity.email, sid, exp: Date.now() + SESSION_TTL_MS }, secret);
+      logEvent('info', 'login_ok', { domain: identity.email.split('@')[1] ?? '' });
+      return new Response(null, { status: 302, headers: { Location: '/', 'Set-Cookie': sessionCookie(token, SESSION_TTL_MS / 1000), ...SECURITY_HEADERS } });
+    }
     return new Response(null, { status: 302, headers: { Location: '/', ...SECURITY_HEADERS } });
   } catch {
     /* not signed in: serve the SPA (its login form is exactly right) */

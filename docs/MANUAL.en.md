@@ -1,4 +1,4 @@
-# GanttChart User Manual (English)
+# TestPulse User Manual (English)
 
 A practical guide to this QA management tool — what it does, how to run it, and how to use every screen.
 
@@ -36,7 +36,7 @@ A practical guide to this QA management tool — what it does, how to run it, an
 
 ## 1. Introduction
 
-GanttChart answers one question: **"Are we going to finish testing on time?"**
+TestPulse answers one question: **"Are we going to finish testing on time?"**
 
 It is a local-first dashboard for tracking QA test execution — total cases, completed/passed/failed counts, tester staffing, daily pace, and risk status — and for projecting the actual finish date from real team capacity.
 
@@ -98,7 +98,7 @@ In the shared (web) version the public page offers two ways in — **either one 
 
 ### The navigation
 
-The header contains ten screens: **Dashboard | Overall | Gantt | Daily Report | Tickets | Performance | Review | RCS Members | Reports & Export | Settings**, plus the save-status indicator (✓ Saved locally / … Saving / ⚠ Save failed). The language switcher (EN / 日本語) is on the Dashboard header and applies app-wide.
+The header contains ten screens: **Dashboard | Overall | Gantt | Daily Report | Tickets | Performance | Review | RCS Members | Reports & Export | Settings**, plus the save-status indicator (⚠ Save failed — shown only when a save fails). The language switcher (EN / 日本語) is on the Dashboard header and applies app-wide.
 
 ### Plan vs Execution
 
@@ -296,7 +296,7 @@ The member master (stable identities behind all records):
 ## 5. App-Level Features
 
 - **Language switcher** — `EN | 日本語` on the Dashboard header; persists across screens. Report language is chosen independently on the Daily Report screen.
-- **Autosave & save status** — the indicator next to the navigation shows ✓ Saved locally / … Saving / ⚠ Save failed at all times.
+- **Autosave & save status** — saves happen automatically and silently; the indicator next to the navigation appears only when a save fails (⚠ Save failed).
 - **Pagination** — long tables (execution entries, report history, tickets, revision history, tester records, assignments, …) paginate at 10 rows per page with a Previous/Next pager. The pager disappears when everything fits.
 - **Confirmations** — every destructive action asks first. Import/restore/clear operations additionally download a backup of the current data before running.
 - **Offline** — works with the network adapter disabled. The only external links are the JIRA URLs you enter, which open in new tabs.
@@ -311,7 +311,7 @@ The member master (stable identities behind all records):
 
 **Recoverable states.** The app maintains a revision journal (latest 50 revisions) and recovery snapshots, so accidental edits can be rolled back via **Settings → Revision History**.
 
-**Clearing data.** Settings → Danger Zone → **Clear All Local Data** removes every GanttChart key and the browser database after a confirmation. A backup is downloaded automatically first. Clearing browser data from the browser's own settings has the same effect but without the safety backup — export first.
+**Clearing data.** Settings → Danger Zone → **Clear All Local Data** removes every TestPulse key and the browser database after a confirmation. A backup is downloaded automatically first. Clearing browser data from the browser's own settings has the same effect but without the safety backup — export first.
 
 ---
 

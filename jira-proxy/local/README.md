@@ -1,6 +1,6 @@
 # JIRA proxy — Option A (local server + Cloudflare Tunnel)
 
-This is the **recommended, secure** way to let the GanttChart app reach the
+This is the **recommended, secure** way to let the TestPulse app reach the
 internal JIRA instance (`jira.rakuten-it.com`).
 
 ## Why this is needed
@@ -54,7 +54,7 @@ warning). This only works when the app and proxy are on the same machine.
 ## Architecture
 
 ```
-Browser (GanttChart app)
+Browser (TestPulse app)
    │  Proxy URL = https://jira-proxy.yourdomain.com
    ▼
 Cloudflare Tunnel (public hostname, TLS terminated)

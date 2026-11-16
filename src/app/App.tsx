@@ -12,7 +12,6 @@ import { MIGRATION_FAILURE_LABEL_KEY } from '../lib/storage/db/recovery';
 import { t, LANGUAGES, type TranslationKey } from '../i18n';
 import type { OverallFocus } from '../domain/projects';
 import type { PersistenceBoot } from '../lib/storage/db/bootstrap';
-import { pad2 } from '../lib/formatting/format';
 
 import { NAV_ITEMS, navItems, type Screen } from './navigation';
 import { AccountBadge } from '../features/tenancy/AccountBadge';
@@ -40,32 +39,22 @@ const MyTestingScreen = lazy(() => import('../features/testManagement/MyTestingS
 const RevisionHistory = lazy(() => import('../features/settings/RevisionHistory').then((m) => ({ default: m.RevisionHistory })));
 const SharedHistory = lazy(() => import('../features/settings/SharedHistory').then((m) => ({ default: m.SharedHistory })));
 
-function formatSaveTime(timestamp: number): string {
-  const d = new Date(timestamp);
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-}
-
 /**
- * Save-status indicator (V6.3 §3–§4): text + symbol (never color alone, §24)
- * and the last successful save time. role="status" makes changes announce
- * politely to assistive technology.
+ * Save-status indicator (V6.3 §3–§4): silent while saves succeed (autosave is
+ * the norm); appears only when a write fails, with text + symbol (never
+ * colour alone, §24). role="status" makes the change announce politely to
+ * assistive technology.
  */
 function SaveStatusIndicator() {
   const app = useAppStateCtx();
   const persistence = usePersistenceCtx();
   const lang = app.state.language;
+  if (persistence.status !== 'error') return null;
   const labelKey: TranslationKey =
     persistence.status === 'error' ? 'save.error' : persistence.status === 'saving' ? 'save.saving' : 'save.saved';
-  const symbol = persistence.status === 'error' ? '⚠' : persistence.status === 'saving' ? '…' : '✓';
-  const time = persistence.lastSavedAt === null ? null : formatSaveTime(persistence.lastSavedAt);
   return (
-    <span
-      className={`save-status save-${persistence.status}`}
-      role="status"
-      title={time === null ? undefined : t(lang, 'save.lastSaved', { time })}
-    >
-      <span aria-hidden="true">{symbol}</span> {t(lang, labelKey)}
-      {time === null ? null : <span className="save-status-time"> · {time}</span>}
+    <span className="save-status save-error" role="status">
+      <span aria-hidden="true">⚠</span> {t(lang, labelKey)}
     </span>
   );
 }

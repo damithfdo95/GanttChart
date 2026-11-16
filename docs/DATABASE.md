@@ -1,6 +1,6 @@
 # Local Database (IndexedDB) — V6.6 Storage Migration + V6.7 Integrity, Revisioning & Recovery + V6.8 Revision History & Point-in-Time Recovery
 
-GanttChart persists all application data **locally in the browser**. Since the
+TestPulse persists all application data **locally in the browser**. Since the
 V6.6 storage migration the primary persistence backend is **IndexedDB**;
 `localStorage` (the pre-V6.6 backend) is retained as a fallback/recovery copy
 with explicit revision tracking. Since V6.7 every committed workspace carries
@@ -171,7 +171,7 @@ They are restored only through explicit user action.
 
 `Clear All Local Data`:
 1. creates a `clear-all` recovery snapshot of the current workspace,
-2. removes every GanttChart localStorage key and older snapshots, removes the fallback record,
+2. removes every TestPulse localStorage key and older snapshots, removes the fallback record,
 3. closes and deletes `GanttChartDB`,
 4. writes the tombstone `ganttchart.cleared.v1 = {clearedAt, previousRevision}` — it SURVIVES the clear.
 

@@ -16,7 +16,7 @@ A full backup is one JSON file (`ganttchart-backup-<date>.json`):
 ## Compatibility rules
 
 - `version` is a whole number checked against the supported list (currently `[1]`). A **newer or unknown version is rejected clearly**,
-  never half-read. A payload that is not a GanttChart backup, or fails shape validation, is rejected before anything is written.
+  never half-read. A payload that is not a TestPulse backup, or fails shape validation, is rejected before anything is written.
 - Every field added since version 1 is **optional**, so older backups load unchanged: a finalized report without publication fields
   restores as *Not Published*; a scope without a work type is *Unspecified*; entries without provenance read as *manual*; missing QA
   policy means the default policy. Do not bump `version` for an additive optional field - bump it only for an incompatible change,

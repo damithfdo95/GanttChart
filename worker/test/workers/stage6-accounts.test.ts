@@ -130,7 +130,7 @@ describe('only a tenant Admin creates Users, inside their own tenant, for manage
   });
 });
 
-describe('Cloudflare authentication is not GanttChart authorization', () => {
+describe('Cloudflare authentication is not TestPulse authorization', () => {
   it('an authenticated Rakuten employee with no account is denied — and is NOT provisioned by trying', async () => {
     const stranger = rk('stranger');
     const before = await registryCounts();

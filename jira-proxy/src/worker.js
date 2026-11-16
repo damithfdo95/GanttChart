@@ -1,5 +1,5 @@
 /**
- * Minimal CORS forwarder for the GanttChart app's JIRA integration.
+ * Minimal CORS forwarder for the TestPulse app's JIRA integration.
  *
  * The app (Settings → JIRA Integration → Proxy URL) calls this worker with the
  * ORIGINAL JIRA path appended, e.g.

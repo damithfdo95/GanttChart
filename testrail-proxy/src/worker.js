@@ -1,5 +1,5 @@
 /**
- * Minimal CORS forwarder for the GanttChart app's TestRail integration.
+ * Minimal CORS forwarder for the TestPulse app's TestRail integration.
  *
  * TestRail never sends CORS headers, so browsers cannot call it directly. The
  * app (Settings → TestRail Integration → Proxy URL) calls this worker with the

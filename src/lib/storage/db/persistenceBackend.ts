@@ -467,7 +467,7 @@ export async function loadWorkspaceFromIndexedDb(): Promise<WorkspaceLoadResult>
 /**
  * Clear All Local Data (V6.6 §30, V6.7 §16–§17):
  *   1. create a recovery snapshot of the current workspace (recoverable)
- *   2. remove every GanttChart localStorage key/recovery stash (old snapshots
+ *   2. remove every TestPulse localStorage key/recovery stash (old snapshots
  *      except the new one)
  *   3. close + delete the IndexedDB database
  *   4. write the intentional clear-all tombstone (survives the clear so old

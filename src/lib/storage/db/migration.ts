@@ -142,7 +142,7 @@ function readReportsStateFromLocalStorage(): ReportsState | null | 'invalid' {
   return 'invalid';
 }
 
-/** True when the browser holds any GanttChart application localStorage key. */
+/** True when the browser holds any TestPulse application localStorage key. */
 export function hasLegacyLocalStorageData(): boolean {
   try {
     return (

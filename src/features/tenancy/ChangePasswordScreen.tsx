@@ -53,10 +53,15 @@ export function ChangePasswordScreen({ lang }: { lang: Language }) {
   };
 
   return (
-    <main className="link-screen">
+    <main className="link-screen auth-screen">
+      <div className="landing-brand">
+        <span className="landing-brand-mark" aria-hidden="true" />
+        <span className="landing-brand-name">{t(lang, 'landing.title')}</span>
+        <span className="landing-brand-tagline">{t(lang, 'landing.tagline')}</span>
+      </div>
       <form className="link-card login-card" onSubmit={(e) => void submit(e)}>
         <h1>{t(lang, 'pwchange.title')}</h1>
-        <p>{t(lang, 'pwchange.explain')}</p>
+        <p className="landing-tagline">{t(lang, 'pwchange.explain')}</p>
         {error === 'wrong' ? (
           <p role="alert">{t(lang, 'pwchange.wrong')}</p>
         ) : error === 'short' ? (

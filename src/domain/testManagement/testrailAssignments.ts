@@ -4,8 +4,8 @@
  *
  * A TestRail run's tests each carry `assignedToId` (a TestRail user id). The
  * SV importing a plan as scopes usually wants the SAME testers visible on
- * the scopes in GanttChart — the Testers column of the Scopes tab and the
- * Overview tab read GanttChart's own `TesterProjectAssignment` records, which
+ * the scopes in TestPulse — the Testers column of the Scopes tab and the
+ * Overview tab read TestPulse's own `TesterProjectAssignment` records, which
  * a scope import never created (the gap this module closes).
  *
  * Resolution rule (the established `linkTestRailMembers` identity rule):

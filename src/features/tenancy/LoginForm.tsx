@@ -50,12 +50,14 @@ export function LoginForm({ lang, initialEmail = '', notice = null }: { lang: La
   };
 
   return (
-    <main className="link-screen">
+    <main className="link-screen auth-screen">
+      <div className="landing-brand">
+        <span className="landing-brand-mark" aria-hidden="true" />
+        <span className="landing-brand-name">{t(lang, 'landing.title')}</span>
+        <span className="landing-brand-tagline">{t(lang, 'landing.tagline')}</span>
+      </div>
       <form className="link-card login-card" onSubmit={(e) => void submit(e)}>
         <h1>{t(lang, 'login.title')}</h1>
-        <p className="landing-tagline">
-          <strong>{t(lang, 'landing.tagline')}</strong>
-        </p>
         {notice === 'logoutIncomplete' ? <p role="alert">{t(lang, 'landing.logoutIncomplete')}</p> : null}
         {error === 'invalid' ? (
           <p role="alert">{t(lang, 'login.invalid')}</p>
@@ -94,10 +96,12 @@ export function LoginForm({ lang, initialEmail = '', notice = null }: { lang: La
             {busy ? t(lang, 'login.busy') : t(lang, 'landing.signIn')}
           </button>
         </div>
-        <p className="link-help">
-          <a href={ACCESS_LOGIN_PATH}>{t(lang, 'login.ssoInstead')}</a>
+        <p className="login-divider" aria-hidden="true">
+          {t(lang, 'login.orDivider')}
         </p>
-        <p className="link-help">{t(lang, 'login.noAccountHelp')}</p>
+        <a className="btn login-sso" href={ACCESS_LOGIN_PATH}>
+          {t(lang, 'login.ssoInstead')}
+        </a>
       </form>
     </main>
   );
