@@ -1,5 +1,9 @@
 # TestPulse User Manual (English)
 
+## Team Management
+
+Use **Assignments & Transfers** to review effective-dated memberships and move members between teams. Primary transfers require source and destination approval unless an SV records an audited override reason. Use **Calendar & Leave** to request leave and approve pending requests; Testers see only their own requests. **Capacity Planning** subtracts holidays and approved leave from scheduled hours, then compares active allocations. **Analytics** derives headcount, transfer, leave, and allocation summaries from the same records.
+
 A practical guide to this QA management tool — what it does, how to run it, and how to use every screen.
 
 > 日本語版は [MANUAL.ja.md](MANUAL.ja.md) を参照してください。

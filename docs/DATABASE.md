@@ -1,5 +1,9 @@
 # Local Database (IndexedDB) — V6.6 Storage Migration + V6.7 Integrity, Revisioning & Recovery + V6.8 Revision History & Point-in-Time Recovery
 
+## Team Management records
+
+The workspace store includes `team`, `teamMembership`, `teamTransfer`, `teamSupervisor`, `skill`, `memberSkill`, `workSchedule`, `memberSchedule`, `leaveRequest`, `holidayCalendar`, and `capacityAllocation`. Transfers update memberships in one revision. Capacity and analytics are derived and are not stored.
+
 TestPulse persists all application data **locally in the browser**. Since the
 V6.6 storage migration the primary persistence backend is **IndexedDB**;
 `localStorage` (the pre-V6.6 backend) is retained as a fallback/recovery copy

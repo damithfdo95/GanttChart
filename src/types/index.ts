@@ -267,6 +267,7 @@ export interface RcsMember {
 import type {
   TeamRecord,
   TeamMembershipRecord,
+  TeamTransferRecord,
   SkillRecord,
   MemberSkillRecord,
   WorkScheduleRecord,
@@ -295,6 +296,7 @@ import type {
 export type {
   TeamRecord,
   TeamMembershipRecord,
+  TeamTransferRecord,
   SkillRecord,
   MemberSkillRecord,
   WorkScheduleRecord,
@@ -864,6 +866,8 @@ export interface ReportSettings {
    * ever listed here; a Tester's own menu is never affected.
    */
   hiddenNavItems?: ScreenId[];
+  /** Configurable leave catalogue; absent uses annual/sick/unpaid defaults. */
+  leaveTypes?: Array<{ id: string; name: string; paid: boolean }>;
 }
 
 export interface ReportsState {
@@ -940,6 +944,7 @@ export interface ReportsState {
    */
   teams?: TeamRecord[];
   teamMemberships?: TeamMembershipRecord[];
+  teamTransfers?: TeamTransferRecord[];
   teamSupervisors?: TeamSupervisorRecord[];
   skills?: SkillRecord[];
   memberSkills?: MemberSkillRecord[];

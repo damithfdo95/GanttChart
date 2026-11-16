@@ -15,8 +15,14 @@ import type {
   ReportSettings,
   ReportsState,
   TeamMembershipRecord,
+  TeamTransferRecord,
   TeamRecord,
   TeamSupervisorRecord,
+  WorkScheduleRecord,
+  MemberScheduleRecord,
+  LeaveRequestRecord,
+  HolidayCalendarRecord,
+  CapacityAllocationRecord,
   TesterProjectAssignment,
   TesterReview,
 } from '../types';
@@ -101,8 +107,14 @@ export interface ReportsStateApi {
   upsertTeam: (team: TeamRecord) => void;
   /** Team Management (Phase 1): add or replace one membership by id. */
   upsertTeamMembership: (membership: TeamMembershipRecord) => void;
+  upsertTeamTransfer: (transfer: TeamTransferRecord) => void;
   /** Team Management (Phase 1): add or replace one supervisor by id. */
   upsertTeamSupervisor: (supervisor: TeamSupervisorRecord) => void;
+  upsertWorkSchedule: (schedule: WorkScheduleRecord) => void;
+  upsertMemberSchedule: (schedule: MemberScheduleRecord) => void;
+  upsertLeaveRequest: (request: LeaveRequestRecord) => void;
+  upsertHolidayCalendar: (calendar: HolidayCalendarRecord) => void;
+  upsertCapacityAllocation: (allocation: CapacityAllocationRecord) => void;
   /** Team Management (Phase 1): apply a backfill plan as ONE state update (one commit). */
   applyTeamBackfill: (teams: readonly TeamRecord[], memberships: readonly TeamMembershipRecord[]) => void;
 }
@@ -341,9 +353,19 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
     setState((prev) => ({ ...prev, teamMemberships: upsertById(prev.teamMemberships, membership) }));
   }, []);
 
+  const upsertTeamTransferAction = useCallback((transfer: TeamTransferRecord): void => {
+    setState((prev) => ({ ...prev, teamTransfers: upsertById(prev.teamTransfers, transfer) }));
+  }, []);
+
   const upsertTeamSupervisorAction = useCallback((supervisor: TeamSupervisorRecord): void => {
     setState((prev) => ({ ...prev, teamSupervisors: upsertById(prev.teamSupervisors, supervisor) }));
   }, []);
+
+  const upsertWorkScheduleAction = useCallback((schedule: WorkScheduleRecord): void => setState((prev) => ({ ...prev, workSchedules: upsertById(prev.workSchedules, schedule) })), []);
+  const upsertMemberScheduleAction = useCallback((schedule: MemberScheduleRecord): void => setState((prev) => ({ ...prev, memberSchedules: upsertById(prev.memberSchedules, schedule) })), []);
+  const upsertLeaveRequestAction = useCallback((request: LeaveRequestRecord): void => setState((prev) => ({ ...prev, leaveRequests: upsertById(prev.leaveRequests, request) })), []);
+  const upsertHolidayCalendarAction = useCallback((calendar: HolidayCalendarRecord): void => setState((prev) => ({ ...prev, holidayCalendars: upsertById(prev.holidayCalendars, calendar) })), []);
+  const upsertCapacityAllocationAction = useCallback((allocation: CapacityAllocationRecord): void => setState((prev) => ({ ...prev, capacityAllocations: upsertById(prev.capacityAllocations, allocation) })), []);
 
   const applyTeamBackfillAction = useCallback((teams: readonly TeamRecord[], memberships: readonly TeamMembershipRecord[]): void => {
     if (teams.length === 0 && memberships.length === 0) return;
@@ -392,7 +414,13 @@ export function useReportsState(initial?: ReportsState): ReportsStateApi {
     upsertExternalIdentity: upsertExternalIdentityAction,
     upsertTeam: upsertTeamAction,
     upsertTeamMembership: upsertTeamMembershipAction,
+    upsertTeamTransfer: upsertTeamTransferAction,
     upsertTeamSupervisor: upsertTeamSupervisorAction,
+    upsertWorkSchedule: upsertWorkScheduleAction,
+    upsertMemberSchedule: upsertMemberScheduleAction,
+    upsertLeaveRequest: upsertLeaveRequestAction,
+    upsertHolidayCalendar: upsertHolidayCalendarAction,
+    upsertCapacityAllocation: upsertCapacityAllocationAction,
     applyTeamBackfill: applyTeamBackfillAction,
   };
 }

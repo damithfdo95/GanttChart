@@ -36,6 +36,7 @@ export const RECORD_KINDS = [
   // schedules, leave, holiday calendars and capacity allocations.
   'team',
   'teamMembership',
+  'teamTransfer',
   'teamSupervisor',
   'skill',
   'memberSkill',

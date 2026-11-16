@@ -1,0 +1,7 @@
+import type { CapacityAllocationRecord, LeaveRequestRecord, TeamMembershipRecord, TeamTransferRecord } from '../../types';
+import { coversDate } from '../../../shared/teamDates';
+
+export const teamComposition = (memberships: readonly TeamMembershipRecord[], date: string) => [...new Set(memberships.filter((m) => m.status === 'ACTIVE' && coversDate(m.effectiveFrom, m.effectiveTo, date)).map((m) => m.teamId))].map((teamId) => ({ teamId, members: new Set(memberships.filter((m) => m.teamId === teamId && m.status === 'ACTIVE' && coversDate(m.effectiveFrom, m.effectiveTo, date)).map((m) => m.memberId)).size }));
+export const transferFlow = (transfers: readonly TeamTransferRecord[]) => Object.entries(transfers.reduce<Record<string, number>>((a, t) => ({ ...a, [t.changeType]: (a[t.changeType] ?? 0) + 1 }), {})).map(([changeType, count]) => ({ changeType, count }));
+export const leaveUtilization = (leaves: readonly LeaveRequestRecord[]) => Object.entries(leaves.filter((l) => l.status === 'APPROVED').reduce<Record<string, number>>((a, l) => ({ ...a, [l.leaveTypeId]: (a[l.leaveTypeId] ?? 0) + l.days.reduce((n, d) => n + d.requestedMinutes, 0) }), {})).map(([leaveTypeId, minutes]) => ({ leaveTypeId, minutes }));
+export const allocatedHoursByTeam = (allocations: readonly CapacityAllocationRecord[]) => Object.entries(allocations.filter((a) => a.status === 'ACTIVE').reduce<Record<string, number>>((a, row) => ({ ...a, [row.teamId]: (a[row.teamId] ?? 0) + row.hoursPerWeek }), {})).map(([teamId, hours]) => ({ teamId, hours }));

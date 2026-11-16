@@ -1,5 +1,7 @@
 # Backup file format
 
+Team Management arrays are additive and optional for backward compatibility: `teams`, `teamMemberships`, `teamTransfers`, `teamSupervisors`, `skills`, `memberSkills`, `workSchedules`, `memberSchedules`, `leaveRequests`, `holidayCalendars`, and `capacityAllocations`. Missing arrays normalize to empty arrays and older clients ignore unknown record kinds.
+
 A full backup is one JSON file (`ganttchart-backup-<date>.json`):
 
 ```json

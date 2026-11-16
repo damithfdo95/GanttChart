@@ -23,6 +23,23 @@ test('has no serious or critical automated accessibility violations', async ({ p
   expect(severe).toEqual([]);
 });
 
+test('Team Management phase tabs render as working screens', async ({ page }) => {
+  const nav = page.getByRole('button', { name: /Team Management|チーム管理/ }).first();
+  await expect(nav).toBeVisible();
+  await nav.click();
+  await expect(page.getByRole('heading', { name: /Team Management|チーム管理/, level: 1 })).toBeVisible();
+  for (const tab of [
+    /Assignments & Transfers|アサインと異動/,
+    /Calendar & Leave|カレンダーと休暇/,
+    /Capacity Planning|キャパシティ計画/,
+    /Analytics|分析/,
+  ]) {
+    await page.getByRole('tab', { name: tab }).click();
+    await expect(page.getByRole('heading', { name: tab }).last()).toBeVisible();
+  }
+  await expect(page.getByText(/arrives with Phase|フェーズ.*提供/)).toHaveCount(0);
+});
+
 for (const width of [420, 900, 1280, 1920]) {
   test(`sidebar and content remain usable at ${width}px`, async ({ page }) => {
     const consoleErrors: string[] = [];

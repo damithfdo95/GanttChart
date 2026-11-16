@@ -1,5 +1,9 @@
 # Administration guide (accounts, workspaces, audit)
 
+## Team Management permissions
+
+`teams.manage`, `assignments.manage`, `transfers.approve`, `transfers.cancel`, `leave.submit`, `leave.approve`, and `capacity.manage` are default-deny Worker actions. Administrative changes require an SV; transfer and leave approvals are additionally scoped to effective-dated supervisors. Testers may submit/cancel only their own leave and receive only their own leave records.
+
 How accounts and workspaces are administered in the shared (web) version, and what is kept
 as a record. For the security design see [CLOUD_ARCHITECTURE.md](CLOUD_ARCHITECTURE.md) (§13–§15);
 for deployment see [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md).

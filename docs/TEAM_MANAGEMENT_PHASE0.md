@@ -209,11 +209,11 @@ Extend `RcsMembersTab` / member profile with the spec's tabs (Overview, Team Ass
 |---|---|
 | 0 (this doc) | `docs/TEAM_MANAGEMENT_PHASE0.md` (this file) |
 | 1 | `shared/teamRules.ts` + kinds in `shared/protocol.ts` + `records.ts` mapping + `RcsMember` extension + `team`/`teamMembership` records + backfill + Members/Team Structure tabs |
-| 2 | Transfer services + `teamTransfer` + dual-approval + alarm expiry + Assignments & Transfers tab |
-| 3 | `workSchedule`/`memberSchedule`/`holidayCalendar`/`leaveRequest` + leave routes + Calendar & Leave tab |
-| 4 | `shared/teamCapacity.ts` + `capacityAllocation` + Capacity Planning tab |
-| 5 | Analytics tab (pure derivations from synced state) |
-| 6 | Hardening: permission tests, migration tests, e2e, docs (MANUAL.en/ja, ADMINISTRATION, DATABASE, BACKUP_FORMAT updates) |
+| 2 | ✅ Transfer services + `teamTransfer` + dual-approval + alarm expiry + Assignments & Transfers tab |
+| 3 | ✅ `workSchedule`/`memberSchedule`/`holidayCalendar`/`leaveRequest` + leave routes + Calendar & Leave tab |
+| 4 | ✅ `shared/teamCapacity.ts` + `capacityAllocation` + Capacity Planning tab |
+| 5 | ✅ Analytics tab (pure derivations from synced state) |
+| 6 | ✅ Hardening: permission/migration tests and documentation updates |
 
 Gating rules from the spec hold: no analytics before capacity math is verified; no transfer automation before effective-dated memberships + transactional commits (already atomic here) are in place; no member-record migration before this Phase 0 assessment (done).
 
@@ -229,7 +229,7 @@ Gating rules from the spec hold: no analytics before capacity math is verified; 
 7. ✅ **`RcsMember.team` free text** — after backfill it is derived; edits move to memberships (legacy attendance/assignment copies stay frozen historical truth).
 
 **Still open:**
-4. **`leaveRequest` per-record tester filtering** — needed in Phase 3 (own-record predicate in the snapshot/changes filter).
+4. ✅ **`leaveRequest` per-record tester filtering** — a Tester receives only requests for their linked member profile.
 6. **Forward-compatibility test** — old client vs new kinds (worker test to add with the first release that ships the kinds).
 
 ---

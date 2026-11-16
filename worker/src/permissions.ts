@@ -57,7 +57,13 @@ export type Action =
   | 'history.read'
   | 'tenant.transferOwnership'
   | 'team.view'
+  | 'teams.manage'
   | 'assignments.manage'
+  | 'transfers.approve'
+  | 'transfers.cancel'
+  | 'leave.submit'
+  | 'leave.approve'
+  | 'capacity.manage'
   // Stage 8E
   | 'notifications.manage'
   | 'notifications.ack'
@@ -110,7 +116,15 @@ export function can(principal: Principal | null, action: Action): boolean {
     case 'tenant.transferOwnership':
       return p.isOwner && p.storageMode === 'web' && p.tenantStatus === 'active';
     case 'assignments.manage':
+    case 'teams.manage':
+    case 'transfers.cancel':
+    case 'capacity.manage':
       return p.role === 'admin' && p.storageMode === 'web' && p.tenantStatus === 'active';
+    case 'transfers.approve':
+    case 'leave.approve':
+      return workspaceIsShared(p) && (p.role === 'admin' || p.access === 'editor');
+    case 'leave.submit':
+      return workspaceIsShared(p);
     case 'notifications.manage':
     case 'branding.manage':
       return p.role === 'admin' && p.storageMode === 'web' && p.tenantStatus === 'active';

@@ -74,7 +74,7 @@ describe('helpers', () => {
 
   it('the kinds a Tester never receives', () => {
     // Stage 8D added the team meeting's plans and notes (an SV's records).
-    expect([...SV_ONLY_KINDS].sort()).toEqual(['dailyPlan', 'externalIdentity', 'identityAudit', 'meetingNote', 'report', 'review', 'topic']);
+    expect([...SV_ONLY_KINDS].sort()).toEqual(['dailyPlan', 'externalIdentity', 'identityAudit', 'meetingNote', 'report', 'review', 'teamTransfer', 'topic']);
     for (const kind of ['project', 'cycle', 'assignment', 'member', 'attendance', 'settings']) expect(SV_ONLY_KINDS.has(kind), kind).toBe(false);
   });
 });

@@ -31,7 +31,9 @@ import {
   type ServerMessage,
 } from '../../shared/protocol';
 import { qaCommitError } from '../../shared/qaRules';
-import { teamCommitError } from '../../shared/teamRules';
+import { checkCapacityAllocation, checkHolidayCalendar, checkLeaveRequest, checkMemberSchedule, checkTeamMembership, checkTeamTransfer, checkWorkSchedule, teamCommitError, type CapacityAllocationRecord, type HolidayCalendarRecord, type LeaveRequestRecord, type MemberScheduleRecord, type TeamMembershipRecord, type TeamSupervisorRecord, type TeamTransferRecord, type WorkScheduleRecord } from '../../shared/teamRules';
+import { canOnTeam } from '../../shared/teamAccess';
+import { calculateMemberCapacity, DEFAULT_WORK_SCHEDULE } from '../../shared/teamCapacity';
 import { logEvent, safeError } from './log';
 import { memberRoleOf } from '../../shared/members';
 import { businessClock, businessDate } from '../../shared/businessTime';
@@ -996,6 +998,101 @@ export class WorkspaceRoom extends DurableObject<Env> {
     return this.store.snapshot();
   }
 
+  // ---- Team Management domain services ---------------------------------------
+
+  private teamRecords<T>(kind: RecordPut['kind']): T[] {
+    const out: T[] = [];
+    for (const row of this.store.recordsOfKind(kind)) try { out.push(JSON.parse(row.json) as T); } catch { /* invalid legacy rows are ignored */ }
+    return out;
+  }
+
+  async canUserOnTeam(tenantId: string, userId: string, teamId: string, date: string): Promise<boolean> {
+    this.assertTenant(tenantId);
+    const member = this.teamRecords<{ id: string; userId?: string }>('member').find((m) => m.userId === userId);
+    return canOnTeam(member ? { role: 'user', memberId: member.id } : null, 'assignments.manage', teamId, this.teamRecords<TeamSupervisorRecord>('teamSupervisor'), date);
+  }
+
+  async saveMembership(tenantId: string, input: { membership: TeamMembershipRecord; actor: string }): Promise<{ ok: boolean; error?: string }> {
+    this.assertTenant(tenantId); const checked = checkTeamMembership(input.membership); if (!checked.ok) return { ok: false, error: checked.error };
+    return this.commitServerChange('membership-save', [{ kind: 'teamMembership', id: checked.record.id, json: JSON.stringify(checked.record) }], [], input.actor) ? { ok: true } : { ok: false, error: 'failed' };
+  }
+
+  async endMembership(tenantId: string, input: { id: string; date: string; actor: string }): Promise<{ ok: boolean; error?: string }> {
+    this.assertTenant(tenantId); const row = this.teamRecords<TeamMembershipRecord>('teamMembership').find((m) => m.id === input.id); if (!row) return { ok: false, error: 'not_found' };
+    return this.saveMembership(tenantId, { membership: { ...row, effectiveTo: input.date, status: 'ENDED' }, actor: input.actor });
+  }
+
+  async transferMember(tenantId: string, input: { transfer: TeamTransferRecord; actor: string; adminOverride?: boolean }): Promise<{ ok: boolean; error?: string }> {
+    this.assertTenant(tenantId); const checked = checkTeamTransfer(input.transfer); if (!checked.ok) return { ok: false, error: checked.error }; const transfer = checked.record;
+    const primary = transfer.changeType === 'PERMANENT_TRANSFER' || transfer.changeType === 'TEMPORARY_PRIMARY_TRANSFER';
+    if (primary && (!transfer.sourceApproverId || !transfer.destinationApproverId) && !(input.adminOverride && transfer.reason?.trim())) {
+      const pending = { ...transfer, status: 'PENDING_APPROVAL' as const };
+      return this.commitServerChange('transfer-request', [{ kind: 'teamTransfer', id: pending.id, json: JSON.stringify(pending) }], [], input.actor) ? { ok: true } : { ok: false, error: 'failed' };
+    }
+    const old = this.teamRecords<TeamMembershipRecord>('teamMembership').find((m) => m.memberId === transfer.memberId && m.teamId === transfer.fromTeamId && m.membershipKind === 'PRIMARY' && m.status === 'ACTIVE');
+    if (!old) return { ok: false, error: 'transfer_source_membership_missing' };
+    const temporary = transfer.changeType.startsWith('TEMPORARY');
+    const membership: TeamMembershipRecord = { id: `TMB-${crypto.randomUUID()}`, memberId: transfer.memberId, teamId: transfer.toTeamId, membershipKind: transfer.changeType === 'TEMPORARY_SUPPORT' ? 'SUPPORT' : transfer.changeType === 'PERMANENT_SECONDARY_ASSIGNMENT' ? 'SECONDARY' : 'PRIMARY', durationType: temporary ? 'TEMPORARY' : 'PERMANENT', effectiveFrom: transfer.effectiveDate, ...(transfer.plannedEndDate ? { effectiveTo: transfer.plannedEndDate } : {}), status: 'ACTIVE', reason: transfer.reason, createdBy: input.actor, createdAt: new Date().toISOString() };
+    const finalTransfer: TeamTransferRecord = { ...transfer, ...((input.adminOverride && (!transfer.sourceApproverId || !transfer.destinationApproverId)) ? { sourceApproverId: 'admin-override', destinationApproverId: 'admin-override' } : {}), status: temporary ? 'SCHEDULED' : 'COMPLETED', ...(!temporary ? { completedAt: new Date().toISOString() } : {}) };
+    const puts: RecordPut[] = [{ kind: 'teamMembership', id: old.id, json: JSON.stringify({ ...old, effectiveTo: transfer.effectiveDate, status: 'ENDED' }) }, { kind: 'teamMembership', id: membership.id, json: JSON.stringify(membership) }, { kind: 'teamTransfer', id: finalTransfer.id, json: JSON.stringify(finalTransfer) }];
+    return this.commitServerChange('team-transfer', puts, [], input.actor) ? { ok: true } : { ok: false, error: 'failed' };
+  }
+
+  async updateTransfer(tenantId: string, input: { id: string; action: 'approve' | 'cancel'; userId: string; actor: string }): Promise<{ ok: boolean; error?: string }> {
+    this.assertTenant(tenantId); const row = this.teamRecords<TeamTransferRecord>('teamTransfer').find((t) => t.id === input.id); if (!row) return { ok: false, error: 'not_found' };
+    if (input.action === 'cancel') { if (row.status === 'COMPLETED' || row.status === 'CANCELLED') return { ok: false, error: 'invalid_status' }; return this.commitServerChange('transfer-cancel', [{ kind: 'teamTransfer', id: row.id, json: JSON.stringify({ ...row, status: 'CANCELLED' }) }], [], input.actor) ? { ok: true } : { ok: false, error: 'failed' }; }
+    const memberId = this.teamRecords<{ id: string; userId?: string }>('member').find((m) => m.userId === input.userId)?.id; if (!memberId) return { ok: false, error: 'forbidden' };
+    const supervisors = this.teamRecords<TeamSupervisorRecord>('teamSupervisor'); const source = canOnTeam({ role: 'user', memberId }, 'transfers.approve', row.fromTeamId, supervisors, row.effectiveDate); const destination = canOnTeam({ role: 'user', memberId }, 'transfers.approve', row.toTeamId, supervisors, row.effectiveDate); if (!source && !destination) return { ok: false, error: 'forbidden' };
+    const next = { ...row, ...(source ? { sourceApproverId: memberId } : {}), ...(destination ? { destinationApproverId: memberId } : {}) }; const ready = Boolean(next.sourceApproverId && next.destinationApproverId);
+    if (!ready) return this.commitServerChange('transfer-approve', [{ kind: 'teamTransfer', id: row.id, json: JSON.stringify({ ...next, status: 'PENDING_APPROVAL' }) }], [], input.actor) ? { ok: true } : { ok: false, error: 'failed' };
+    const old = this.teamRecords<TeamMembershipRecord>('teamMembership').find((m) => m.memberId === row.memberId && m.teamId === row.fromTeamId && m.membershipKind === 'PRIMARY' && m.status === 'ACTIVE'); if (!old) return { ok: false, error: 'transfer_source_membership_missing' };
+    const temporary = row.changeType.startsWith('TEMPORARY'); const membership: TeamMembershipRecord = { id: `TMB-${crypto.randomUUID()}`, memberId: row.memberId, teamId: row.toTeamId, membershipKind: row.changeType === 'TEMPORARY_SUPPORT' ? 'SUPPORT' : row.changeType === 'PERMANENT_SECONDARY_ASSIGNMENT' ? 'SECONDARY' : 'PRIMARY', durationType: temporary ? 'TEMPORARY' : 'PERMANENT', effectiveFrom: row.effectiveDate, ...(row.plannedEndDate ? { effectiveTo: row.plannedEndDate } : {}), status: 'ACTIVE', reason: row.reason, createdBy: input.actor, createdAt: new Date().toISOString() };
+    const completed = { ...next, status: temporary ? 'SCHEDULED' as const : 'COMPLETED' as const, ...(!temporary ? { completedAt: new Date().toISOString() } : {}) }; const puts: RecordPut[] = [{ kind: 'teamMembership', id: old.id, json: JSON.stringify({ ...old, effectiveTo: row.effectiveDate, status: 'ENDED' }) }, { kind: 'teamMembership', id: membership.id, json: JSON.stringify(membership) }, { kind: 'teamTransfer', id: row.id, json: JSON.stringify(completed) }]; return this.commitServerChange('team-transfer', puts, [], input.actor) ? { ok: true } : { ok: false, error: 'failed' };
+  }
+
+  async saveTeamRecord(tenantId: string, input: { kind: 'workSchedule' | 'memberSchedule' | 'holidayCalendar' | 'capacityAllocation'; record: WorkScheduleRecord | MemberScheduleRecord | HolidayCalendarRecord | CapacityAllocationRecord; actor: string }): Promise<{ ok: boolean; error?: string }> {
+    this.assertTenant(tenantId); const checks = { workSchedule: checkWorkSchedule, memberSchedule: checkMemberSchedule, holidayCalendar: checkHolidayCalendar, capacityAllocation: checkCapacityAllocation } as const;
+    const checked = checks[input.kind](input.record as never); if (!checked.ok) return { ok: false, error: checked.error };
+    return this.commitServerChange(`${input.kind}-save`, [{ kind: input.kind, id: input.record.id, json: JSON.stringify(input.record) }], [], input.actor) ? { ok: true } : { ok: false, error: 'failed' };
+  }
+
+  async submitLeave(tenantId: string, input: { request: LeaveRequestRecord; userId: string; actor: string }): Promise<{ ok: boolean; error?: string }> {
+    this.assertTenant(tenantId); const member = this.teamRecords<{ id: string; userId?: string }>('member').find((m) => m.userId === input.userId); if (!member || member.id !== input.request.memberId) return { ok: false, error: 'leave_not_own' };
+    const membership = this.teamRecords<TeamMembershipRecord>('teamMembership').find((m) => m.memberId === member.id && m.membershipKind === 'PRIMARY' && m.status === 'ACTIVE' && m.effectiveFrom <= input.request.startDate && (m.effectiveTo === undefined || input.request.startDate < m.effectiveTo));
+    const approverId = membership ? this.teamRecords<TeamSupervisorRecord>('teamSupervisor').find((s) => s.teamId === membership.teamId && s.effectiveFrom <= input.request.startDate && (s.effectiveTo === undefined || input.request.startDate < s.effectiveTo))?.memberId : undefined;
+    const templates = new Map(this.teamRecords<WorkScheduleRecord>('workSchedule').map((s) => [s.id, s])); const assignments = this.teamRecords<MemberScheduleRecord>('memberSchedule'); const days: Array<{ date: string; requestedMinutes: number }> = [];
+    for (let ms = Date.parse(`${input.request.startDate}T00:00:00Z`), end = Date.parse(`${input.request.endDate}T00:00:00Z`); ms < end; ms += DAY_MS) { const date = new Date(ms).toISOString().slice(0, 10); const assignment = assignments.find((s) => s.memberId === member.id && s.effectiveFrom <= date && (s.effectiveTo === undefined || date < s.effectiveTo)); const schedule = (assignment && templates.get(assignment.templateId)) ?? DEFAULT_WORK_SCHEDULE; const minutes = schedule.days.find((d) => d.weekday === new Date(ms).getUTCDay())?.workingMinutes ?? 0; if (minutes > 0) days.push({ date, requestedMinutes: minutes }); }
+    const request = { ...input.request, status: 'PENDING' as const, days, ...(approverId ? { approverId } : {}) }; const checked = checkLeaveRequest(request); if (!checked.ok) return { ok: false, error: checked.error };
+    return this.commitServerChange('leave-submit', [{ kind: 'leaveRequest', id: request.id, json: JSON.stringify(request) }], [], input.actor) ? { ok: true } : { ok: false, error: 'failed' };
+  }
+
+  async decideLeave(tenantId: string, input: { id: string; status: 'APPROVED' | 'REJECTED'; decisionNote?: string; userId: string; admin: boolean; actor: string }): Promise<{ ok: boolean; error?: string }> {
+    this.assertTenant(tenantId); const row = this.teamRecords<LeaveRequestRecord>('leaveRequest').find((r) => r.id === input.id); if (!row) return { ok: false, error: 'not_found' }; const memberId = this.teamRecords<{ id: string; userId?: string }>('member').find((m) => m.userId === input.userId)?.id; if (!input.admin && row.approverId !== memberId) return { ok: false, error: 'forbidden' };
+    const next = { ...row, status: input.status, decisionNote: input.decisionNote, decidedAt: new Date().toISOString() }; return this.commitServerChange('leave-decide', [{ kind: 'leaveRequest', id: row.id, json: JSON.stringify(next) }], [], input.actor) ? { ok: true } : { ok: false, error: 'failed' };
+  }
+
+  async cancelLeave(tenantId: string, input: { id: string; userId: string; actor: string }): Promise<{ ok: boolean; error?: string }> {
+    this.assertTenant(tenantId); const member = this.teamRecords<{ id: string; userId?: string }>('member').find((m) => m.userId === input.userId); const row = this.teamRecords<LeaveRequestRecord>('leaveRequest').find((r) => r.id === input.id); if (!member || !row || row.memberId !== member.id || row.status !== 'PENDING') return { ok: false, error: 'forbidden' };
+    return this.commitServerChange('leave-cancel', [{ kind: 'leaveRequest', id: row.id, json: JSON.stringify({ ...row, status: 'CANCELLED' }) }], [], input.actor) ? { ok: true } : { ok: false, error: 'failed' };
+  }
+
+  async capacity(tenantId: string, from: string, to: string, teamId?: string): Promise<Array<{ memberId: string; availableMinutes: number; allocatedMinutes: number; remainingMinutes: number; utilizationPercent: number; warning: string }>> {
+    this.assertTenant(tenantId); const memberships = this.teamRecords<TeamMembershipRecord>('teamMembership'); const ids = new Set(memberships.filter((m) => teamId === undefined || m.teamId === teamId).map((m) => m.memberId));
+    return [...ids].map((memberId) => ({ memberId, ...calculateMemberCapacity({ memberId, teamId, from, to, schedules: this.teamRecords('workSchedule'), memberSchedules: this.teamRecords('memberSchedule'), calendars: this.teamRecords('holidayCalendar'), leaves: this.teamRecords('leaveRequest'), allocations: this.teamRecords('capacityAllocation') }) }));
+  }
+
+  async teamCalendar(tenantId: string, from: string, to: string, teamId?: string): Promise<{ leave: LeaveRequestRecord[]; holidays: HolidayCalendarRecord[]; schedules: MemberScheduleRecord[] }> {
+    this.assertTenant(tenantId); const memberships = this.teamRecords<TeamMembershipRecord>('teamMembership'); const members = teamId === undefined ? null : new Set(memberships.filter((m) => m.teamId === teamId && m.effectiveFrom < to && (m.effectiveTo === undefined || from < m.effectiveTo)).map((m) => m.memberId));
+    return { leave: this.teamRecords<LeaveRequestRecord>('leaveRequest').filter((l) => l.status === 'APPROVED' && l.startDate < to && from < l.endDate && (members === null || members.has(l.memberId))), holidays: this.teamRecords('holidayCalendar'), schedules: this.teamRecords<MemberScheduleRecord>('memberSchedule').filter((s) => s.effectiveFrom < to && (s.effectiveTo === undefined || from < s.effectiveTo) && (members === null || members.has(s.memberId))) };
+  }
+
+  runAssignmentExpiry(tenantId: string, nowMs: number): { ended: number; completed: number } {
+    this.assertTenant(tenantId); const today = businessDate(nowMs); const puts: RecordPut[] = []; let ended = 0; let completed = 0;
+    for (const m of this.teamRecords<TeamMembershipRecord>('teamMembership')) if (m.status === 'ACTIVE' && m.effectiveTo !== undefined && m.effectiveTo <= today) { puts.push({ kind: 'teamMembership', id: m.id, json: JSON.stringify({ ...m, status: 'ENDED' }) }); ended++; }
+    for (const t of this.teamRecords<TeamTransferRecord>('teamTransfer')) if (t.status === 'SCHEDULED' && t.plannedEndDate !== undefined && t.plannedEndDate <= today) { puts.push({ kind: 'teamTransfer', id: t.id, json: JSON.stringify({ ...t, status: 'COMPLETED', completedAt: new Date(nowMs).toISOString() }) }); completed++; }
+    for (let i = 0; i < puts.length; i += 400) this.commitServerChange('assignment-expiry', puts.slice(i, i + 400), [], 'retention'); return { ended, completed };
+  }
+
   // ---- retention ----------------------------------------------------------------
 
   override async alarm(): Promise<void> {
@@ -1007,6 +1104,7 @@ export class WorkspaceRoom extends DurableObject<Env> {
     }
     this.store.prune(new Date(Date.now() - retention * DAY_MS).toISOString());
     this.maybeRunRetention(Date.now());
+    this.runAssignmentExpiry(this.ownTenantId(), Date.now());
     await this.ctx.storage.setAlarm(Date.now() + DAY_MS);
   }
 
@@ -1038,6 +1136,10 @@ export class WorkspaceRoom extends DurableObject<Env> {
     let base = items.some((i) => i.kind === 'notificationAck') ? items.filter((i) => i.kind !== 'notificationAck' || i.id.endsWith(`_${who.userId}`)) : items;
     if (who.role === 'admin') return base;
     base = visibleTo(who.role, base).map((i) => redactMemberEmail(i, who.userId));
+    const ownMember = this.store.recordsOfKind('member').find((r) => {
+      try { return (JSON.parse(r.json) as { userId?: string }).userId === who.userId; } catch { return false; }
+    })?.id;
+    base = base.filter((i) => i.kind !== 'leaveRequest' || (ownMember !== undefined && (() => { try { return (JSON.parse(i.json ?? '{}') as { memberId?: string }).memberId === ownMember; } catch { return false; } })()));
     // A Tester receives a notification definition only if it is switched on and addresses them.
     if (base.some((i) => i.kind === 'notification')) {
       const recipient = this.recipientFor(who);

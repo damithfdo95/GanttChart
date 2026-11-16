@@ -8,6 +8,10 @@ import { inclusiveEndOf } from '../../../shared/teamDates';
 import { BackfillDialog } from './BackfillDialog';
 import { MembersTab } from './MembersTab';
 import { TeamStructureTab } from './TeamStructureTab';
+import { AssignmentsTab } from './AssignmentsTab';
+import { CalendarTab } from './CalendarTab';
+import { CapacityTab } from './CapacityTab';
+import { AnalyticsTab } from './AnalyticsTab';
 import type { Language } from '../../types';
 
 type Tab = 'overview' | 'members' | 'teamStructure' | 'assignments' | 'calendar' | 'capacity' | 'analytics';
@@ -72,7 +76,10 @@ export function TeamManagementScreen() {
       {tab === 'overview' ? <OverviewTab lang={lang} overview={overview} onOpenMembers={() => setTab('members')} /> : null}
       {tab === 'members' ? <MembersTab lang={lang} today={today} teamName={teamName} memberships={memberships} /> : null}
       {tab === 'teamStructure' ? <TeamStructureTab lang={lang} today={today} /> : null}
-      {tab === 'assignments' || tab === 'calendar' || tab === 'capacity' || tab === 'analytics' ? <PhaseNote lang={lang} tab={tab} /> : null}
+      {tab === 'assignments' ? <AssignmentsTab lang={lang} today={today} /> : null}
+      {tab === 'calendar' ? <CalendarTab lang={lang} today={today} /> : null}
+      {tab === 'capacity' ? <CapacityTab lang={lang} today={today} /> : null}
+      {tab === 'analytics' ? <AnalyticsTab lang={lang} today={today} /> : null}
 
       {backfillOpen ? (
         <BackfillDialog
@@ -119,18 +126,6 @@ function OverviewTab({ lang, overview, onOpenMembers }: { lang: Language; overvi
           </button>
         </p>
       ) : null}
-    </section>
-  );
-}
-
-function PhaseNote({ lang, tab }: { lang: Language; tab: 'assignments' | 'calendar' | 'capacity' | 'analytics' }) {
-  const phase = tab === 'assignments' ? 2 : tab === 'calendar' ? 3 : tab === 'capacity' ? 4 : 5;
-  return (
-    <section className="dr-section" aria-labelledby="tm-phase-title">
-      <h2 id="tm-phase-title">{t(lang, `teamMgmt.tab.${tab}` as const)}</h2>
-      <p className="dr-summary" role="note">
-        {t(lang, 'teamMgmt.phaseNote', { phase })}
-      </p>
     </section>
   );
 }

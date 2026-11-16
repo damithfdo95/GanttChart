@@ -108,6 +108,24 @@ export interface TeamMembershipRecord {
   createdAt: string;
 }
 
+/** Auditable lifecycle event for moving or assigning a member between teams. */
+export interface TeamTransferRecord {
+  id: string;
+  memberId: string;
+  fromTeamId: string;
+  toTeamId: string;
+  changeType: TransferChangeType;
+  effectiveDate: string;
+  plannedEndDate?: string;
+  status: TransferStatus;
+  reason?: string;
+  sourceApproverId?: string;
+  destinationApproverId?: string;
+  createdBy: string;
+  createdAt: string;
+  completedAt?: string;
+}
+
 /** One skill in the reusable catalogue. */
 export interface SkillRecord {
   id: string;
@@ -252,7 +270,7 @@ const ID_SHAPE = /^[A-Za-z0-9_.:-]{1,100}$/;
 const TIME_SHAPE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** The Team Management record kinds (mirrors RECORD_KINDS in shared/protocol.ts). */
-export const TEAM_KINDS = ['team', 'teamMembership', 'teamSupervisor', 'skill', 'memberSkill', 'workSchedule', 'memberSchedule', 'leaveRequest', 'holidayCalendar', 'capacityAllocation'] as const;
+export const TEAM_KINDS = ['team', 'teamMembership', 'teamTransfer', 'teamSupervisor', 'skill', 'memberSkill', 'workSchedule', 'memberSchedule', 'leaveRequest', 'holidayCalendar', 'capacityAllocation'] as const;
 export type TeamKind = (typeof TEAM_KINDS)[number];
 
 // ---- per-record checks ---------------------------------------------------------
@@ -290,6 +308,25 @@ export function checkTeamMembership(raw: unknown): TeamCheck<TeamMembershipRecor
   if (typeof c.createdBy !== 'string' || c.createdBy === '') return { ok: false, error: 'membership_invalid_created_by' };
   if (!isTimestamp(c.createdAt)) return { ok: false, error: 'membership_invalid_timestamp' };
   return { ok: true, record: c as unknown as TeamMembershipRecord };
+}
+
+export function checkTeamTransfer(raw: unknown): TeamCheck<TeamTransferRecord> {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { ok: false, error: 'transfer_not_an_object' };
+  const c = raw as Obj;
+  if (typeof c.id !== 'string' || !ID_SHAPE.test(c.id)) return { ok: false, error: 'transfer_invalid_id' };
+  for (const field of ['memberId', 'fromTeamId', 'toTeamId'] as const) if (typeof c[field] !== 'string' || !ID_SHAPE.test(c[field])) return { ok: false, error: `transfer_invalid_${field}` };
+  if (c.fromTeamId === c.toTeamId) return { ok: false, error: 'transfer_same_team' };
+  if (!isEnum(c.changeType, TRANSFER_CHANGE_TYPES)) return { ok: false, error: 'transfer_invalid_change_type' };
+  if (!isTeamDate(c.effectiveDate)) return { ok: false, error: 'transfer_invalid_effective_date' };
+  if (c.plannedEndDate !== undefined && (!isTeamDate(c.plannedEndDate) || c.plannedEndDate <= c.effectiveDate)) return { ok: false, error: 'transfer_invalid_planned_end' };
+  if ((c.changeType === 'TEMPORARY_PRIMARY_TRANSFER' || c.changeType === 'TEMPORARY_SUPPORT') && c.plannedEndDate === undefined) return { ok: false, error: 'transfer_temporary_requires_end' };
+  if (!isEnum(c.status, TRANSFER_STATUSES)) return { ok: false, error: 'transfer_invalid_status' };
+  if ((c.changeType === 'PERMANENT_TRANSFER' || c.changeType === 'TEMPORARY_PRIMARY_TRANSFER') && (c.status === 'SCHEDULED' || c.status === 'COMPLETED') && (c.sourceApproverId === undefined || c.destinationApproverId === undefined)) return { ok: false, error: 'transfer_approval_required' };
+  if (c.reason !== undefined && !plainText(c.reason, TEAM_LIMITS.reason)) return { ok: false, error: 'transfer_invalid_reason' };
+  for (const field of ['sourceApproverId', 'destinationApproverId'] as const) if (c[field] !== undefined && (typeof c[field] !== 'string' || !ID_SHAPE.test(c[field]))) return { ok: false, error: `transfer_invalid_${field}` };
+  if (typeof c.createdBy !== 'string' || c.createdBy === '' || !isTimestamp(c.createdAt)) return { ok: false, error: 'transfer_invalid_creator' };
+  if (c.completedAt !== undefined && !isTimestamp(c.completedAt)) return { ok: false, error: 'transfer_invalid_completed_at' };
+  return { ok: true, record: c as unknown as TeamTransferRecord };
 }
 
 export function checkSkill(raw: unknown): TeamCheck<SkillRecord> {
@@ -499,6 +536,12 @@ export function teamCommitError(input: TeamCommitInput): string | null {
         if (check.record.id !== p.id) return 'membership_id_mismatch';
         break;
       }
+      case 'teamTransfer': {
+        const check = checkTeamTransfer(parsed);
+        if (!check.ok) return check.error;
+        if (check.record.id !== p.id) return 'transfer_id_mismatch';
+        break;
+      }
       case 'teamSupervisor': {
         const check = checkTeamSupervisor(parsed);
         if (!check.ok) return check.error;
@@ -602,6 +645,15 @@ export function teamCommitError(input: TeamCommitInput): string | null {
       const curr = list[i];
       if (prev !== undefined && curr !== undefined && periodsOverlap(prev.effectiveFrom, prev.effectiveTo, curr.effectiveFrom, curr.effectiveTo)) return 'membership_primary_overlap';
     }
+  }
+
+  // Transfers are immutable audit/workflow records whose references must exist.
+  for (const p of puts) {
+    if (p.kind !== 'teamTransfer') continue;
+    const checked = checkTeamTransfer(JSON.parse(p.json));
+    if (!checked.ok) continue;
+    if (!memberIds.has(checked.record.memberId)) return 'transfer_member_missing';
+    if (!teams.has(checked.record.fromTeamId) || !teams.has(checked.record.toTeamId)) return 'transfer_team_missing';
   }
 
   // Member schedules: template must exist; periods of one member must not overlap.
