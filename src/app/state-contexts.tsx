@@ -12,7 +12,7 @@ import { useReportsState, type ReportsStateApi } from './useReportsState';
 import { applyActiveProjectSync, applyActiveProjectSyncRestricted, qaInputsFromAppState } from '../domain/projects';
 import { useTenant } from './tenant-context';
 import { derivedTotalFor, reconcileProjectTotals } from '../domain/testManagement/totals';
-import { backfillTestRailMemberAdoption } from '../domain/testrail/adoptionBackfill';
+import { adoptRecordsByClaims, testRailAdoptionClaims } from '../domain/testrail/adoptionBackfill';
 import { normalizeQaInputsForLoad } from '../lib/storage/storage';
 import { consumeCorruptionEvents, type CorruptionEvent } from '../lib/storage/corruption';
 import { persistWorkspaceAsync } from '../lib/storage/db/persistenceBackend';
@@ -322,20 +322,47 @@ function usePortfolioSeed(app: AppStateApi, reports: ReportsStateApi, enabled: b
  * user was linked to a Team Member (or before the adoption existed):
  * every ACTIVE testrail link adopts the records written under its display
  * name / the member's registered name. Idempotent — the second run is a
- * no-op — so it is safe on every boot. Runs once after the first render
- * (the state actions are stable; the effect re-runs only when the inputs
- * it heals change, and then it heals nothing new).
+ * no-op — so it is safe on every boot.
+ *
+ * The ACTIVE project's records are healed through the APP STATE (the
+ * editing surface): writing the record directly would be undone by the
+ * write-back and ping-pong forever (each cycle re-rendering the app and
+ * flooding the sync engine). The other projects are healed in the registry
+ * directly — the write-back never touches them.
+ *
+ * The effect deliberately depends only on the inputs the CLAIMS are read
+ * from (members, external identities) — NOT on `projects` — so the
+ * write-back's record updates never re-trigger it. The claims are stable
+ * after the first heal, so this runs its work once and then no-ops.
  */
-function useTestRailAdoptionBackfill(reports: ReportsStateApi): void {
-  const { projects, rcsMembers, externalIdentities, activeProjectId } = reports.state;
+function useTestRailAdoptionBackfill(app: AppStateApi, reports: ReportsStateApi): void {
+  const { rcsMembers, externalIdentities, activeProjectId, projects } = reports.state;
   useEffect(() => {
-    const healed = backfillTestRailMemberAdoption(projects, rcsMembers ?? [], externalIdentities ?? []);
-    if (healed !== projects) reports.setProjects(healed);
-    // Deliberately not re-run on every state change: the backfill is
-    // idempotent, and the link-time adoption (TestRailScopeImportDialog)
-    // covers new links. Re-run only when the inputs it reads change.
+    const claims = testRailAdoptionClaims(rcsMembers ?? [], externalIdentities ?? []);
+    if (claims.size === 0) return;
+    // The ACTIVE project heals through the app state (the editing surface).
+    const active = projects.find((p) => p.id === activeProjectId);
+    const activeRecords = active?.inputs.testerDailyPerformance ?? null;
+    if (active !== undefined && activeRecords !== null) {
+      const healedActive = adoptRecordsByClaims(activeRecords, claims);
+      if (healedActive !== activeRecords) app.updateField('testerDailyPerformance', healedActive);
+    }
+    // Every OTHER project heals directly in the registry.
+    let changed = false;
+    const healed = projects.map((project) => {
+      if (project.id === activeProjectId) return project;
+      const records = project.inputs.testerDailyPerformance ?? [];
+      const next = adoptRecordsByClaims(records, claims);
+      if (next === records) return project;
+      changed = true;
+      return { ...project, inputs: { ...project.inputs, testerDailyPerformance: next } };
+    });
+    if (changed) reports.setProjects(healed);
+    // Re-run only when the claims' inputs change (or the active project
+    // switches — the new active project's records then heal through the
+    // app state the same way). Never on the write-back's own updates.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, rcsMembers, externalIdentities, activeProjectId]);
+  }, [rcsMembers, externalIdentities, activeProjectId]);
 }
 
 export function AppProviders({ boot, shared = null, children }: { boot: PersistenceBoot; shared?: SharedBoot | null; children: ReactNode }) {
@@ -343,7 +370,7 @@ export function AppProviders({ boot, shared = null, children }: { boot: Persiste
   const reports = useReportsState(boot.workspace.reports);
   const autoBackup = useAutoDailyBackup(app, reports);
   usePortfolioSeed(app, reports, shared === null);
-  useTestRailAdoptionBackfill(reports);
+  useTestRailAdoptionBackfill(app, reports);
   // A Tester's changes reach the shared project only where a Tester may change it (see shared/testerRules.ts).
   const testerOnly = useTenant().principal?.role === 'user';
   useProjectWriteBack(app, reports, testerOnly);
