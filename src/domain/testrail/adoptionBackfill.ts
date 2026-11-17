@@ -1,4 +1,4 @@
-import type { ExternalIdentity, ProjectRecord, RcsMember } from '../../types';
+import type { ExternalIdentity, ProjectRecord, RcsMember, TesterDailyPerformance } from '../../types';
 import { adoptRecordsIntoMember } from '../performance';
 
 /**
@@ -21,6 +21,32 @@ export function backfillTestRailMemberAdoption(
   members: readonly RcsMember[],
   externalIdentities: readonly ExternalIdentity[],
 ): ProjectRecord[] {
+  const claims = testRailAdoptionClaims(members, externalIdentities);
+  if (claims.size === 0) return projects as ProjectRecord[];
+
+  let changed = false;
+  const healed = projects.map((project) => {
+    const records = project.inputs.testerDailyPerformance ?? [];
+    const next = adoptRecordsByClaims(records, claims);
+    if (next === records) return project;
+    changed = true;
+    return { ...project, inputs: { ...project.inputs, testerDailyPerformance: next } };
+  });
+  return changed ? healed : (projects as ProjectRecord[]);
+}
+
+/**
+ * The name → memberId map an adoption may safely claim: for every ACTIVE
+ * 'testrail' external identity, the link's display name and the linked
+ * member's registered name; when NO testrail links exist at all, every
+ * member's registered name (pre-link fetches used the member's real name
+ * when the email matched). A name claimed by two members is ambiguous and
+ * claimed by NO ONE (never guessed, §5).
+ */
+export function testRailAdoptionClaims(
+  members: readonly RcsMember[],
+  externalIdentities: readonly ExternalIdentity[],
+): Map<string, string> {
   const memberById = new Map(members.map((m) => [m.id, m] as const));
   // Collect each member's claimable names: the member's own name plus every
   // ACTIVE testrail link's display name pointing at that member.
@@ -66,18 +92,22 @@ export function backfillTestRailMemberAdoption(
       else if (owner !== memberId) claimed.delete(key); // ambiguous → no one gets it
     }
   }
-  if (claimed.size === 0) return projects as ProjectRecord[];
+  return claimed;
+}
 
-  let changed = false;
-  const healed = projects.map((project) => {
-    const records = project.inputs.testerDailyPerformance ?? [];
-    let next = records;
-    for (const [name, memberId] of claimed) {
-      next = adoptRecordsIntoMember(next, [name], memberId);
-    }
-    if (next === records) return project;
-    changed = true;
-    return { ...project, inputs: { ...project.inputs, testerDailyPerformance: next } };
-  });
-  return changed ? healed : (projects as ProjectRecord[]);
+/**
+ * Adopt unlinked records by a precomputed claim map (name → memberId).
+ * Reference-stable: the SAME array reference when nothing changes, so
+ * callers can detect "nothing to heal" without deep comparison.
+ */
+export function adoptRecordsByClaims(
+  records: readonly TesterDailyPerformance[],
+  claims: ReadonlyMap<string, string>,
+): TesterDailyPerformance[] {
+  if (claims.size === 0) return records as TesterDailyPerformance[];
+  let next = records as TesterDailyPerformance[];
+  for (const [name, memberId] of claims) {
+    next = adoptRecordsIntoMember(next, [name], memberId);
+  }
+  return next;
 }
