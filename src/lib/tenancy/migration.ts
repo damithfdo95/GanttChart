@@ -44,9 +44,9 @@ export interface MigrationDeps {
   /** Read the local database back (for verification). */
   loadLocal(): Promise<LocalWorkspace | null>;
   /** After a successful Local -> Web: mark this device as linked, with the verified server copy as its baseline. */
-  adoptWebDevice(baseline: { revision: number; records: RecordPut[] }): void;
+  adoptWebDevice(baseline: { revision: number; records: RecordPut[] }): void | Promise<void>;
   /** After Web -> Local: forget the link and the sync baseline of this device. */
-  unlinkDevice(): void;
+  unlinkDevice(): void | Promise<void>;
 }
 
 // ---- Local -> Web -----------------------------------------------------------------
@@ -155,7 +155,7 @@ export async function runLocalToWeb(local: LocalWorkspace, plan: LocalToWebPlan,
   }
 
   // 5. Only now does this device become a web device, with the verified copy as its baseline.
-  deps.adoptWebDevice({ revision: uploaded.revision, records: plan.local.records });
+  await deps.adoptWebDevice({ revision: uploaded.revision, records: plan.local.records });
   return { ok: true, revision: uploaded.revision, hash: uploaded.hash, counts: uploaded.counts };
 }
 
@@ -232,6 +232,6 @@ export async function completeWebToLocal(prepared: PreparedWebToLocal, typed: st
   } catch (e) {
     return failure('switch', e instanceof ApiError ? e.code : 'switch_failed');
   }
-  deps.unlinkDevice();
+  await deps.unlinkDevice();
   return { ok: true };
 }

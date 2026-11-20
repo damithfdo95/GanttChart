@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import type { DailyTopic, ProjectRecord, ReportsState } from '../types';
 import { newProjectRecord } from '../domain/projects/lifecycle';
 import { qaInputsFromAppState } from '../domain/projects/migrations';
@@ -6,7 +6,9 @@ import { DEMO_STATE, normalizeAppState } from '../lib/storage/storage';
 import { defaultReportsState } from '../lib/storage/reports';
 import { REPLACE_CONFIRMATION, firstStateFor, needsLocalBackup, planLink, startsFromEmptyLocal, validateLinkChoice } from '../lib/sync/link';
 import { reportsToRecords } from '../lib/sync/records';
-import { LINK_KEY, MIRROR_KEY, STASH_KEY, appendStash, clearStash, readLink, readMirror, readStash, unlinkDevice, writeLink, writeMirror } from '../lib/sync/device';
+import { MIRROR_KEY, appendStash, clearStash, readLink, readMirror, readStash, unlinkDevice, writeLink, writeMirror } from '../lib/sync/device';
+import { kvPut, resetSyncDbForTests } from '../lib/sync/deviceDb';
+import { FakeIDBFactory } from './helpers/fakeIndexedDb';
 import { detectServer, fetchServerWorkspace, probeSession, websocketUrl, type FetchLike } from '../lib/sync/serverMode';
 
 function project(name: string, createdAt = '2026-10-01T00:00:00Z'): ProjectRecord {
@@ -104,67 +106,58 @@ describe('how a choice drives the sync client', () => {
 });
 
 describe('device storage', () => {
-  const store = new Map<string, string>();
+  let idb: FakeIDBFactory;
   beforeEach(() => {
-    store.clear();
-    (globalThis as { window?: unknown }).window = {
-      localStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) },
-    };
+    idb = new FakeIDBFactory();
+    resetSyncDbForTests();
+    vi.stubGlobal('indexedDB', idb);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetSyncDbForTests();
   });
 
-  it('a link only counts for the server it was made on', () => {
-    writeLink({ origin: 'https://a.workers.dev', linkedAt: 'x', email: 'a@b.c' });
-    expect(readLink('https://a.workers.dev')?.email).toBe('a@b.c');
-    expect(readLink('https://other.workers.dev')).toBeNull();
+  it('a link only counts for the server it was made on', async () => {
+    await writeLink({ origin: 'https://a.workers.dev', linkedAt: 'x', email: 'a@b.c' });
+    expect((await readLink('https://a.workers.dev'))?.email).toBe('a@b.c');
+    expect(await readLink('https://other.workers.dev')).toBeNull();
   });
 
-  it('round-trips the offline mirror and rejects a malformed one', () => {
-    writeMirror({ revision: 4, records: { k: '{}' } });
-    expect(readMirror()).toEqual({ revision: 4, records: { k: '{}' } });
-    store.set(MIRROR_KEY, '{"revision":"x"}');
-    expect(readMirror()).toBeNull();
-    store.set(MIRROR_KEY, 'not json');
-    expect(readMirror()).toBeNull();
+  it('round-trips the offline mirror and rejects a malformed one', async () => {
+    await writeMirror({ revision: 4, records: { k: '{}' } });
+    expect(await readMirror()).toEqual({ revision: 4, records: { k: '{}' } });
+    await kvPut(MIRROR_KEY, { revision: 'x' });
+    expect(await readMirror()).toBeNull();
+    await kvPut(MIRROR_KEY, 'not json');
+    expect(await readMirror()).toBeNull();
   });
 
-  it('keeps only the most recent stashed edits', () => {
-    for (let i = 0; i < 60; i++) appendStash({ at: String(i), kind: 'project', id: `p${i}`, json: '{}' });
-    const stash = readStash();
+  it('keeps only the most recent stashed edits', async () => {
+    for (let i = 0; i < 60; i++) await appendStash({ at: String(i), kind: 'project', id: `p${i}`, json: '{}' });
+    const stash = await readStash();
     expect(stash).toHaveLength(50);
     expect(stash[0].id).toBe('p10');
     expect(stash[49].id).toBe('p59');
-    clearStash();
-    expect(readStash()).toEqual([]);
+    await clearStash();
+    expect(await readStash()).toEqual([]);
   });
 
-  it('unlink forgets the device’s sync state but nothing else', () => {
-    writeLink({ origin: 'o', linkedAt: 'x', email: 'e' });
-    writeMirror({ revision: 1, records: {} });
-    appendStash({ at: 'x', kind: 'topic', id: 't', json: null });
-    store.set('ganttchart.v2', 'APP DATA');
-    unlinkDevice();
-    expect([LINK_KEY, MIRROR_KEY, STASH_KEY].some((k) => store.has(k))).toBe(false);
-    expect(store.get('ganttchart.v2')).toBe('APP DATA');
+  it('unlink forgets the device’s sync state but nothing else', async () => {
+    await writeLink({ origin: 'o', linkedAt: 'x', email: 'e' });
+    await writeMirror({ revision: 1, records: {} });
+    await appendStash({ at: 'x', kind: 'topic', id: 't', json: null });
+    await unlinkDevice();
+    expect(await readLink('o')).toBeNull();
+    expect(await readMirror()).toBeNull();
+    expect(await readStash()).toEqual([]);
   });
 
-  it('never throws when storage is blocked', () => {
-    (globalThis as { window?: unknown }).window = {
-      localStorage: {
-        getItem: () => {
-          throw new Error('blocked');
-        },
-        setItem: () => {
-          throw new Error('blocked');
-        },
-        removeItem: () => {
-          throw new Error('blocked');
-        },
-      },
-    };
-    expect(writeMirror({ revision: 1, records: {} })).toBe(false);
-    expect(readMirror()).toBeNull();
-    expect(readStash()).toEqual([]);
-    expect(() => unlinkDevice()).not.toThrow();
+  it('never throws when storage is blocked', async () => {
+    idb.failNextOpen = true;
+    expect(await writeMirror({ revision: 1, records: {} })).toBe(false);
+    expect(await readMirror()).toBeNull();
+    expect(await readStash()).toEqual([]);
+    await expect(unlinkDevice()).resolves.toBeUndefined();
   });
 });
 

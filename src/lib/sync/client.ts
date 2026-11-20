@@ -149,8 +149,8 @@ export interface SyncClientOptions {
    *              (deliberate replace of the shared workspace).
    */
   firstState?: 'apply' | 'overwrite';
-  persistMirror?(mirror: PersistedMirror): void;
-  stashEdit?(edit: StashedEdit): void;
+  persistMirror?(mirror: PersistedMirror): void | Promise<void>;
+  stashEdit?(edit: StashedEdit): void | Promise<void>;
   /** Asks whether the Access session is still valid (HTTP probe); optional. */
   probeSession?(): Promise<SessionProbe>;
   timers?: SyncTimers;

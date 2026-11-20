@@ -110,8 +110,7 @@ export function Settings() {
       if (shared.enabled) {
         // Forget the link and reload: the device starts over and is offered the
         // link screen again. Nothing is pushed to the shared workspace.
-        unlinkDevice();
-        window.location.reload();
+        void unlinkDevice().then(() => window.location.reload());
         return;
       }
       const fresh: typeof DEMO_STATE = {
@@ -161,16 +160,6 @@ export function Settings() {
             type="text"
             value={settings.supervisorName}
             onChange={(e) => reportsApi.updateSettings({ supervisorName: e.target.value })}
-          />
-        </label>
-        <label className="settings-field">
-          {t(lang, 'settings.projectJiraUrl')}
-          <input
-            className="input"
-            type="text"
-            placeholder="https://jira.example.com/browse/PROJ"
-            value={settings.projectJiraUrl}
-            onChange={(e) => reportsApi.updateSettings({ projectJiraUrl: e.target.value })}
           />
         </label>
         <label className="settings-field settings-field-wide">

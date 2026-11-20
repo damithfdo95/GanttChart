@@ -79,7 +79,7 @@ export function useSharedSync(): SharedSyncApi {
 export function useSharedSyncEngine(app: AppStateApi, reports: ReportsStateApi, shared: SharedBoot | null): SharedSyncApi {
   const [sync, setSync] = useState<SyncState | null>(null);
   const [notices, setNotices] = useState<SyncNotice[]>([]);
-  const [stashCount, setStashCount] = useState<number>(() => (shared === null ? 0 : readStash().length));
+  const [stashCount, setStashCount] = useState<number>(0);
 
   const reportsRef = useRef<ReportsState>(reports.state);
   reportsRef.current = reports.state;
@@ -127,7 +127,7 @@ export function useSharedSyncEngine(app: AppStateApi, reports: ReportsStateApi, 
       },
       onNotice(notice) {
         setNotices((prev) => [...prev, notice].slice(-5));
-        if (notice.kind === 'conflict') setStashCount(readStash().length);
+        if (notice.kind === 'conflict') void readStash().then((s) => setStashCount(s.length));
       },
     };
     const client = new SyncClient({
@@ -139,7 +139,7 @@ export function useSharedSyncEngine(app: AppStateApi, reports: ReportsStateApi, 
       initial: shared.resume,
       firstState: shared.firstState,
       persistMirror: (m) => void writeMirror(m),
-      stashEdit: (edit) => appendStash(edit),
+      stashEdit: (edit) => void appendStash(edit),
       probeSession: () => probeSession(),
       // A small in-memory trail (never sent anywhere) so odd behaviour can be diagnosed
       // from the browser console: `window.__gcSyncLog`.
@@ -191,7 +191,7 @@ export function useSharedSyncEngine(app: AppStateApi, reports: ReportsStateApi, 
     if (shared === null || linkedRef.current || sync === null || sync.revision === null) return;
     if (sync.status === 'synced' || sync.status === 'syncing' || sync.status === 'readonly') {
       linkedRef.current = true;
-      writeLink({ origin: shared.origin, linkedAt: new Date().toISOString(), email: shared.identity.email, tenantId: shared.tenantId });
+      void writeLink({ origin: shared.origin, linkedAt: new Date().toISOString(), email: shared.identity.email, tenantId: shared.tenantId });
     }
   }, [shared, sync]);
 

@@ -71,8 +71,8 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
     setPhase({ kind: 'detecting' });
     const detection = await detectServer();
     const origin = window.location.origin;
-    const link = readLink(origin);
-    const mirror = readMirror();
+    const link = await readLink(origin);
+    const mirror = await readMirror();
     const wsUrl = websocketUrl(window.location);
     const api = createTenancyApi();
     const decision = decideStartup(detection, { link, hasMirror: mirror !== null });
@@ -98,7 +98,7 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
         return;
       case 'local-tenant':
         // This workspace lives in this browser: the plain local app, with the workspace identity attached.
-        if (decision.clearDevice) unlinkDevice();
+        if (decision.clearDevice) await unlinkDevice();
         setPhase({ kind: 'ready', boot, shared: null, tenant: { principal: decision.principal, api } });
         return;
       case 'resume': {
@@ -113,7 +113,7 @@ export function Startup({ boot }: { boot: PersistenceBoot }) {
       }
       case 'link': {
         const { principal, identity } = decision;
-        if (decision.foreignDevice) unlinkDevice(); // someone else's / another workspace's copy: forget it
+        if (decision.foreignDevice) await unlinkDevice(); // someone else's / another workspace's copy: forget it
         const server = await fetchServerWorkspace();
         if (server === null) {
           setPhase({ kind: 'problem', problem: 'export' });

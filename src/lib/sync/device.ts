@@ -1,11 +1,17 @@
 /**
- * Per-device sync storage (localStorage). Everything here stays on this
+ * Per-device sync storage (IndexedDB). Everything here stays on this
  * browser: the link marker, the offline mirror and the stash of edits that a
  * conflict replaced. Every access is wrapped — blocked/full storage must never
  * break the app.
+ *
+ * These values used to live in localStorage, but the mirror is the full
+ * workspace snapshot and routinely exceeded the localStorage quota, so the
+ * device was never remembered as linked. They now live in a dedicated
+ * IndexedDB database (see deviceDb.ts).
  */
 
 import type { PersistedMirror, StashedEdit } from './client';
+import { kvDelete, kvGet, kvPut } from './deviceDb';
 
 export const LINK_KEY = 'ganttchart.sync.link.v1';
 export const MIRROR_KEY = 'ganttchart.sync.mirror.v1';
@@ -20,70 +26,44 @@ export interface DeviceLink {
   tenantId?: string;
 }
 
-function read<T>(key: string): T | null {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw === null ? null : (JSON.parse(raw) as T);
-  } catch {
-    return null;
-  }
-}
-
-function write(key: string, value: unknown): boolean {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function remove(key: string): void {
-  try {
-    window.localStorage.removeItem(key);
-  } catch {
-    /* blocked storage */
-  }
-}
-
-export function readLink(origin: string): DeviceLink | null {
-  const link = read<DeviceLink>(LINK_KEY);
-  if (link === null || typeof link.origin !== 'string' || link.origin !== origin) return null; // a link is per server
+export async function readLink(origin: string): Promise<DeviceLink | null> {
+  const link = await kvGet<DeviceLink>(LINK_KEY);
+  if (link === undefined || typeof link.origin !== 'string' || link.origin !== origin) return null; // a link is per server
   return link;
 }
 
-export function writeLink(link: DeviceLink): boolean {
-  return write(LINK_KEY, link);
+export async function writeLink(link: DeviceLink): Promise<boolean> {
+  return kvPut(LINK_KEY, link);
 }
 
-export function readMirror(): PersistedMirror | null {
-  const m = read<PersistedMirror>(MIRROR_KEY);
-  if (m === null || typeof m.revision !== 'number' || typeof m.records !== 'object' || m.records === null) return null;
+export async function readMirror(): Promise<PersistedMirror | null> {
+  const m = await kvGet<PersistedMirror>(MIRROR_KEY);
+  if (m === undefined || typeof m.revision !== 'number' || typeof m.records !== 'object' || m.records === null) return null;
   return m;
 }
 
-export function writeMirror(mirror: PersistedMirror): boolean {
-  return write(MIRROR_KEY, mirror);
+export async function writeMirror(mirror: PersistedMirror): Promise<boolean> {
+  return kvPut(MIRROR_KEY, mirror);
 }
 
-export function readStash(): StashedEdit[] {
-  const s = read<StashedEdit[]>(STASH_KEY);
+export async function readStash(): Promise<StashedEdit[]> {
+  const s = await kvGet<StashedEdit[]>(STASH_KEY);
   return Array.isArray(s) ? s : [];
 }
 
 /** Newest last; capped so a long-running conflict cannot fill the storage. */
-export function appendStash(edit: StashedEdit): void {
-  const next = [...readStash(), edit].slice(-MAX_STASH);
-  write(STASH_KEY, next);
+export async function appendStash(edit: StashedEdit): Promise<void> {
+  const next = [...(await readStash()), edit].slice(-MAX_STASH);
+  await kvPut(STASH_KEY, next);
 }
 
-export function clearStash(): void {
-  remove(STASH_KEY);
+export async function clearStash(): Promise<void> {
+  await kvDelete(STASH_KEY);
 }
 
 /** Forget everything sync-related on this device (the shared workspace itself is untouched). */
-export function unlinkDevice(): void {
-  remove(LINK_KEY);
-  remove(MIRROR_KEY);
-  remove(STASH_KEY);
+export async function unlinkDevice(): Promise<void> {
+  await kvDelete(LINK_KEY);
+  await kvDelete(MIRROR_KEY);
+  await kvDelete(STASH_KEY);
 }

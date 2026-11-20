@@ -66,7 +66,9 @@ export function SyncBanners() {
   const status = shared.sync?.status;
 
   const downloadStash = (): void => {
-    downloadTextFile('ganttchart-my-versions.json', 'application/json', JSON.stringify({ app: 'ganttchart', kind: 'conflict-stash', exportedAt: new Date().toISOString(), edits: readStash() }, null, 2));
+    void readStash().then((edits) => {
+      downloadTextFile('ganttchart-my-versions.json', 'application/json', JSON.stringify({ app: 'ganttchart', kind: 'conflict-stash', exportedAt: new Date().toISOString(), edits }, null, 2));
+    });
   };
 
   // The server says WHY it refused a change (a short code). Known codes get a plain explanation; anything else stays generic.

@@ -31,14 +31,14 @@ export function browserMigrationDeps(api: TenancyApi, who: { email: string; tena
       const loaded = await loadWorkspaceFromIndexedDb();
       return loaded.ok ? { app: loaded.app, reports: loaded.reports } : null;
     },
-    adoptWebDevice(baseline) {
+    async adoptWebDevice(baseline) {
       const records: Record<string, string> = {};
       for (const r of baseline.records) records[recordKey(r.kind, r.id)] = r.json;
-      writeMirror({ revision: baseline.revision, records });
-      writeLink({ origin: window.location.origin, linkedAt: new Date().toISOString(), email: who.email, tenantId: who.tenantId });
+      await writeMirror({ revision: baseline.revision, records });
+      await writeLink({ origin: window.location.origin, linkedAt: new Date().toISOString(), email: who.email, tenantId: who.tenantId });
     },
-    unlinkDevice() {
-      unlinkDevice();
+    async unlinkDevice() {
+      await unlinkDevice();
     },
   };
 }
